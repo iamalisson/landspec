@@ -64,7 +64,8 @@ risky ones (a migration, a deletion, CI, authorization, secrets, money, styles a
 `record` refuses a report that does not deep-check each, or name the test line that proves it. The
 reviewer adds the risks a path cannot show. A fix round is a **delta**: it reviews only the commits
 since the last recorded head, and `record --delta` holds it to that: it follows a recorded round, names
-the head it starts from, and refuses a fix that grew past 20 lines outside the previous findings,
+the head it starts from, and refuses a fix that grew past 20 lines outside the previous findings
+(a file named only on a `- held:` or `- broke:` claim line is not one of them),
 a rebase, or a range that is not the delta's. Each report states the range and model it reviewed,
 so a commit made while the review ran is never recorded as reviewed.
 

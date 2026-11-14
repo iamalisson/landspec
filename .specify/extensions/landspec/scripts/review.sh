@@ -127,11 +127,12 @@ checked() {
 }
 
 # outside <last>: the lines the fix changed since <last> outside the previous findings' files
-# (the first file:line of each line from "findings" on) and outside test paths; a binary file
+# (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
 # counts as more than the limit.
 outside() {
   local found re a d f n=0
-  found="$(awk 'NR == 1, /^$/ { next } tolower($0) ~ /findings/ { on = 1 }
+  # Claims lines and their heading are skipped: a claim's stopped-at file is not a finding's file.
+  found="$(awk 'NR == 1, /^$/ { next } /^(- (held|broke):|\*\*Claims)/ { next } tolower($0) ~ /findings/ { on = 1 }
     on && match($0, /[A-Za-z0-9_.\/-]+:[0-9]+/) { s = substr($0, RSTART, RLENGTH); sub(/:[0-9]+$/, "", s); print s }' "$record")"
   re="$(test_path_re)" || exit 1
   while IFS=$'\t' read -r a d f; do

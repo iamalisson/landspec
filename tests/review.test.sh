@@ -222,6 +222,11 @@ seq 1 21 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; gi
 drep ready "$h2"
 check "when the fix adds 21 lines to a file outside the previous findings, then record --delta refuses and check still refuses" \
   'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md" && fails_with "changed since" "$r" check'
+o="$(git rev-parse HEAD)"; git reset --quiet --hard "$h2"
+rep "changes needed" "${all[@]}" "**Claims** (before the findings):" "- held: a claim — a case: stopped at other.ts:1" "Findings:" "- High: search.ts:1 still wrong"
+"$r" record "$TMP/report.md" >/dev/null || true; git cherry-pick --quiet "$o"; drep ready "$h2"
+check "when the 21 lines are in a file only a held claim names, then record --delta still refuses" \
+  'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md"'
 git reset --quiet --hard "$h2"
 echo 'DROP TABLE orders;' >> db/migrations/002_drop.sql; git commit --quiet -am "fix: drop orders"
 drep ready "$h2"
