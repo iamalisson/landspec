@@ -51,13 +51,6 @@ two="$(PATH="$TMP/clock:$TMP/none" bash "$scan" | sed -n 's/^REPORT_DIR=//p')"
 check "when two scans start in the same second, then each gets its own report folder" \
   '[[ -n "$one" && "$one" != "$two" && -s "$one/summary.txt" && -s "$two/summary.txt" ]]'
 
-# Every worktree shares .git/landspec-security: two runs in the same second get their own folder.
-mkdir -p "$TMP/clock"; printf '#!/usr/bin/env bash\necho 20260101-000000\n' > "$TMP/clock/date"; chmod +x "$TMP/clock/date"
-one="$(PATH="$TMP/clock:$TMP/none" bash "$scan" | sed -n 's/^REPORT_DIR=//p')"
-two="$(PATH="$TMP/clock:$TMP/none" bash "$scan" | sed -n 's/^REPORT_DIR=//p')"
-check "when two scans start in the same second, then each gets its own report folder" \
-  '[[ -n "$one" && "$one" != "$two" && -s "$one/summary.txt" && -s "$two/summary.txt" ]]'
-
 git switch --quiet -c feat/x; echo "x = 1" > app.py; git add app.py; git commit --quiet -m app
 : > "$TMP/semgrep.log"
 PATH="$TMP/tools:$PATH" bash "$scan" --changed >/dev/null
