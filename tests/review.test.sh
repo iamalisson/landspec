@@ -15,6 +15,9 @@ echo 'export const search = 1' > search.ts; git add search.ts; git commit --quie
 check "when no review was recorded, then check refuses and says how to record one" 'fails_with "no independent review" "$r" check'
 check "when no task review was recorded on a task branch, then the hint is review.sh record <report-file>, without --plan" \
   'fails_with "record its report: review.sh record <report-file>" "$r" check'
+: > "$TMP/empty.md"
+check "when the report file is empty, then record (and record --feature) refuses and says the reviewer did not write it" \
+  'fails_with "is empty: the reviewer named it but did not write it" "$r" record "$TMP/empty.md" && fails_with "is empty" "$r" record --feature "$TMP/empty.md"'
 printf 'Looks fine to me.\n' > "$TMP/report.md"
 check "when the report has no assessment line, then it is refused" 'fails_with "Assessment" "$r" record "$TMP/report.md"'
 printf 'Assessment: not ready, changes needed\n' > "$TMP/report.md"

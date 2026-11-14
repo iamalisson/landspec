@@ -180,6 +180,7 @@ remove_copy() {
 # resets the whole-feature check's round counter (implement.sh check-copy).
 if $feat; then
   report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --feature <report-file>"
+  [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
   fdir="$(feature_dir)"; fname="$(basename "$fdir")"
   c="$(git rev-parse --verify --quiet "refs/landspec/check/$fname^{commit}" || true)"
   [[ -n "$c" ]] || die "no check copy for $fname: run implement.sh check-copy first"
@@ -202,6 +203,7 @@ fi
 case "$action" in
   record)
     report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record [--plan|--delta] <report-file>"
+    [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
     # Only the exact line counts ("not ready" or "already" in prose never does); the last one decides.
     verdict="$(grep -iE '^\**assessment\**: *(ready|changes needed)\**\.?$' "$report" | tail -1 | grep -oiE 'changes needed|ready' | tr '[:upper:]' '[:lower:]' || true)"
     [[ -n "$verdict" ]] || die "the report has no line that is exactly 'Assessment: ready' or 'Assessment: changes needed'"

@@ -42,7 +42,7 @@ doc, and each task PR stays small and closes exactly one issue. The worked examp
 A review inside the session that wrote the code shares that session's assumptions and tests the
 path it already tested. landspec's review before every PR (`/speckit-landspec-review`) runs in a fresh agent
 that gets only facts: the branch, the task line, the PR body, the test command. It starts from the
-diff and the code around it (what it calls and what calls it), once, and reports the real bugs in the changed lines, following personal data and secrets into the helpers they are passed to,
+diff and the code around it (what it calls and what calls it), once, and reports the real bugs in the changed lines, after trying to break each thing the change claims with a concrete counterexample, following personal data and secrets into the helpers they are passed to,
 since a leak usually hides one call away from the diff. It runs in its own copy of the
 reviewed commit, so whatever it runs (a test, a mutation) never touches the author's checkout. CI runs the tests. `## Evidence` is the author's: no script checks what it says.
 It works the way GitHub's Copilot code review does, one fast pass, with no Copilot subscription

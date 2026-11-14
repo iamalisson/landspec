@@ -221,6 +221,14 @@ check "when a changed function fails differently, then review.md asks for every 
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"When a changed function fails differently (it raises where it returned, returns where it raised, or changes the error type or value it fails with), search for every caller of it, in the diff or not"* \
    && "$f" == *"give each one a \`- deep:\` line in the risk map saying how it handles the new failure"* && "$f" == *"a caller that catches the old error type, and one that checks \`not res.ok\` or a status code"* \
    && "$f" == *"A caller whose fallback no longer runs is a finding"* && "$f" == *"a fix commit that changes how a function fails makes every caller of that function part of the fix"* ]]'
+check "when review.md is read, then step 3 tries to break each claim, the Claims lines come before the findings, the Findings rule tries to disprove, the plan review checks reuse and changed callers, and the report has one count line" \
+  'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; r="$(sed -n "/^## Report/,\$p" extension/commands/review.md | tr "\n" " " | tr -s " ")"
+   [[ "$f" == *"**Try to break it.**"* && "$f" == *"build one concrete counterexample"* && "$f" == *"follow each one'"'"'s own scenario through the fix"* \
+   && "$f" == *"A plan review or a feature review skips this step"* && "$r" == *"after the risk map and before the findings"* \
+   && "$r" == *"- held: <claim>"* && "$r" == *"- broke: <claim>"* && "$r" == *"try to disprove it"* && "$r" == *"exactly \`Findings: <n> high, <n> medium, <n> low\`"* \
+   && "$f" == *"**Reuse:** a task that adds a helper"* && "$f" == *"every caller of a function whose behaviour it changes"* ]]'
+check "when the Impact rule is read, then the tasks template and issues step 1 also search what a task changes the behaviour of" \
+  'grep -qF "changes the behaviour of" extension/commands/issues.md && tr "\n" " " < preset/templates/tasks-template.md | tr -s " " | grep -qF "removes or changes the behaviour of"'
 check "when review.md lists the bugs to look for, then it names data reaching a log inside a helper, says to open each helper, and ranks a faked asserted component" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"reaches a log, including inside a helper the changed lines call with it"* \
    && "$f" == *"Open each helper a changed line passes personal data or a secret to"* && "$f" == *"names the helper'"'"'s own \`file:line\` that writes the log"* && "$f" == *"a test that fakes the component whose behavior it asserts"* \
