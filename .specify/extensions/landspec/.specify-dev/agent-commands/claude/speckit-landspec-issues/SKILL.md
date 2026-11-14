@@ -19,8 +19,9 @@ or one with another summary never matches.
 1. **Ground the plan in the code** before anyone reviews it. A plan that was never checked against
    the repo breaks on the first task. Check, and fix `tasks.md`, `plan.md` and `quickstart.md`
    in place:
-   - **References:** for every symbol, table, file, route and config key a task adds, renames or
-     removes, search the code, the tests, the docs and data files, and the other tasks. Every hit
+   - **References:** for every symbol, table, file, route and config key a task adds, renames,
+     removes or changes the behaviour of (result, failure, who it lets through), search the code,
+     the tests, the docs and data files, and the other tasks; each caller is a hit. Every hit
      must be handled by some task (its *Impact* line). A task must never delete something a
      later or earlier task still uses.
    - **Guards:** find the existing tests and checks the change trips over, for example a test that

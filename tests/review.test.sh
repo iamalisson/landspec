@@ -15,6 +15,9 @@ echo 'export const search = 1' > search.ts; git add search.ts; git commit --quie
 check "when no review was recorded, then check refuses and says how to record one" 'fails_with "no independent review" "$r" check'
 check "when no task review was recorded on a task branch, then the hint is review.sh record <report-file>, without --plan" \
   'fails_with "record its report: review.sh record <report-file>" "$r" check'
+: > "$TMP/empty.md"
+check "when the report file is empty, then record (and record --feature) refuses and says the reviewer did not write it" \
+  'fails_with "is empty: the reviewer named it but did not write it" "$r" record "$TMP/empty.md" && fails_with "is empty" "$r" record --feature "$TMP/empty.md"'
 printf 'Looks fine to me.\n' > "$TMP/report.md"
 check "when the report has no assessment line, then it is refused" 'fails_with "Assessment" "$r" record "$TMP/report.md"'
 printf 'Assessment: not ready, changes needed\n' > "$TMP/report.md"
@@ -219,6 +222,11 @@ seq 1 21 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; gi
 drep ready "$h2"
 check "when the fix adds 21 lines to a file outside the previous findings, then record --delta refuses and check still refuses" \
   'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md" && fails_with "changed since" "$r" check'
+o="$(git rev-parse HEAD)"; git reset --quiet --hard "$h2"
+rep "changes needed" "${all[@]}" "**Claims** (before the findings):" "- held: a claim — a case: stopped at other.ts:1" "Findings:" "- High: search.ts:1 still wrong"
+"$r" record "$TMP/report.md" >/dev/null || true; git cherry-pick --quiet "$o"; drep ready "$h2"
+check "when the 21 lines are in a file only a held claim names, then record --delta still refuses" \
+  'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md"'
 git reset --quiet --hard "$h2"
 echo 'DROP TABLE orders;' >> db/migrations/002_drop.sql; git commit --quiet -am "fix: drop orders"
 drep ready "$h2"

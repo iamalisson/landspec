@@ -43,11 +43,11 @@ if $branches; then
   if [[ "$level" != lite ]]; then need+=(develop); fi
   if [[ "$level" == full ]]; then need+=(staging); fi
   has_origin=false; git remote get-url origin >/dev/null 2>&1 && has_origin=true
+  if $has_origin && ((${#need[@]})) && git rev-parse --verify --quiet HEAD >/dev/null; then git fetch --quiet origin 2>/dev/null || true; fi
   for b in ${need[@]+"${need[@]}"}; do
     if ! git rev-parse --verify --quiet HEAD >/dev/null; then
       echo "branch: $b not created yet (no commits); run /landspec:level again after the first commit"
     elif $has_origin; then
-      git fetch --quiet origin 2>/dev/null || true
       if ! git show-ref --verify --quiet "refs/remotes/origin/$b"; then
         if git show-ref --verify --quiet "refs/remotes/origin/$(default_branch)"; then
           # --no-verify is safe only here: this names a commit that is already on origin, so
