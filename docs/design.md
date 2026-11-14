@@ -82,6 +82,11 @@ answers "nothing is left and nothing breaks the others": so the run ends with on
 every task branch at once (made by the main session, since an agent's copy holds one), and its
 rounds are capped so a fix that changes nothing never loops.
 
+A task's fix rounds are deltas too, and a restack that rebased its branch makes the next one a full
+review. Each implementer runs the scan and mutation testing on its own branch before it returns, so a
+test that kills a survivor is in the diff the reviewer reads, not a late commit that needs another
+review.
+
 The main session starts every agent: implementers and reviewers are its background agents, and none
 starts another. Only the main session can watch them all, keep the review independent (the agent
 that wrote a branch never picks its reviewer), and wait for every one of them before it stops.

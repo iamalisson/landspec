@@ -26,7 +26,7 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    - if an existing test really must change (the spec changed, or the test was wrong), the PR
      body needs a `## Test changes` section saying why. The script refuses the PR without it.
 
-   Mutation testing runs once the commits are final: see the end of step 4.
+   The scan and mutation testing run in step 4, before and during the review.
 3. **Commit.** Commit the task's changes, and only those. Stage files by name, never
    `git add -A`. Use a Conventional Commit message, `<type>(<scope>): <summary>`, with a body line
    `Refs #<ISSUE>`. Attribution lines (`Co-Authored-By` for Claude, "Generated with") follow the
@@ -34,13 +34,23 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    none; if the team removed that block to disclose AI use, keep them. The git pre-commit hook checks for secrets. If it refuses, remove the secret;
    never use `--no-verify`.
 4. **Independent review**, the gate that catches what this session cannot see about its own
-   work. Launch the reviewer exactly as `commands/review.md` (`/speckit-landspec-review`) says: one
+   work. First the scan, so its fixes are committed before the review reads the diff:
+   - **The scanners on the changed files.** Run
+     `bash .specify/extensions/landspec/scripts/security-scan.sh --changed` (it also scans uncommitted
+     files). Read every finding and fix the real ones (then commit and
+     run it again). List the false positives with the reason, and any `missing` scanner. The
+     script in step 6 refuses a PR without a scan for this diff; findings and `missing` scanners
+     do not refuse, they go in the body.
+
+   Then launch the reviewer exactly as `commands/review.md` (`/speckit-landspec-review`) says: one
    `landspec:reviewer` subagent, with `model` and `isolation: "worktree"` as review.md says, given that file and the facts it lists (`base:` is
    `bash -c 'source .specify/extensions/landspec/scripts/lib.sh; base_ref'`), and nothing of what you
-   think about the code. While it runs, run `/security-review` on the branch.
+   think about the code. While it runs, run `/security-review` on the branch, then, the reviewer
+   still running in its own copy, mutation testing (below); never both at once in this tree, as a
+   mutation tool may edit the sources `/security-review` reads.
 
-   Save the report as it came to a file outside the repository (`mktemp`) and record it:
-   `bash .specify/extensions/landspec/scripts/review.sh record <file>`. Then fix every **High** and
+   Record the file the reviewer names on its report's first line (`Report file: <path>`), as it
+   is: `bash .specify/extensions/landspec/scripts/review.sh record <file>`. Then fix every **High** and
    **Medium** finding in the code (a test changes only when the test was wrong: then
    `## Test changes`, step 2). Commit the fixes (same rules), re-run step 2, and check them with a
    **delta**: pass the reviewer the `REVIEWED=` sha and the last report, and record it with
@@ -50,29 +60,25 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    A first review that says `ready` needs no second round. **Low** findings and test gaps are
    fixed or listed in `## Review`; they never hold the PR. This step runs at **every level**: the
    script in step 6 refuses a PR without a recorded `ready` review for the exact diff, so a
-   commit after the review means one more review.
+   commit after the review means one more review. A commit that only adds tests (killing a
+   survivor) after a `ready` review is checked with a delta.
 
-   **After the last commit** (the review's fix rounds included), run what is recorded for the
-   exact diff; any later commit means running it again:
-   - **Mutation testing proves the tests can fail.** Run
-     `bash .specify/extensions/landspec/scripts/mutants.sh` (the constitution's `mutate` command on
-     this branch's changes). `ok` goes in *Evidence*. `survivors` means a behavior no test checks:
-     for each surviving mutant in the changed lines, add the test that kills it (then commit and
-     run it again), or write one line in *Evidence* naming the survivor and why it changes nothing
-     observable (log or help text). `unavailable` means the command exited 126 or 127 and never
-     ran: install it or fix it in the constitution, then run it again; `pr.sh` refuses it. A wrapper
-     such as `uv run` exits otherwise, so a tool missing behind one shows as `survivors`: read the
-     log. `missing` means the constitution has no `mutate` command: say
-     so in *Evidence* and suggest `/landspec:adopt`. With a `mutate` command, the script in
-     step 6 refuses a PR without a `mutants.sh` result for this diff, and refuses `survivors` when
-     *Evidence* says nothing about them; without one, it adds "Mutation testing: not run" to the
-     body.
-   - **The scanners on the changed files.** Run
-     `bash .specify/extensions/landspec/scripts/security-scan.sh --changed` (it also scans uncommitted
-     files, so after the last commit). Read every finding and fix the real ones (then commit and
-     run it again). List the false positives with the reason, and any `missing` scanner. The
-     script in step 6 refuses a PR without a scan for this diff; findings and `missing` scanners
-     do not refuse, they go in the body.
+   **Mutation testing proves the tests can fail.** Run
+   `bash .specify/extensions/landspec/scripts/mutants.sh` (the constitution's `mutate` command on
+   this branch's changes). `ok` goes in *Evidence*. `survivors` means a behavior no test checks:
+   for each surviving mutant in the changed lines, add the test that kills it (then commit and
+   run it again), or write one line in *Evidence* naming the survivor and why it changes nothing
+   observable (log or help text). `unavailable` means the command exited 126 or 127 and never
+   ran: install it or fix it in the constitution, then run it again; `pr.sh` refuses it. A wrapper
+   such as `uv run` exits otherwise, so a tool missing behind one shows as `survivors`: read the
+   log. `missing` means the constitution has no `mutate` command: say
+   so in *Evidence* and suggest `/landspec:adopt`. With a `mutate` command, the script in
+   step 6 refuses a PR without a `mutants.sh` result for this diff, and refuses `survivors` when
+   *Evidence* says nothing about them; without one, it adds "Mutation testing: not run" to the
+   body.
+
+   The scan and mutation testing are recorded for the exact diff: after any later commit (a fix
+   round's too), run both again.
 5. **PR body**, written to a temporary file. Keep it short to read: what a reviewer needs is
    visible, the rest folds away.
    - one or two sentences on what changed;

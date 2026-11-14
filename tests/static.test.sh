@@ -301,8 +301,23 @@ check "then it has a step for each of START, REVIEW, FIX and OPEN, and reads ORD
   'for k in START REVIEW FIX OPEN; do grep -qF "**\`$k\`**" <<<"$im" || exit 1; done; grep -qF "ORDER=" <<<"$im"'
 check "then a task under review is in flight, so a second reviewer never starts on it, and the run waits for reviewers too" \
   'r="$(sed -n "/\*\*\`REVIEW\`\*\*/,/\*\*\`FIX\`\*\*/p" <<<"$im")"; grep -qF "Add the task to \`in flight\`" <<<"$r" && grep -qF "remove it from \`in flight\`" <<<"$r" && grep -qF "no implementer and no reviewer" <<<"$im"'
-check "then a fix round reads the review from the <task>.report file of the run record, and every review is a full one" \
-  'grep -qF "landspec-run/<feature dir name>/<task>.report" <<<"$im" && grep -qF "never \`--delta\`" <<<"$im"'
+check "then a fix round reads the review from the <task>.report file, is reviewed as a delta, and falls back to a full review when the delta refuses" \
+  'r="$(sed -n "/\*\*\`REVIEW\`\*\*/,/\*\*\`FIX\`\*\*/p" <<<"$im" | tr "\n" " " | tr -s " ")"; grep -qF "landspec-run/<feature dir name>/<task>.report" <<<"$im" \
+   && grep -qF "\`review.sh record --delta --branch <branch> <report>\`" <<<"$r" && grep -qF "When \`record --delta\` refuses" <<<"$r" && grep -qF "run a full review instead and record it with \`review.sh record --branch\`" <<<"$r" && ! grep -qF "never \`--delta\`" <<<"$im"'
+check "then OPEN runs the scan and mutation testing only when this diff has no record of them" \
+  'o="$(sed -n "/\*\*\`OPEN\`\*\*/,/^4\. /p" <<<"$im" | tr "\n" " " | tr -s " ")"; grep -qF "only when this diff has no record of them" <<<"$o" && grep -qF "diff_record" <<<"$o" && grep -qF "landspec-security" <<<"$o" && grep -qF "landspec-mutants" <<<"$o"'
+check "then every return that is not done leaves in flight, and one that returns nothing is marked red, failed at RED=2 or with no branch" \
+  'r="$(sed -n "/^Otherwise:/,/^## End/p" <<<"$im" | tr "\n" " " | tr -s " ")"; [[ "$(grep -o "remove it from \`in flight\`" <<<"$r" | wc -l)" -eq 4 ]] \
+   && grep -qF "It returned none of these" <<<"$r" && grep -qF "With a branch, \`I mark <task> red\`: at \`RED=2\`, \`I fail <task> \"implementer returned nothing\"\`" <<<"$r" && grep -qF "With no branch, \`I fail <task> \"implementer returned nothing\"\` at once" <<<"$r"'
+check "when the implementer works, then it reads the test rules and Method step 2 it is held to, and runs the scan and mutants before it detaches" \
+  'grep -qF "\"Tests are evidence\" rules of \`.specify/extensions/landspec/commands/pr.md\` step 2" <<<"$ag" && grep -qF "step 2 of the Method in \`.specify/extensions/landspec/commands/review.md\`" <<<"$ag" \
+   && [[ "$(grep -n "security-scan.sh --changed\` and \`bash .specify/extensions/landspec/scripts/mutants.sh\`" <<<"$ag" | cut -d: -f1)" -lt "$(grep -n "Last, \`git switch --detach\`" <<<"$ag" | cut -d: -f1)" ]] \
+   && grep -qF "the last \`security-scan.sh\` and \`mutants.sh\` result lines" <<<"$ag"'
+check "when pr.md records the review, then it records the file the reviewer names, never a saved copy" \
+  '! grep -qF "Save the report as it came" extension/commands/pr.md && grep -qF "Record the file the reviewer names on its report'"'"'s first line (\`Report file: <path>\`), as it" extension/commands/pr.md'
+check "when pr.md runs step 4, then the scan comes before the reviewer, mutants after /security-review, and a test-only commit after ready gets a delta" \
+  's4="$(sed -n "/^4\. /,/^5\. /p" extension/commands/pr.md | tr "\n" " " | tr -s " ")"; [[ "$s4" =~ security-scan\.sh\ --changed.*Then\ launch\ the\ reviewer.*run\ \`/security-review\`\ on\ the\ branch,\ then.*mutation\ testing.*mutants\.sh ]] \
+   && grep -qF "never both at once in this tree" <<<"$s4" && grep -qF "A commit that only adds tests (killing a survivor) after a \`ready\` review is checked with a delta." <<<"$s4" && grep -qF "after any later commit (a fix round'"'"'s too), run both again" <<<"$s4"'
 check "then a returning implementer's tests run first in its copy: green marks it implemented, red marks it red, failed at RED=2" \
   'r="$(sed -n "/^## When an implementer returns/,/^## End/p" <<<"$im")"; grep -qF "run the project'"'"'s test command before anything else" <<<"$r" \
    && grep -qF "green: \`I mark <task> implemented\`" <<<"$r" && grep -qF "red: \`I mark <task> red\`. At \`RED=2\`" <<<"$r" && grep -qF "\`I fail <task> \"tests red twice\"\`" <<<"$r"'
