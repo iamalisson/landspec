@@ -215,6 +215,11 @@ h3="$(git rev-parse HEAD)"; echo "// fix" >> search.ts; git add search.ts; git c
 drep ready "$h3"
 check "when the last round was a delta, then another delta from its head is recorded, so fix rounds can always end" \
   'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]] && "$r" check'
+ev="$(git rev-parse --git-common-dir)/landspec-events"
+check "when full and delta reviews are recorded, then each appends one review line to .git/landspec-events with its round, verdict and branch" \
+  'b="$(git branch --show-current)"; grep -qE "^[0-9]+ [0-9T:-]+Z $b review round=full verdict=ready branch=$b$" "$ev" && [[ "$(grep -c " review round=delta verdict=ready branch=$b$" "$ev")" == 2 ]]'
+check "when the event log cannot be written (a directory in its place), then event prints nothing and returns 0" \
+  'mv "$ev" "$ev.keep"; mkdir "$ev"; out="$(bash -c "source \"$SCRIPTS/lib.sh\"; event review round=full" 2>&1)"; rc=$?; rmdir "$ev"; mv "$ev.keep" "$ev"; ((rc == 0)) && [[ -z "$out" ]]'
 
 rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong"
 "$r" record "$TMP/report.md" >/dev/null || true; h2="$(git rev-parse HEAD)"

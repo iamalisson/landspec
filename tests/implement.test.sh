@@ -115,6 +115,8 @@ check "when a new commit lifts a review-rounds failure, then the next changes st
 mk "$B2"; "$I" fail T002 "tests red" >/dev/null; st
 check "when T002 is failed, then it is failed and T004 never startable" \
   '[[ "$(state_of T002)" == failed && "$(state_of T004)" != startable ]] && line_of T002 | grep -qF "REASON=tests red"'
+check "then mark and fail are logged with the task's branch named, whatever is checked out" \
+  'ev="$(git rev-parse --git-common-dir)/landspec-events"; grep -qE " mark task=T001 phase=implemented round=[0-9]+ branch=$B1$" "$ev" && grep -qE " fail task=T002 branch=$B2$" "$ev"'
 commit_on "$B2"; st
 check "when a new commit lands on a failed task, then it is lifted" '[[ "$(state_of T002)" == resume ]]'
 "$I" mark T002 implemented >/dev/null; st

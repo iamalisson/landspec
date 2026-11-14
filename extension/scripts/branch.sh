@@ -65,6 +65,7 @@ if [[ "$(git branch --show-current)" != "$branch" ]]; then
     fi
     start="$(git branch --show-current)"; start_head="$(git rev-parse HEAD)"
     git switch --quiet --no-track -c "$branch" "$from"
+    event start task="$task"
     if [[ -n "$parent" ]]; then
       git config "branch.$branch.landspec-parent" "$parent"
       d="$(git rev-parse --git-common-dir)/landspec-review"; mkdir -p "$d"

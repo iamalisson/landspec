@@ -199,6 +199,7 @@ if $feat; then
   rf="$dir/feature-$fname-round"
   if [[ "$verdict" == ready && -f "$rf" ]] && grep -qx 'outcome=green' "$rf"; then rm -f "$rf"; fi
   remove_copy "$report" "$c"
+  event review round=feature verdict="${verdict// /-}"
   echo "REVIEW=$verdict"; exit 0
 fi
 case "$action" in
@@ -269,7 +270,8 @@ case "$action" in
       echo; cat "$report"
     } > "$record.tmp" && mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
-    if ! $plan; then echo "REVIEWED=$head"; fi
+    if $plan; then event review round=plan verdict="${verdict// /-}"
+    else event review round="$($delta && echo delta || echo full)" verdict="${verdict// /-}" branch="$branch"; echo "REVIEWED=$head"; fi
     echo "REVIEW=$verdict" ;;
   check|report)
     st="$(state)"

@@ -16,6 +16,8 @@ check "then it prints the branch, issue, task and base" \
   '[[ "$out" == "BRANCH=feat/001-t001-split-ci-credentials-into ISSUE=57 TASK=T001 BASE=develop" ]]'
 check "when run again on the same branch, then it succeeds" '"$b" T001'
 check "then the new branch was pushed to origin at once (the claim)" 'git ls-remote --exit-code origin feat/001-t001-split-ci-credentials-into'
+check "then the start is logged on the new branch" \
+  'grep -qE "^[0-9]+ [0-9T:-]+Z feat/001-t001-split-ci-credentials-into start task=T001$" "$(git rev-parse --git-common-dir)/landspec-events"'
 
 # F1.1: an origin that refuses the claim push (a pre-receive hook), removed afterwards.
 git switch --quiet main
