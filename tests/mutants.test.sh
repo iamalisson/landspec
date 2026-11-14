@@ -37,10 +37,11 @@ echo 2 > "$TMP/mutate.rc"
 check "when a mutant survives, then it reports survivors and where the log is" \
   'out="$("$m")" && grep -q "^mutants survivors" <<<"$out" && grep -q "mutants.log" <<<"$out"'
 check "then the report lives under .git, never in the tree" '[[ -z "$(git status --porcelain)" ]]'
-# Parallel implementers share the git common dir: two runs in the same second need their own folders.
-mkdir -p "$TMP/fixed-date"; printf '#!/bin/sh\necho 20260101-000000\n' > "$TMP/fixed-date/date"; chmod +x "$TMP/fixed-date/date"
+# Every worktree shares .git/landspec-mutants: two runs in the same second get their own folder.
+mkdir -p "$TMP/clock"; printf '#!/usr/bin/env bash\necho 20260101-000000\n' > "$TMP/clock/date"; chmod +x "$TMP/clock/date"
+one="$(PATH="$TMP/clock:$PATH" "$m" | sed -n 's/^REPORT_DIR=//p')"; two="$(PATH="$TMP/clock:$PATH" "$m" | sed -n 's/^REPORT_DIR=//p')"
 check "when two runs start in the same second, then each gets its own report folder" \
-  'a="$(PATH="$TMP/fixed-date:$PATH" "$m" | sed -n "s/^REPORT_DIR=//p")" && b="$(PATH="$TMP/fixed-date:$PATH" "$m" | sed -n "s/^REPORT_DIR=//p")" && [[ -n "$a" && "$a" != "$b" ]]'
+  '[[ -n "$one" && "$one" != "$two" && -s "$one/changes.diff" && -s "$two/changes.diff" ]]'
 sed -i.bak 's/mutate `[^`]*`/mutate `no-such-mutator --run`/' .specify/memory/constitution.md
 check "when the mutate command is not installed (exit 127), then it reports unavailable, names it, and records that" \
   'out="$("$m")" && grep -q "^mutants unavailable .*no-such-mutator --run" <<<"$out" && ! grep -q survivors <<<"$out" \

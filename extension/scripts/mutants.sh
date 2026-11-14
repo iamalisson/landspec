@@ -9,7 +9,7 @@
 # Prints one line: "mutants ok|survivors|unavailable|missing|skipped <detail>", then REPORT_DIR=<dir>.
 # unavailable: the command exited 126 or 127, so it never ran. A wrapper (uv run) exits otherwise,
 # so a tool missing behind one stays survivors.
-# Output goes to .git/landspec-mutants/<timestamp>-<random>/ so it is never committed; the result line is also
+# Output goes to .git/landspec-mutants/<timestamp>/ so it is never committed; the result line is also
 # this diff's record (.git/landspec-mutants/<diff id>), which pr.sh task requires.
 set -uo pipefail
 # shellcheck source=lib.sh
@@ -19,9 +19,9 @@ landspec_cd_root
 re="$(test_path_re)" || exit 1
 
 rec="$(diff_record landspec-mutants)" || exit 1
-# mktemp: parallel implementers share the common dir, and two may start in the same second.
-top="$(git rev-parse --git-common-dir)/landspec-mutants"; mkdir -p "$top"
-dir="$(mktemp -d "$top/$(date +%Y%m%d-%H%M%S)-XXXXXX")" || exit 1
+# Every worktree shares this folder: the suffix keeps two runs in the same second apart.
+dir="$(git rev-parse --git-common-dir)/landspec-mutants"; mkdir -p "$dir"
+dir="$(mktemp -d "$dir/$(date +%Y%m%d-%H%M%S).XXXXXX")" || die "cannot create a report folder in $dir"
 finish() { echo "mutants $1 $2" | tee "$rec"; echo "REPORT_DIR=$dir"; exit 0; }
 
 cmd="$(constitution_cmd mutate)"
