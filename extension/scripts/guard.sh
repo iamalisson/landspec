@@ -191,7 +191,7 @@ check_git() {
       done
       for b in $branches; do
         if is_protected "$b"; then
-          block "committing on '$b' is not allowed; start a task with /speckit-implement Tnnn (or /landspec:next)"
+          block "committing on '$b' is not allowed; start a task with /speckit-implement Tnnn (or /landspec:next); a branch created earlier in the same command does not count: run the switch on its own first"
         fi
       done ;;
     switch|checkout) switched "$sub" "$@" ;;

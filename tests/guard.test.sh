@@ -111,6 +111,8 @@ check "when a chain only restores files or creates a task branch from main, then
 
 git switch --quiet main
 check "when Claude commits on main, then it is blocked" 'blocked "git commit -m x"'
+check "when a chain creates a branch from main and commits, then the refusal says to run the switch on its own" \
+  'fails_with "run the switch on its own first" "$g" "git switch -c chore/x && git commit -m x"'
 check "when Claude pushes with no refspec while on main, then it is blocked" 'blocked "git push"'
 check "when pushing HEAD or @ while on main, then it is blocked" 'blocked "git push origin HEAD" && blocked "git push origin @"'
 check "when the command is not git, then it is allowed" '"$g" "ls -la && echo done"'
