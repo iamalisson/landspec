@@ -59,10 +59,10 @@ else missing osv-scanner "https://google.github.io/osv-scanner/installation/ (br
 if command -v semgrep >/dev/null; then
   targets=("."); $changed && targets=("${files[@]}")
   rc=0; semgrep scan --config p/default --config p/owasp-top-ten --error --quiet --metrics off \
-       --json --output "$dir/semgrep.json" "${targets[@]}" >/dev/null 2>&1 || rc=$?
+       --json --output "$dir/semgrep.json" "${targets[@]}" >/dev/null 2>"$dir/semgrep.log" || rc=$?
   if [[ $rc == 0 ]]; then report semgrep ok "no code findings"
   elif [[ $rc == 1 ]]; then report semgrep findings "$dir/semgrep.json"
-  else report semgrep failed "exit $rc (an engine error, or killed for memory): code patterns not scanned; $dir/semgrep.json"; fi
+  else report semgrep failed "exit $rc from semgrep: code patterns not scanned; see $dir/semgrep.log"; fi
 else missing semgrep "uv tool install semgrep (or pipx install semgrep)"; fi
 
 # zizmor: only when there are workflows

@@ -11,7 +11,7 @@ for t in gitleaks osv-scanner semgrep zizmor; do
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/$t.log"
 [[ " \${FAKE_FIND:-} " == *" $t "* ]] && exit 1
-[[ " \${FAKE_CRASH:-} " == *" $t "* ]] && exit 2
+[[ " \${FAKE_CRASH:-} " == *" $t "* ]] && { echo "$t-core exited with -11!" >&2; exit 2; }
 exit 0
 EOF
   chmod +x "$TMP/tools/$t"
@@ -41,6 +41,15 @@ check "when a scanner finds something, then it reports findings with the report 
 out="$(FAKE_CRASH=semgrep PATH="$TMP/tools:$PATH" bash "$scan")"
 check "when semgrep exits with an error (not findings), then it is reported failed, never findings" \
   'grep -q "^semgrep *failed *exit 2 .*code patterns not scanned" <<<"$out" && ! grep -q "^semgrep *findings" <<<"$out"'
+check "then its stderr is kept in semgrep.log, which the failed line names" \
+  'dir="$(sed -n "s/^REPORT_DIR=//p" <<<"$out")"; grep -qxF "semgrep-core exited with -11!" "$dir/semgrep.log" && grep -qF "see $dir/semgrep.log" <<<"$out"'
+
+# Every worktree shares .git/landspec-security: two runs in the same second get their own folder.
+mkdir -p "$TMP/clock"; printf '#!/usr/bin/env bash\necho 20260101-000000\n' > "$TMP/clock/date"; chmod +x "$TMP/clock/date"
+one="$(PATH="$TMP/clock:$TMP/none" bash "$scan" | sed -n 's/^REPORT_DIR=//p')"
+two="$(PATH="$TMP/clock:$TMP/none" bash "$scan" | sed -n 's/^REPORT_DIR=//p')"
+check "when two scans start in the same second, then each gets its own report folder" \
+  '[[ -n "$one" && "$one" != "$two" && -s "$one/summary.txt" && -s "$two/summary.txt" ]]'
 
 # Every worktree shares .git/landspec-security: two runs in the same second get their own folder.
 mkdir -p "$TMP/clock"; printf '#!/usr/bin/env bash\necho 20260101-000000\n' > "$TMP/clock/date"; chmod +x "$TMP/clock/date"

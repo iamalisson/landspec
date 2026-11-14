@@ -49,6 +49,8 @@ check "when the constitution's test command exits 1, then it refuses, prints its
    && grep -qx "red line 30" <<<"$out" && grep -qx "red line 11" <<<"$out" && ! grep -qx "red line 10" <<<"$out" \
    && [[ "$(git ls-remote origin "refs/heads/$(git branch --show-current)")" == "$claim" ]] && ! grep -q "^pr create" "$GH_LOG" \
    && grep -qx "red line 1" "$(git rev-parse --git-common-dir)/landspec-test/feat__001-t001-add-search.log"'
+check "then a red run records nothing, so the next run tests again" \
+  '[[ -z "$(find "$(git rev-parse --git-common-dir)/landspec-test" -type f ! -name "*.log")" ]]'
 check "when a scan was recorded for this diff, then the scan check lets the PR through" \
   '! grep -q "no security-scan.sh --changed result" <<<"$out" && grep -qx "red line 30" <<<"$out"'
 printf '#!/usr/bin/env bash\ntouch "%s/green.ran"\n' "$TMP" > "$TMP/green.sh"
@@ -56,6 +58,12 @@ printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_C
 out="$("$p" task T001 "feat(search): add search" "$TMP/body.md" 2>"$TMP/pr.err")" || true
 check "when the constitution's test command exits 0, then it opens the PR with no warning" \
   '[[ -f "$TMP/green.ran" && "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && grep -q "^pr create" "$GH_LOG" && ! grep -q "^landspec:" "$TMP/pr.err"'
+check "then the body names each scanner that did not run" \
+  'grep -qxF "Scanners not run: gitleaks (missing), osv-scanner (missing), semgrep (missing)" "$GH_LOG"'
+rm -f "$TMP/green.ran"
+printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s --again` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' "$TMP/green.sh" > .specify/memory/constitution.md
+"$p" task T001 "feat(search): add search" "$TMP/body.md" >/dev/null 2>&1 || true
+check "when the tree already passed but the test command changed, then it runs again" '[[ -f "$TMP/green.ran" ]]'
 rm -f "$GH_PR"; : > "$GH_LOG" # the checks below are about the next run's PR alone
 # F3.1/F4.3: the recorded review reaches the body; its findings never do, wherever the report puts them.
 printf 'LEAK-1 before the marker\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n\nSecurity: LEAK-4 token logged\n\n%s\n\nAssessment: ready\n' "$(range)" > "$TMP/review.md"
@@ -347,12 +355,27 @@ rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
 new_repo standard
 commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
 "$SCRIPTS/branch.sh" T001 >/dev/null
-mkdir -p .specify/memory; printf '**Commands**: build `[BUILD_COMMAND]` · test `true` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' > .specify/memory/constitution.md
+mkdir -p .specify/memory; printf 'echo run >> "%s/runs"\n' "$TMP" > "$TMP/count.sh"; : > "$TMP/runs"
+printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' "$TMP/count.sh" > .specify/memory/constitution.md
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"; reviewed; scanned
 "$p" task T001 "feat: search" "$TMP/body.md" >/dev/null 2>&1
 echo 'export const more = 2' >> search.ts; git commit --quiet -am "feat: more"; reviewed; scanned
+printf 'gitleaks     missing   install: x\nosv-scanner  ok        none\nsemgrep      failed    exit 2: code patterns not scanned\n' > "$(source "$SCRIPTS/lib.sh"; diff_record landspec-security)"
 id2="$(source "$SCRIPTS/lib.sh"; diff_id | cut -c1-12)"; : > "$GH_LOG"
 out="$("$p" task T001 "feat: search" "$TMP/body.md")"
+check "when a new commit changes the tree, then the test command runs again" '[[ "$(wc -l < "$TMP/runs")" -eq 2 ]]'
+check "then a failed scanner is named in the body next to a missing one" 'grep -qxF "Scanners not run: gitleaks (missing), semgrep (failed)" "$GH_LOG"'
+out="$("$p" task T001 "feat: search" "$TMP/body.md")"
+check "when this tree already passed this test command, then it is not run again and pr.sh says so" \
+  '[[ "$(wc -l < "$TMP/runs")" -eq 2 ]] && grep -qxF "landspec: tests already green for this tree (bash $TMP/count.sh)" <<<"$out"'
+echo 'export const wip = 3' >> search.ts
+check "when the tree has uncommitted changes on top of a green one, then run_tests runs the command again" \
+  '(source "$SCRIPTS/lib.sh"; run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 3 ]]'
+git checkout --quiet -- search.ts
+git worktree add --quiet --detach "$TMP/copy2" HEAD; cp -R .specify "$TMP/copy2/" # ignored, so not checked out
+check "when another copy of the repo has the same tree, then its green run does not count there" \
+  '(cd "$TMP/copy2" && source "$SCRIPTS/lib.sh" && run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 4 ]]'
+git worktree remove --force "$TMP/copy2"
 check "when pr.sh task runs again on an open PR, then the body is updated to the new patch id and no PR is created" \
   'grep -q "^pr edit https://github.com/acme/app/pull/99 --body " "$GH_LOG" && grep -qxF "Independent review recorded for this diff (patch id $id2)" "$GH_LOG" && ! grep -q "^pr create" "$GH_LOG"'
 check "then it prints that the body was replaced from the author's file" 'grep -qxF "PR body replaced from $TMP/body.md; edits made on GitHub are gone" <<<"$out"'

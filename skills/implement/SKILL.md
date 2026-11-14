@@ -178,7 +178,9 @@ prints. The base is audited once per commit: a later run reuses the recorded res
 
 When it says it is done: its `Copy: <path>` is the task's copy from now on. A missing `Copy:` (or a
 path that is gone) is recreated: `git worktree add --detach <repo>-<feature>-<task> <branch>`, beside
-the repository. In that copy, run the project's test command before anything else:
+the repository. In that copy, run the project's test command before anything else, as
+`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'`: a green
+run on the committed head is recorded, so OPEN's checks and `pr.sh` do not run the same tree again:
 
 - green: `I mark <task> implemented` (it clears `red=`), then remove it from `in flight`;
 - red: `I mark <task> red`. At `RED=2` (it said done twice and the tests are still red):
