@@ -271,7 +271,11 @@ case "$action" in
     } > "$record.tmp" && mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
     if $plan; then event review round=plan verdict="${verdict// /-}"
-    else event review round="$($delta && echo delta || echo full)" verdict="${verdict// /-}" branch="$branch"; echo "REVIEWED=$head"; fi
+    else
+      # hm: high + medium from the report's "Findings: <n> high, <n> medium, <n> low" line, when it has one
+      hm="$(grep -iE '^findings: *[0-9]+ high, *[0-9]+ medium' "$report" | tail -1 | awk '{ gsub(/[^0-9 ]/, ""); print $1 + $2 }' || true)"
+      event review round="$($delta && echo delta || echo full)" verdict="${verdict// /-}" ${hm:+hm=$hm} branch="$branch"; echo "REVIEWED=$head"
+    fi
     echo "REVIEW=$verdict" ;;
   check|report)
     st="$(state)"

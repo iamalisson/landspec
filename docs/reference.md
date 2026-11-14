@@ -238,7 +238,7 @@ Nothing rotates it (about 10 lines per PR).
 
 `bash .specify/extensions/landspec/scripts/stats.sh` prints one row per branch that opened a task
 or fix PR (minutes from start to its first `pr` event, so a later `pr.sh` run that finds the open
-PR does not move it; full and delta review rounds, the first verdict, the test time and runs),
+PR does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
 then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
 the first review. Spec PRs are left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used
 twice adds both PRs into one row.

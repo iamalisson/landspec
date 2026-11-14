@@ -12,9 +12,9 @@ check "when no event was logged yet, then stats refuses and says to open a PR fi
 # that found its open PR), a spec PR, and one branch with no PR.
 cat > "$(git rev-parse --git-common-dir)/landspec-events" <<'EOF'
 1000 1970-01-01T00:16Z feat/001-t001-a start task=T001
-1600 1970-01-01T00:26Z feat/001-t001-a review round=full verdict=changes-needed branch=feat/001-t001-a
+1600 1970-01-01T00:26Z feat/001-t001-a review round=full verdict=changes-needed hm=2 branch=feat/001-t001-a
 1700 1970-01-01T00:28Z - mark task=T001 phase=changes round=1 branch=feat/001-t001-a
-1900 1970-01-01T00:31Z - review round=delta verdict=ready branch=feat/001-t001-a
+1900 1970-01-01T00:31Z - review round=delta verdict=ready hm=0 branch=feat/001-t001-a
 1950 1970-01-01T00:32Z feat/001-t001-a tests secs=40 ok=0
 2000 1970-01-01T00:33Z feat/001-t001-a tests secs=50 ok=1
 2200 1970-01-01T00:36Z feat/001-t001-a pr mode=task url=https://github.com/acme/app/pull/1
@@ -27,10 +27,10 @@ cat > "$(git rev-parse --git-common-dir)/landspec-events" <<'EOF'
 9200 1970-01-01T02:33Z feat/001-t001-a pr mode=task url=https://github.com/acme/app/pull/1
 EOF
 out="$("$s")"
-check "when two branches opened a task PR (one twice) and one a spec PR, then each task branch gets one row, timed to its first PR, with start->pr minutes, rounds, first verdict and test time" \
+check "when two branches opened a task PR (one twice) and one a spec PR, then each task branch gets one row, timed to its first PR, with start->pr minutes, rounds, first verdict, test time and the high and medium findings (? when no report counted them)" \
   '[[ "$(grep -c "start->pr" <<<"$out")" == 2 ]] \
-   && grep -qxF "feat/001-t001-a start->pr 20m | reviews 1 full + 1 delta | first changes-needed | tests 90s x2" <<<"$out" \
-   && grep -qxF "feat/001-t002-b start->pr 10m | reviews 1 full + 0 delta | first ready | tests 0s x0" <<<"$out"'
+   && grep -qxF "feat/001-t001-a start->pr 20m | reviews 1 full + 1 delta | first changes-needed | tests 90s x2 | H+M 2" <<<"$out" \
+   && grep -qxF "feat/001-t002-b start->pr 10m | reviews 1 full + 0 delta | first ready | tests 0s x0 | H+M ?" <<<"$out"'
 check "then the totals give the PR count, the median start->pr, the mean rounds and the share ready on the first review" \
   '[[ "$(tail -1 <<<"$out")" == "PRS=2 MEDIAN_START_TO_PR=15m MEAN_ROUNDS=1.5 READY_FIRST=1/2" ]]'
 

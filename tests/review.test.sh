@@ -223,6 +223,9 @@ check "when the event log cannot be written (a directory in its place), then eve
 
 rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong"
 "$r" record "$TMP/report.md" >/dev/null || true; h2="$(git rev-parse HEAD)"
+rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong" "Findings: 1 high, 2 medium, 0 low"; "$r" record "$TMP/report.md" >/dev/null || true
+check "when the report has the Findings count line, then the review event carries hm, its high and medium sum" \
+  'grep -q " review round=full verdict=changes-needed hm=3 branch=" "$ev" && ! grep -q "verdict=ready hm=" "$ev"'
 seq 1 21 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; git commit --quiet -m "fix: other"
 drep ready "$h2"
 check "when the fix adds 21 lines to a file outside the previous findings, then record --delta refuses and check still refuses" \

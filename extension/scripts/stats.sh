@@ -2,7 +2,8 @@
 # Per-PR numbers from the local event log (.git/landspec-events, written by lib.sh event()).
 #   stats.sh
 # Prints one line per branch that opened a task or fix PR (timed to its first pr event; spec PRs are left out):
-#   <branch> start->pr <m>m | reviews <f> full + <d> delta | first <verdict> | tests <s>s x<n>
+#   <branch> start->pr <m>m | reviews <f> full + <d> delta | first <verdict> | tests <s>s x<n> | H+M <n>
+# H+M: high and medium findings over the branch's reviews, "?" when no report carried the count line.
 # then: PRS=<n> MEDIAN_START_TO_PR=<m>m MEAN_ROUNDS=<x> READY_FIRST=<k>/<n>
 # Nothing leaves .git: the log is never pushed and never reaches a PR body.
 set -euo pipefail
@@ -25,6 +26,7 @@ awk '
   $4 == "review" && (f["round"] == "full" || f["round"] == "delta") {
     rounds[br, f["round"]]++
     if (!(br in first)) first[br] = f["verdict"]
+    if (f["hm"] != "") { hm[br] += f["hm"]; hk[br] = 1 }
   }
   $4 == "tests" { secs[br] += f["secs"]; runs[br]++ }
   $4 == "pr" && f["mode"] != "spec" && !(br in prt) { order[++n] = br; prt[br] = $1 }
@@ -35,7 +37,7 @@ awk '
       mins = "?"; if (b in st) { mins = int((prt[b] - st[b]) / 60); d[++m] = mins }
       v = (b in first) ? first[b] : "-"
       rsum += full + dl; if (v == "ready") ready++
-      printf "%s start->pr %sm | reviews %d full + %d delta | first %s | tests %ds x%d\n", b, mins, full, dl, v, secs[b], runs[b]
+      printf "%s start->pr %sm | reviews %d full + %d delta | first %s | tests %ds x%d | H+M %s\n", b, mins, full, dl, v, secs[b], runs[b], (b in hk) ? hm[b] : "?"
     }
     for (i = 2; i <= m; i++) { x = d[i]; for (j = i - 1; j >= 1 && d[j] > x; j--) d[j + 1] = d[j]; d[j + 1] = x }
     med = "?"; if (m) med = (m % 2) ? d[(m + 1) / 2] : int((d[m / 2] + d[m / 2 + 1]) / 2)
