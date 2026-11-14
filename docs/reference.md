@@ -124,6 +124,12 @@ becomes a new task, appended to `tasks.md` through a new spec PR (plan review, i
 the run's worktree, before anything is merged; gap tasks are ordinary tasks, started from the base by
 the next run once that spec PR is merged.
 
+When every task is merged, however its tasks were done, the check runs on `origin/<base>` itself, once
+per base commit, before the release's bump (`RELEASE=bump` or `RELEASE=none`): `check-copy` prints
+`CHECK=<path> ROUND=<n> FROM=<sha>` (`FROM`, the commit before the feature's first merged task PR, is
+the feature review's base), or `CHECKED=<sha>` when that commit was already checked green and `ready`.
+With no task branch to fix, a red run or a `not met` item becomes a gap task, and nothing is released.
+
 When every task of the feature is merged, `/landspec:implement` makes the **release**, one step per
 run, read each time from git and GitHub (`implement.sh release-plan`): a release PR `chore(release):
 X.Y.Z` with the bump (`release-bump`) and the notes, through `pr.sh fix` and its review; once you merge

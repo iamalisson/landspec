@@ -109,11 +109,11 @@ and need `tasks.md` there, and each task PR stays small and closes one issue. Se
 **[examples/](examples/)** for one feature walked through from spec to merged PRs, with the
 real issue and PR bodies.
 
-When every task is merged, run `/landspec:implement` again: it audits the base (`/landspec:security`
-`full`, unattended, once per commit) and makes the release. A confirmed critical or high finding holds
-it, with nothing filed or posted, and the run ends with `run /landspec:security <report>`, which tracks
-and fixes it without disclosing it. Features done one task at a time with `/speckit-implement` run
-`/speckit-converge` first, since the whole-feature check runs only before the merges.
+When every task is merged, run `/landspec:implement` again, however the tasks were done: it checks the
+whole feature on the base against the spec (once per commit; gaps become new tasks), audits the base
+(`/landspec:security` `full`, unattended, once per commit) and makes the release. A confirmed critical
+or high finding holds it, with nothing filed or posted, and the run ends with `run /landspec:security
+<report>`, which tracks and fixes it without disclosing it.
 
 > `/landspec:next` picks the next task for you. `/speckit-implement T007` does the same for a
 > specific task. Either way, exactly one task per run.

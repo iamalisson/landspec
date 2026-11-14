@@ -62,7 +62,9 @@ Each pass:
 ## The whole-feature check
 
 When the loop has stopped and every task is `pr` or `merged`, check them together, at most
-`feature_rounds:` rounds (`check-copy` counts them, across runs):
+`feature_rounds:` rounds (`check-copy` counts them, across runs). When every task is `merged`, the
+check runs on the base itself, once per base commit, and only from "The release" below: after
+`release-plan`, on `RELEASE=bump` or `RELEASE=none`, never on `pending`, `tag`, `publish` or `done`.
 
 1. `I check-copy`. It prints one of:
    - `SPEC_PR=<url>`: the feature has an open spec PR (gaps already filed wait for it); skip the
@@ -75,16 +77,23 @@ When the loop has stopped and every task is `pr` or `merged`, check them togethe
      the report), and back to the loop. When `stack` prints `RESTACK_CONFLICT=<task>`, the same fix
      round resolves it on `<task>` alone (both branches and the files in its report). When the task
      already has a parent (`stack` refuses), stop, and report both tasks and the files.
-   - `CHECK=<path> ROUND=<n>`: go on.
+   - `CHECKED=<sha>`: every task is merged and that base commit was already checked (green, and a
+     `ready` feature review); go on with the release.
+   - `CHECK=<path> ROUND=<n>`, with `FROM=<sha>` when every task is merged: go on.
 2. In `<path>`, the project's test command. Red: `I check-result red`, then a fix round on the task
    branch whose files the failing test covers, stacked first (`I stack`) on the other task branch it
-   needs, and back to the loop. Green: `I check-result green`.
+   needs, and back to the loop. With every task merged (`FROM=`), there is no task branch to fix:
+   `I check-result red`, the failing test becomes a gap task (step 5), and there is no release. Green:
+   `I check-result green`.
 3. After a green run only: the **feature review**, as `review.md` says (its feature review mode), with
    the facts: `feature review`, the feature folder, `commit:` `git rev-parse refs/landspec/check/<feature
-   dir name>`, `checkout:` the repository root, `base:` `origin/<base>`, the test command and its output.
+   dir name>`, `checkout:` the repository root, `base:` `origin/<base>` (with `FROM=`: `base: <FROM>`,
+   and the facts say that the diff from `<FROM>` may hold unrelated commits merged meanwhile, so the
+   reviewer judges only the feature's FRs and files), the test command and its output.
    Record it with `review.sh record --feature <report>`. Its `not met` lines go into the run report.
 4. `I check-copy --remove`.
-5. **The gaps**, when the feature review has `not met` lines: each becomes a task, through a spec PR,
+5. **The gaps**, when the feature review has `not met` lines, or the base's run was red with every
+   task merged: each becomes a task (a red run: `Comes from:` the failing test), through a spec PR,
    before anything is merged. The check ran only because the feature has no open spec PR, so this is
    always a new one. Work in the run's worktree `<repo>-<feature>-run` (`restack` makes it; when it is
    missing, `git worktree add --detach <repo>-<feature>-run origin/<base>`):
@@ -108,7 +117,8 @@ When every task is `merged` and no gaps were filed (on this run or a later one),
 and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
 next run reads where it stands from git and GitHub:
 
-- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
+- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the whole-feature check on the base (above): go on
+  only on `CHECKED=`, or a green run and a `ready` feature review; then the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
   (`git fetch origin`, `git switch -c chore/release-X.Y.Z origin/<base>`): `I release-bump X.Y.Z`
   there, then write the notes to `<path>`: grouped by user story, one line per PR in `PRS=` (its
   title and number), and an "Upgrading" section when a task changed a config key or a command. Commit
@@ -122,12 +132,12 @@ next run reads where it stands from git and GitHub:
   --notes-file <that file>`. `NOTES=-`: `gh release create vV --title "<project> V" --generate-notes`.
 - `RELEASE=pending X.Y.Z PR=<n>`: the release PR waits for its merge; say so.
 - `RELEASE=done V`: the feature is released; say so.
-- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
+- `RELEASE=none (no version_files:)`: first the whole-feature check on the base, as for `bump`; then the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
   release convention (`version_files:` and `release_notes:` in `landspec-config.yml` set one).
 
 ## The audit before the bump
 
-On `RELEASE=bump` and on `RELEASE=none`, before anything else, run `I audit-plan` and act on the **one** `AUDIT=` line it
+On `RELEASE=bump` and on `RELEASE=none`, once the whole-feature check on the base passed and before anything else, run `I audit-plan` and act on the **one** `AUDIT=` line it
 prints. The base is audited once per commit: a later run reuses the recorded result.
 
 - `AUDIT=needed COMMIT=<sha>`: in the run's worktree `<repo>-<feature>-run`, `git switch --detach <sha>`,

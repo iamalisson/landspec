@@ -460,6 +460,32 @@ check "when a listed file has no version line, then release-bump refuses and cha
   'fails_with "notes.txt has no version line" "$I" release-bump 1.5.0 && [[ -z "$(git diff -- package.json)" ]]'
 rm -f notes.txt
 
+# ── Spec 004 T012: with every task merged, the whole-feature check runs on the base, once per base commit ──
+# fbase <from> [<item line>]: a feature review of the check ref, Reviewed: <from>..<check ref> (ready unless a not met line).
+fbase() {
+  printf -- '%s\nCopy: none (test)\nReviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "${2:-- met: FR-001 — a}" "$1" "$(git rev-parse "refs/landspec/check/$(fname)")" > "$TMP/f.md"
+  "$SCRIPTS/review.sh" record --feature "$TMP/f.md" 2>&1
+}
+rl_setup; m11="$(awk -F'\t' '$1 == 11 { print $5 }' "$GH_REL")"; from="$(git rev-parse "$m11^1")"; cc
+check "when every task issue is closed, then check-copy makes the copy at origin/main with nothing merged, ROUND=1, FROM= the parent of the first task PR's merge commit" \
+  '[[ "$out" == "CHECK=$(CW) ROUND=1 FROM=$from" && "$(git rev-parse "refs/landspec/check/$(fname)")" == "$(git rev-parse origin/main)" && "$(git -C "$(CW)" rev-parse HEAD)" == "$(git rev-parse origin/main)" ]]'
+"$I" check-result green >/dev/null; out="$(fbase "$from")"
+check "then record --feature accepts Reviewed: <FROM>..<check ref>, and a ready review after green removes the round file" 'grep -qx "REVIEW=ready" <<<"$out" && [[ -z "$(rnd)" ]]'
+cc --remove; cc
+check "when that base commit was checked green and ready, then CHECKED=<its sha> and no copy is made" '[[ "$out" == "CHECKED=$(git rev-parse origin/main)" && ! -d "$(CW)" ]]'
+on_main more more.txt 'x\n' >/dev/null; cc
+check "when origin/main moves, then the base is checked again: CHECK= at the new commit, ROUND=1" \
+  '[[ "$out" == "CHECK=$(CW) ROUND=1 FROM=$from" && "$(git rev-parse "refs/landspec/check/$(fname)")" == "$(git rev-parse origin/main)" ]]'
+"$I" check-result red >/dev/null; out="$(fbase "$from")"; cc --remove; cc
+check "when the run on that commit was red, then a ready review does not make it CHECKED: the same commit is UNCHANGED" '[[ "$out" == UNCHANGED=1 && ! -d "$(CW)" ]]'
+on_main more2 more2.txt 'y\n' >/dev/null; cc; "$I" check-result green >/dev/null; out="$(fbase "$from" '- not met: FR-002 — nothing does it')"; cc --remove; cc
+check "when the base commit's run was green but its feature review was changes needed, then it is not CHECKED: the copy is made again" \
+  'grep -q "^CHECK=$(CW) ROUND=2 FROM=$from$" <<<"$out"' # round 2: the red run above still counts
+cc --remove
+set_tasks "$(git show origin/main:specs/001-demo/tasks.md)"$'\n''- [ ] T004 Add a late task — #4'; cc
+check "when one task is not started and the others are merged, then there is no check of the base: check-copy refuses, as before" \
+  'grep -q "no unmerged task branch in this clone to check" <<<"$out" && ! grep -q "^CHECK" <<<"$out"'
+
 # ── Spec 004 T010: the audit before the bump, once per base commit ──
 ap() { out="$("$I" audit-plan 2>&1)" || true; }
 c0="$(git rev-parse origin/main)"; ap

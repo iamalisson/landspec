@@ -19,6 +19,8 @@
 #   implement.sh [feature] check-copy [--remove]
 #       The whole-feature check: <repo>-<feature>-check, detached at origin/<base>, with every unmerged
 #       task branch merged in ORDER (git merge --no-ff --no-edit), kept at refs/landspec/check/<feature>.
+#       With every task merged, the copy is origin/<base> itself, checked once per base commit: CHECK= ends in
+#       FROM=<the commit before the feature's first merged task PR>, or CHECKED=<sha> (checked green and ready).
 #       Prints CHECK=<path> ROUND=<n>, or CONFLICT=<task> WITH=<earlier task> FILES=<a,b>; UNCHANGED=<n>
 #       (the same task heads as the last attempt that was not green), ROUNDS_EXHAUSTED=<max> or
 #       SPEC_PR=<url> (merge it first) create nothing. --remove removes the copy and the ref.
@@ -338,7 +340,23 @@ case "$action" in
     if [[ -n "$sp" ]]; then echo "SPEC_PR=$sp"; exit 0; fi
     base="$(base_branch)"
     st="$(bash "$0" "$num" status)" || exit 1 # fetches; dies with gh's or git's error
-    tasks=""; combo=""
+    tasks=""; combo=""; from=""
+    # Every task merged: the check runs on the base itself, once per base commit (no task branch to merge).
+    tl="$(grep '^TASK=' <<<"$st" || true)"
+    if [[ -n "$tl" ]] && ! grep -qv ' STATE=merged ' <<<"$tl"; then
+      bh="$(git rev-parse "origin/$base")"; fr="$(git rev-parse --git-common-dir)/landspec-review/feature-$fname"
+      if [[ -f "$fr" ]] && grep -qx "state: $bh" "$fr" && grep -qx 'assessment: ready' "$fr" \
+         && ! { [[ -f "$rf" ]] && grep -qx "combo=$bh " "$rf" && grep -qx 'outcome=red' "$rf"; }; then
+        echo "CHECKED=$bh"; exit 0
+      fi
+      # FROM: where the feature starts, the first parent of its earliest merged task PR's merge commit
+      prs="$(gh pr list --state all --limit 500 --json number,title,headRefName,state,mergeCommit,mergedAt \
+        --jq '.[] | [.number, .title, .headRefName, .state, (.mergeCommit.oid // ""), (.mergedAt // "")] | @tsv')" \
+        || die "cannot list the pull requests; fix gh's error above"
+      mc="$(awk -F'\t' -v k="/$num-t" '$4 == "MERGED" && index($3, k) { print $6 "\t" $5 }' <<<"$prs" | sort | sed -n 1p | cut -f2)" # sed reads to the end: no SIGPIPE on sort
+      [[ -n "$mc" ]] && from="$(git rev-parse --verify --quiet "$mc^1")" \
+        || die "cannot find the commit before $fname's first merged task PR (${mc:-none merged}) on origin/$base"
+    fi
     for t in $(sed -n 's/^ORDER=//p' <<<"$st"); do
       l="$(grep "^TASK=$t " <<<"$st")"; [[ "$l" != *" STATE=merged "* ]] || continue
       b="$(sed -E 's/.* BRANCH=([^ ]+).*/\1/' <<<"$l")"
@@ -347,7 +365,8 @@ case "$action" in
         || die "$t has no branch in this clone (${b/#-/not started}): start it, or fetch it (git branch $b origin/$b), then run check-copy again"
       tasks+="$t "; combo+="$t:$(git rev-parse "refs/heads/$b") "
     done
-    [[ -n "$tasks" ]] || die "no unmerged task branch in this clone to check"
+    # not every task merged, and none of the unmerged has a branch (ORDER leaves unstarted tasks out)
+    [[ -n "$tasks" || -n "$from" ]] || die "no unmerged task branch in this clone to check"
     combo="$(git rev-parse "origin/$base") $combo"
     round=0; last=""; outcome=""
     if [[ -f "$rf" ]]; then round="$(sed -n 's/^round=//p' "$rf")"; last="$(sed -n 's/^combo=//p' "$rf")"; outcome="$(sed -n 's/^outcome=//p' "$rf")"; fi
@@ -375,7 +394,7 @@ case "$action" in
       done_t+="$t "
     done
     git update-ref "$ref" "$(git -C "$w" rev-parse HEAD)"
-    echo "CHECK=$w ROUND=$round" ;;
+    echo "CHECK=$w ROUND=$round${from:+ FROM=$from}" ;;
   check-result)
     o="${1:-}"; [[ "$o" == red || "$o" == green ]] || die "usage: implement.sh check-result red|green"
     rf="$(git rev-parse --git-common-dir)/landspec-review/feature-$(basename "$fdir")-round"

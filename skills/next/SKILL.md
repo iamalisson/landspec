@@ -31,11 +31,10 @@ argument-hint: "[feature]"
    - If `NEXT` is empty and `IN_PROGRESS` is not 0, nothing is left to start: list the open PRs
      to merge, and stop.
    - If `NEXT` is empty and `IN_PROGRESS=0`, every task's issue is closed. Suggest
-     `/landspec:implement <FEATURE>`: it audits the base and makes the release (each step once; a
-     confirmed critical or high holds it and names `/landspec:security <report>`). When the feature's
-     tasks were done one at a time, so the whole-feature check never ran, suggest `/speckit-converge`
-     first: it compares the merged code with the spec and adds any unbuilt work as new tasks. Then
-     `/speckit-specify` for the next feature. Stop.
+     `/landspec:implement <FEATURE>`: it checks the whole feature on the base against the spec (gaps
+     become new tasks), audits the base and makes the release (each step once; a confirmed critical or
+     high holds it and names `/landspec:security <report>`). Then `/speckit-specify` for the next
+     feature. Stop.
 3. Make sure the working tree is clean. If it isn't, stop and say so; never stash or discard.
    - If it printed `RUN=/landspec:implement <feature>`, two or more tasks can start: ask once "Run
      the whole feature with `/landspec:implement <feature>` (every startable task in parallel, each

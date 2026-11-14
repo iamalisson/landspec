@@ -369,15 +369,21 @@ check "when the run ends, then the report gives each waiting task's reason and t
 # The audit before the release (spec 004 T010): once per base commit, unattended, holding on a confirmed critical or high.
 au="$(sed -n "/^## The audit before the bump/,/^## When an implementer returns/p" skills/implement/SKILL.md)"
 check "when the skill reaches a bump, then it acts on the one AUDIT= line, for needed, done and hold" \
-  'grep -qF "On \`RELEASE=bump\` and on \`RELEASE=none\`, before anything else" <<<"$au" && [[ "$(grep -cF "first the audit (below); only on \`AUDIT=done\`" skills/implement/SKILL.md)" == 2 ]] && grep -qF "I audit-plan" <<<"$au" && grep -qF "I audit-record <sha> <file> <n>" <<<"$au" \
+  'grep -qF "On \`RELEASE=bump\` and on \`RELEASE=none\`, once the whole-feature check on the base passed and before anything else" <<<"$au" && [[ "$(grep -cF "then the audit (below); only on \`AUDIT=done\`" skills/implement/SKILL.md)" == 2 ]] && grep -qF "I audit-plan" <<<"$au" && grep -qF "I audit-record <sha> <file> <n>" <<<"$au" \
    && for k in needed done hold; do grep -qF -- "- \`AUDIT=$k" <<<"$au" || exit 1; done'
 check "then a hold files and posts nothing and the last line names /landspec:security with the report" \
   'grep -qF "nothing filed or posted about the findings" <<<"$au" && grep -qF "release held: <n> confirmed critical or high; run /landspec:security" skills/implement/SKILL.md'
 check "then /landspec:security has the unattended mode (steps 1 to 6, HOLD=) and takes a report for step 7" \
   'grep -qF "**Unattended**" skills/security/SKILL.md && grep -qF "steps 1 to 6 only" skills/security/SKILL.md && grep -qF "\`HOLD=<n>\`" skills/security/SKILL.md \
    && grep -qF "Read it, show its summary as step 6 says, then step 7" skills/security/SKILL.md'
-check "then /landspec:next and README point to /landspec:implement once every task is merged" \
-  'grep -qF "it audits the base and makes the release" skills/next/SKILL.md && grep -qF "it audits the base (\`/landspec:security\`" README.md'
+check "then /landspec:next and README point to /landspec:implement once every task is merged, never to /speckit-converge" \
+  'grep -qF "it checks the whole feature on the base against the spec" skills/next/SKILL.md && grep -qF "audits the base and makes the release" skills/next/SKILL.md \
+   && grep -qF "however the tasks were done: it checks the" README.md && grep -qF "audits the base" README.md \
+   && ! grep -qF "speckit-converge" skills/next/SKILL.md && ! grep -qF "/speckit-converge" README.md'
+check "then, with every task merged, the base is checked only on RELEASE=bump or none, and a red run is a gap task with no release" \
+  'grep -qF "only from \"The release\" below: after" <<<"$im" && grep -qF "on \`RELEASE=bump\` or \`RELEASE=none\`, never on \`pending\`, \`tag\`, \`publish\` or \`done\`" <<<"$im" \
+   && grep -qF "there is no task branch to fix:" <<<"$im" && grep -qF "the failing test becomes a gap task (step 5), and there is no release" <<<"$im" \
+   && grep -qF "first the whole-feature check on the base (above): go on" <<<"$im" && grep -qF "\`CHECKED=<sha>\`" <<<"$im" && grep -qF "\`base: <FROM>\`" <<<"$im"'
 
 # /landspec:report: public issues, so nothing is filed without a yes and nothing private leaves the project.
 rp="$(cat skills/report/SKILL.md)"
