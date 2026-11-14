@@ -217,6 +217,10 @@ check "when agents/reviewer.md is read, then it has isolation: worktree, the age
   'f=agents/reviewer.md; grep -qx "isolation: worktree" $f && grep -qF "be an \`agent-*\` folder directly under a \`.claude/worktrees/\`" $f \
    && grep -qF "predates the plugin: run /landspec:init" $f && grep -qF "never write to the author'"'"'s checkout" $f'
 # Spec 003 T002: the reviewer follows personal data and secrets into the helpers that log them.
+check "when a changed function fails differently, then review.md asks for every caller with how it handles the new failure, both kinds of fallback, and the delta takes those callers in" \
+  'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"When a changed function fails differently (it raises where it returned, returns where it raised, or changes the error type or value it fails with), search for every caller of it, in the diff or not"* \
+   && "$f" == *"give each one a \`- deep:\` line in the risk map saying how it handles the new failure"* && "$f" == *"a caller that catches the old error type, and one that checks \`not res.ok\` or a status code"* \
+   && "$f" == *"A caller whose fallback no longer runs is a finding"* && "$f" == *"a fix commit that changes how a function fails makes every caller of that function part of the fix"* ]]'
 check "when review.md lists the bugs to look for, then it names data reaching a log inside a helper, says to open each helper, and ranks a faked asserted component" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"reaches a log, including inside a helper the changed lines call with it"* \
    && "$f" == *"Open each helper a changed line passes personal data or a secret to"* && "$f" == *"names the helper'"'"'s own \`file:line\` that writes the log"* && "$f" == *"a test that fakes the component whose behavior it asserts"* \

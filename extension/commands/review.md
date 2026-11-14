@@ -67,7 +67,9 @@ Facts the author passes:
   earlier rounds' findings, with no answers.
 
 **A delta** reads `git diff <sha>..HEAD` only: it checks that each previous finding is fixed and
-applies step 2 to the fix commits alone, and it never widens. A bug it notices outside those
+applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
+changes how a function fails makes every caller of that function part of the fix (step 2's caller
+account applies to them, in the diff or not). A bug it notices outside those
 commits is reported at its true severity and does not change the assessment. `record --delta` refuses it unless a round was
 recorded on this branch, `<sha>` is still on the branch, something was committed since, and the fix
 changes at most 20 lines outside the previous findings' files (test files aside); otherwise run a
@@ -109,8 +111,15 @@ step 2 allows.
    or image without an accessible name). Open each helper a changed line passes personal data or a
    secret to, and read what it does with it: the finding names the helper's own `file:line` that
    writes the log, beside the changed line that passes the value; a value masked or hashed before the log is not a
-   finding; one you cannot follow to its end is a Low that says what you could not see. Run a command
-   only to settle whether a suspected bug is real, and only in your own copy.
+   finding; one you cannot follow to its end is a Low that says what you could not see. When a
+   changed function fails differently (it raises where it returned, returns where it raised, or
+   changes the error type or value it fails with), search for every caller of it, in the diff or
+   not, and give each one a `- deep:` line in the risk map saying how it handles the new failure:
+   it catches the new error, it checks a returned status or value, or neither. Both kinds of
+   fallback count: a caller that catches the old error type, and one that checks `not res.ok` or a
+   status code, which a new raise now skips. A caller whose fallback no longer runs is a finding at
+   the severity of what it now breaks. Run a command only to settle whether a suspected bug is
+   real, and only in your own copy.
 
 **Plan review** (before the issues are created): apply step 1 and read every task in `tasks.md`,
 asking what happens where state already exists. *Impact* names every reference the task touches (search each symbol) and the newest
