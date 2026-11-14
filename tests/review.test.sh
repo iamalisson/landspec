@@ -426,7 +426,12 @@ check "from a detached HEAD, then review.sh check --branch <b> gives the same an
 check "from a detached HEAD, then diff_id <b> equals diff_id run on <b>" \
   '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; diff_id \"$C\"")" == "$id_on" && -n "$id_on" ]]'
 check "from a detached HEAD without --branch, then check still refuses as before" 'fails_with "detached HEAD" "$r" check'
-git switch --quiet "$P"
+# /landspec:implement records a fix round of a branch checked out in another copy.
+hc="$(git rev-parse "$C")"; git switch --quiet "$C"; echo 'export const g = 1' >> filters.ts; git commit --quiet -am "fix: filters"
+hf="$(git rev-parse HEAD)"; git switch --quiet "$P"
+printf 'Delta from: %s\nReviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$hc" "$hc" "$hf" > "$TMP/report.md"
+check "from another branch, then record --delta --branch <b> records the fix round of <b>, and check --branch <b> passes" \
+  'out="$("$r" record --delta --branch "$C" "$TMP/report.md")" && [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$hf")" ]] && "$r" check --branch "$C" >/dev/null'
 git switch --quiet -c spec/001-demo origin/develop
 check "on a spec branch (pr.sh spec mode), then base_ref is the base: it never has a parent" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 git switch --quiet "$P"

@@ -13,7 +13,7 @@ run `/landspec:init` first, and stop. Make sure the working tree is clean; if it
 so: never stash or discard. Ask nothing while the loop runs: every question waits for the end.
 
 Keep, for the whole run, the tasks whose agents (implementers and reviewers) are in flight (`in flight`), and for each task its
-copy (`Copy:`) and branch (`BRANCH=`).
+copy (`Copy:`), branch (`BRANCH=`) and the `REVIEWED=` sha its last review record printed.
 
 ## The loop
 
@@ -39,11 +39,15 @@ Each pass:
      says (its copy, its model, its record), in the background, with the facts: `commit:` the branch's
      head, `checkout:` the task's copy, `branch:` its branch, and `base: <base_ref <branch>>`
      (`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; base_ref "$0"' <branch>`), so a
-     stacked task is reviewed against its parent. It is a full review every time, a fix round's too
-     (`review.sh record`, never `--delta`). Add the task to `in flight`, so the next pass does not
-     review it again. When it returns, remove it from `in flight`, then: `review.sh record --branch
-     <branch> <report>`, then `I mark <task> ready <report>` or `I mark <task> changes <report>` from
-     its Assessment.
+     stacked task is reviewed against its parent. A fix round (the task has the `<task>.report` of
+     `FIX` below, and you hold the `REVIEWED=` sha its last record printed) is a **delta**, as
+     review.md says: add that sha and that report to the facts. Add the task to `in flight`, so the
+     next pass does not review it again. When it returns, remove it from `in flight`, then record
+     it: `review.sh record --branch <branch> <report>`, or for a delta `review.sh record --delta
+     --branch <branch> <report>`. When `record --delta` refuses (a restack rebased the branch, or the
+     fix grew past its 20 lines), run a full review instead and record it with `review.sh record
+     --branch`. Then `I mark <task> ready <report>` or `I mark <task> changes <report>` from its
+     Assessment.
    - **`FIX`** → a fix round with the review that asked for it, the file
      `$(git rev-parse --git-common-dir)/landspec-run/<feature dir name>/<task>.report` (`mark … changes`
      keeps it there): if the task's
@@ -51,8 +55,11 @@ Each pass:
      agent is gone, launch a new implementer as in `START`, on the existing branch, with the report.
      Either way the task is in flight again until it returns.
    - **`OPEN`**, parents first (in `ORDER`): in the task's copy, `git switch <branch>` (copies are
-     left detached, so the branch is free), then the scan and `pr.sh task` exactly as
-     `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
+     left detached, so the branch is free), then the scan and mutation testing only when this diff
+     has no record of them (the implementer ran both; a restack changes the diff): `bash -c 'source
+     .specify/extensions/landspec/scripts/lib.sh; cat "$(diff_record "$0")"' landspec-security`, and
+     the same for `landspec-mutants`. A `survivors` record goes in *Evidence* with the implementer's
+     survivor lines. Then `pr.sh task` exactly as `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
      targets the base (its `landspec-parent` setting is gone), run `gh pr ready <pr>` after
      `pr.sh task`; never while `landspec-parent` is set. Then `I mark <task> pr` and `git switch
      --detach` in that copy.
@@ -184,10 +191,14 @@ run on the committed head is recorded, so OPEN's checks and `pr.sh` do not run t
 Otherwise:
 
 - `branch.sh` exit 3 (it says the task was claimed elsewhere): the task is `elsewhere`; leave it,
-  and start the next one.
-- `worktree_setup` failed: `I fail <task> "worktree_setup: <its output>"`, and go on with the
-  others.
-- Any other failure it reports: `I fail <task> "<what it said>"`.
+  remove it from `in flight`, and start the next one.
+- `worktree_setup` failed: `I fail <task> "worktree_setup: <its output>"`, then remove it from
+  `in flight`, and go on with the others.
+- Any other failure it reports: `I fail <task> "<what it said>"`, then remove it from `in flight`.
+- It returned none of these (no done, no `Elsewhere:`, no `Failed:`: it crashed or ran out): remove
+  it from `in flight`. With a branch, `I mark <task> red`: at `RED=2`, `I fail <task> "implementer
+  returned nothing"`; otherwise the next `status` lists it as `resume` in `START`. With no branch,
+  `I fail <task> "implementer returned nothing"` at once.
 
 ## End
 
