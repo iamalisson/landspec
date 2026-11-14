@@ -24,7 +24,10 @@ PR `init` offers), because that is where task branches start.
 From 1.8.0 on, `init` refuses to take a project back to an older version (`this plugin copy is
 <plugin>, the project is at <project>; run /reload-plugins (or setup.sh --downgrade)`), for
 example from a session still running the old copy. An older copy's own `setup.sh` has no such
-check, so after an update run `/reload-plugins` first, then `init`.
+check, so after an update run `/reload-plugins` first, then `init`. It also refuses, before it
+writes anything, on a branch behind a base that `origin` already has at a newer landspec
+(`origin/<base> is at landspec <version>, this branch at <version>; run it from <base>: …`):
+run it again from the base. Offline, or with no `origin`, it goes on.
 
 ## What `new` does
 

@@ -16,6 +16,18 @@ check "when run with --downgrade, then it is not refused for the version" \
   'out="$(PATH="$TMP/stub:$PATH" "$ROOT/bin/setup.sh" "$TMP/newer" --downgrade 2>&1 || true)"; ! grep -qF "this plugin copy is" <<<"$out" && ! grep -q "unknown option" <<<"$out"'
 check "then the usage line names --downgrade" 'fails_with "--downgrade" "$ROOT/bin/setup.sh" --help'
 
+# A branch behind a base that already moved to a newer landspec: refused before any write.
+git init --quiet --bare "$TMP/stale.git"; git clone --quiet "$TMP/stale.git" "$TMP/stale" 2>/dev/null
+mkdir -p "$TMP/stale/.specify/extensions/landspec"; stale_ext="$TMP/stale/.specify/extensions/landspec/extension.yml"
+sed 's/^  version: .*/  version: "1.0.0"/' "$TMP/newer/.specify/extensions/landspec/extension.yml" > "$stale_ext"
+git -C "$TMP/stale" add -A; git -C "$TMP/stale" -c user.name=t -c user.email=t@t commit --quiet -m old; git -C "$TMP/stale" push --quiet origin HEAD:main HEAD:develop
+sed -i.bak "s/^  version: .*/  version: \"$plugin_v\"/" "$stale_ext"; rm -f "$stale_ext.bak"
+git -C "$TMP/stale" -c user.name=t -c user.email=t@t commit --quiet -am new; git -C "$TMP/stale" push --quiet origin HEAD:develop; git -C "$TMP/stale" reset --quiet --hard HEAD~1
+check "when origin's base branch is at a newer landspec than this branch, then setup.sh refuses before writing anything" \
+  'cd "$TMP/stale" && PATH="$TMP/stub:$PATH" fails_with "origin/develop is at landspec $plugin_v, this branch at 1.0.0; run it from develop" "$ROOT/bin/setup.sh" . && [[ -z "$(git status --porcelain)" ]]'
+check "when origin cannot be reached and has no copy of the base, then it is not refused" \
+  'cd "$TMP/stale" && git remote set-url origin "$TMP/nowhere.git" && git update-ref -d refs/remotes/origin/develop && out="$(PATH="$TMP/stub:$PATH" "$ROOT/bin/setup.sh" . 2>&1 || true)" && ! grep -qF "is at landspec" <<<"$out"'
+
 if ! command -v specify >/dev/null; then
   if [[ -n "${REQUIRE_SPECIFY:-}" ]]; then echo "FAIL - REQUIRE_SPECIFY is set, but the specify CLI is not installed"; exit 1; fi
   echo "skip - the rest needs the specify CLI (not installed)"; exit "$FAIL"
