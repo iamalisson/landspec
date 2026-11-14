@@ -18,9 +18,13 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
 1. Read the level: `level:` in `.specify/extensions/landspec/landspec-config.yml` (default `standard`).
    - **lite**: ask "Review and open the PR now?" and continue only on yes.
    - **standard** and **full**: continue.
-2. **Checks.** Run the constitution's test command, plus lint and build if they exist. If
-   anything fails, stop and report it. Never open a PR on red checks: `pr.sh` (step 6) runs the
-   test command again before the push and refuses the PR, with its last 20 lines, when it fails.
+2. **Checks.** Run the constitution's test command with
+   `bash -c 'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'`, plus
+   lint and build if they exist. If anything fails, stop and report it. Never open a PR on red
+   checks: `pr.sh` (step 6) runs the test command again before the push and refuses the PR, with
+   its last 20 lines, when it fails. A green run on a clean, committed tree is recorded for that
+   tree and command, and neither runs it again on the same pair (so only a re-run after a fix
+   commit is saved; before the commit the tree is dirty and always runs).
 
    **Tests are evidence, not decoration.** Each test comes from the task's *Completed when* and
    the spec's acceptance scenarios, and must fail if the behavior breaks:
@@ -75,9 +79,10 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    - **The scanners on the changed files.** Run
      `bash .specify/extensions/landspec/scripts/security-scan.sh --changed` (it also scans uncommitted
      files, so after the last commit). Read every finding and fix the real ones (then commit and
-     run it again). List the false positives with the reason, and any `missing` scanner. The
-     script in step 6 refuses a PR without a scan for this diff; findings and `missing` scanners
-     do not refuse, they go in the body.
+     run it again). List the false positives with the reason, and any `missing` or `failed`
+     scanner (a `failed` one names its log). The script in step 6 refuses a PR without a scan for
+     this diff; findings and `missing` or `failed` scanners do not refuse, and the script itself
+     adds a "Scanners not run" line naming each one to the body.
 5. **PR body**, written to a temporary file. Keep it short to read: what a reviewer needs is
    visible, the rest folds away.
    - one or two sentences on what changed;
