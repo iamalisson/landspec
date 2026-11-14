@@ -127,11 +127,12 @@ checked() {
 }
 
 # outside <last>: the lines the fix changed since <last> outside the previous findings' files
-# (the first file:line of each line from "findings" on) and outside test paths; a binary file
+# (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
 # counts as more than the limit.
 outside() {
   local found re a d f n=0
-  found="$(awk 'NR == 1, /^$/ { next } tolower($0) ~ /findings/ { on = 1 }
+  # Claims lines and their heading are skipped: a claim's stopped-at file is not a finding's file.
+  found="$(awk 'NR == 1, /^$/ { next } /^(- (held|broke):|\*\*Claims)/ { next } tolower($0) ~ /findings/ { on = 1 }
     on && match($0, /[A-Za-z0-9_.\/-]+:[0-9]+/) { s = substr($0, RSTART, RLENGTH); sub(/:[0-9]+$/, "", s); print s }' "$record")"
   re="$(test_path_re)" || exit 1
   while IFS=$'\t' read -r a d f; do
@@ -180,6 +181,7 @@ remove_copy() {
 # resets the whole-feature check's round counter (implement.sh check-copy).
 if $feat; then
   report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --feature <report-file>"
+  [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
   fdir="$(feature_dir)"; fname="$(basename "$fdir")"
   c="$(git rev-parse --verify --quiet "refs/landspec/check/$fname^{commit}" || true)"
   [[ -n "$c" ]] || die "no check copy for $fname: run implement.sh check-copy first"
@@ -202,6 +204,7 @@ fi
 case "$action" in
   record)
     report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record [--plan|--delta] <report-file>"
+    [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
     # Only the exact line counts ("not ready" or "already" in prose never does); the last one decides.
     verdict="$(grep -iE '^\**assessment\**: *(ready|changes needed)\**\.?$' "$report" | tail -1 | grep -oiE 'changes needed|ready' | tr '[:upper:]' '[:lower:]' || true)"
     [[ -n "$verdict" ]] || die "the report has no line that is exactly 'Assessment: ready' or 'Assessment: changes needed'"
