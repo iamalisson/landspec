@@ -194,7 +194,9 @@ These are spec-kit hooks, so you never type them. If you skip one, run it yourse
 ## Mutation testing
 
 `mutants.sh` runs the constitution's `mutate` command on the branch's diff while the review runs
-(after the scan and `/security-review`), and keeps the result for that exact diff; `pr.sh task` and
+(after the scan and `/security-review`), and keeps the result for that exact diff; the review is
+recorded and its findings fixed only after it ends, since a mutant may be in the tree until then.
+Each run writes its log to its own folder, so implementers running at once never share one; `pr.sh task` and
 `pr.sh fix` refuse a PR without it. A later commit means one more run; one that only adds the tests
 killing survivors after a `ready` review is checked with a delta. The command is told what changed:
 

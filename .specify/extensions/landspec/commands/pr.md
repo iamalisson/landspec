@@ -47,7 +47,9 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    `bash -c 'source .specify/extensions/landspec/scripts/lib.sh; base_ref'`), and nothing of what you
    think about the code. While it runs, run `/security-review` on the branch, then, the reviewer
    still running in its own copy, mutation testing (below); never both at once in this tree, as a
-   mutation tool may edit the sources `/security-review` reads.
+   mutation tool may edit the sources `/security-review` reads. Wait for `mutants.sh` to finish
+   before you record the review, edit any file or re-run step 2: until it ends, a mutant may be
+   in the tree.
 
    Record the file the reviewer names on its report's first line (`Report file: <path>`), as it
    is: `bash .specify/extensions/landspec/scripts/review.sh record <file>`. Then fix every **High** and

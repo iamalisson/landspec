@@ -318,6 +318,8 @@ check "when pr.md records the review, then it records the file the reviewer name
 check "when pr.md runs step 4, then the scan comes before the reviewer, mutants after /security-review, and a test-only commit after ready gets a delta" \
   's4="$(sed -n "/^4\. /,/^5\. /p" extension/commands/pr.md | tr "\n" " " | tr -s " ")"; [[ "$s4" =~ security-scan\.sh\ --changed.*Then\ launch\ the\ reviewer.*run\ \`/security-review\`\ on\ the\ branch,\ then.*mutation\ testing.*mutants\.sh ]] \
    && grep -qF "never both at once in this tree" <<<"$s4" && grep -qF "A commit that only adds tests (killing a survivor) after a \`ready\` review is checked with a delta." <<<"$s4" && grep -qF "after any later commit (a fix round'"'"'s too), run both again" <<<"$s4"'
+check "when pr.md runs mutants while the reviewer runs, then it waits for mutants.sh before it records, edits or re-runs step 2" \
+  's4="$(sed -n "/^4\. /,/^5\. /p" extension/commands/pr.md | tr "\n" " " | tr -s " ")"; [[ "$s4" =~ Wait\ for\ \`mutants\.sh\`\ to\ finish\ before\ you\ record\ the\ review,\ edit\ any\ file\ or\ re-run\ step\ 2.*Record\ the\ file\ the\ reviewer\ names ]]'
 check "then a returning implementer's tests run first in its copy: green marks it implemented, red marks it red, failed at RED=2" \
   'r="$(sed -n "/^## When an implementer returns/,/^## End/p" <<<"$im")"; grep -qF "run the project'"'"'s test command before anything else" <<<"$r" \
    && grep -qF "green: \`I mark <task> implemented\`" <<<"$r" && grep -qF "red: \`I mark <task> red\`. At \`RED=2\`" <<<"$r" && grep -qF "\`I fail <task> \"tests red twice\"\`" <<<"$r"'
