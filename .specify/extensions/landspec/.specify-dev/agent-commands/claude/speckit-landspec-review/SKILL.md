@@ -123,11 +123,19 @@ step 2 allows.
    it catches the new error, it checks a returned status or value, or neither. Both kinds of
    fallback count: a caller that catches the old error type, and one that checks `not res.ok` or a
    status code, which a new raise now skips. A caller whose fallback no longer runs is a finding at
-   the severity of what it now breaks. Run a command only to settle whether a suspected bug is
-   real, and only in your own copy.
+   the severity of what it now breaks. Run a command only to settle whether a suspected bug or a
+   counterexample is real, and only in your own copy.
+3. **Try to break it.** From the task's line (or the one-line fact) and the diff, write what the
+   change claims, at most five claims: what it now does, refuses or keeps. For each, build one
+   concrete counterexample (an input, a state already on disk or in the database, an ordering:
+   twice, out of order, interrupted, or a caller from step 2) and follow it through the changed
+   lines to its result. A claim that breaks is a finding, with that counterexample as its scenario.
+   One that holds names the `file:line` that stops it. In a delta, the claims are the previous
+   findings: follow each one's own scenario through the fix. A plan review or a feature review
+   skips this step.
 
 **Plan review** (before the issues are created): apply step 1 and read every task in `tasks.md`,
-asking what happens where state already exists. *Impact* names every reference the task touches (search each symbol) and the newest
+asking what happens where state already exists. *Impact* names every reference the task touches and every caller of a function whose behaviour it changes (search each symbol), and the newest
 sibling of each file it adds; *Completed when* is a command that proves the real path, not only a
 fresh state, at the level the behavior demands (logic: unit; through the interface: integration
 against the real database or in-memory HTTP; a user-visible flow: one end-to-end); a step that writes data names its target and refuses production; every task names its failure
@@ -140,7 +148,9 @@ lockfiles, and markup or data copied as is from an existing file do not count). 
 file, data set, URL or credential a task reads exists on `origin/<base>` (`git cat-file -e
 origin/<base>:<path>`), in the spec folder, or in the task text; one that exists only in the
 author's working tree (untracked, ignored) is a finding, since the next person starts from a
-clean clone. **Spec-folder code:** every file under `specs/NNN-*/` that is not markdown is code:
+clean clone. **Reuse:** a task that adds a helper, component or package the repository or an
+installed dependency already provides is a finding: name the existing one's `file:line`. A new
+dependency without the `plan.md` line the constitution asks for is a finding. **Spec-folder code:** every file under `specs/NNN-*/` that is not markdown is code:
 apply the step 2 bug list to it, and a `research.md` claim resting on a script that hides an error
 (a failed call read as empty data) is a finding. **Orderings:** for each state machine in
 `data-model.md`, or in `plan.md` when there is none (opposite actions on one resource, events
@@ -170,6 +180,11 @@ Written for the author, who fixes it, and for the human who merges:
   `<test file>` is a test file at HEAD with a line `<n>`; gate, delete and test paths take
   `- deep:` only. Anything not listed was sampled. The PR shows these paths, never the text after
   them, and only paths in the diff.
+- **Claims**, after the risk map and before the findings, one line per claim of step 3:
+  `- held: <claim> — <counterexample>: stopped at <file:line>`
+  `- broke: <claim> — <counterexample>: finding <n>`
+  Before the findings, because `review.sh record` counts every `file:line` after them as a
+  finding's file, which a delta may then change freely.
 - **Findings**, ranked: **High** (wrong result, data loss, a broken upgrade on existing state,
   security), **Medium** (a real bug: a guard the siblings have, an unhandled real-path
   case, a silent failure path), **Low** (worth a line, not a block: a test gap where the code
@@ -180,7 +195,9 @@ Written for the author, who fixes it, and for the human who merges:
   test asserts nothing about is not a finding. Each one: `file:line`, one concrete
   scenario of what goes wrong ("on a database built by `create_all` and stamped at the previous
   revision, `flask db upgrade` stops with 'already exists'"), and the evidence (the sibling's
-  `file:line`, the command output). A finding you could not verify says so. No style, no naming,
+  `file:line`, the command output). Before you report a finding, try to disprove it: look for the
+  guard, test, constraint, caller check or (in a plan review) the task, invariant or plan line that
+  already handles it, and report it only if that search fails. A finding you could not verify says so. No style, no naming,
   no nits: they are what gets reviews ignored. Accessibility is not style: a contrast, focus or
 accessible-name failure is at least **Medium**, with the computed ratio as evidence. Matching a
 sibling is not a defense: a defect copied from an existing file is still a defect in this diff. A **security** finding is listed last, and the PR
@@ -191,7 +208,8 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
   `git rev-parse HEAD`), and `Model: <your model id>`. A delta report also has `Delta from: <sha>`. A plan report
   has only `Copy:` and `Model:`. `review.sh record` refuses a report without them, a range that is not the
-  branch's (or the delta's), and a commit made after the review started.
+  branch's (or the delta's), and a commit made after the review started. Then one count line, exactly
+  `Findings: <n> high, <n> medium, <n> low` (security ones included; `record` does not read it).
 - The last line, exactly: `Assessment: ready`, or `Assessment: changes needed` when there is a
   High or Medium in the lines this review covers (the branch's diff, or a delta's commits). `review.sh record` reads that line; without it the report cannot be recorded.
 
