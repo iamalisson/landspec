@@ -19,8 +19,9 @@ landspec_cd_root
 re="$(test_path_re)" || exit 1
 
 rec="$(diff_record landspec-mutants)" || exit 1
-dir="$(git rev-parse --git-common-dir)/landspec-mutants/$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$dir"
+# Every worktree shares this folder: the suffix keeps two runs in the same second apart.
+dir="$(git rev-parse --git-common-dir)/landspec-mutants"; mkdir -p "$dir"
+dir="$(mktemp -d "$dir/$(date +%Y%m%d-%H%M%S).XXXXXX")" || die "cannot create a report folder in $dir"
 finish() { echo "mutants $1 $2" | tee "$rec"; echo "REPORT_DIR=$dir"; exit 0; }
 
 cmd="$(constitution_cmd mutate)"

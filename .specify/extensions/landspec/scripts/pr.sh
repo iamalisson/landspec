@@ -132,18 +132,16 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     else
       body+=$'\n\n'"Mutation testing: not run (no mutate command in the constitution)"
     fi
-    # And the scanners on the changed files: a missing scanner or a finding is for the body to say.
+    # And the scanners on the changed files: a finding is for the body to say; one that did not run, the body names here.
     scan="$(diff_record landspec-security)"
     [[ -f "$scan" ]] \
       || die "no security-scan.sh --changed result for this diff; run bash .specify/extensions/landspec/scripts/security-scan.sh --changed after the last commit"
-    # Never open a PR on red checks. One log per branch, so parallel worktrees never share one.
+    gaps="$(awk '$2=="missing"||$2=="failed"{printf "%s%s (%s)", s, $1, $2; s=", "}' "$scan")"
+    [[ -z "$gaps" ]] || body+=$'\n\n'"Scanners not run: $gaps"
+    # Never open a PR on red checks; a tree already green with this command is not run again (lib.sh run_tests).
     test_cmd="$(constitution_cmd test)"
     if [[ -n "$test_cmd" ]]; then
-      log="$(git rev-parse --git-common-dir)/landspec-test/${branch//\//__}.log"; mkdir -p "${log%/*}"
-      if ! bash -c "$test_cmd" </dev/null >"$log" 2>&1; then
-        tail -n 20 "$log" >&2
-        die "the test command failed ($test_cmd); fix it before opening the PR"
-      fi
+      run_tests || die "the test command failed ($test_cmd); fix it before opening the PR"
     else
       echo "landspec: tests not run before the PR (no test command in the constitution)" >&2
     fi
