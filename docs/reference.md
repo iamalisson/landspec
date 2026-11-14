@@ -236,10 +236,11 @@ made the branch), `review` (`review.sh record`, `round=full|delta|plan|feature` 
 script. The file stays in `.git`: it is never pushed, and nothing from it reaches an issue or a PR.
 Nothing rotates it (about 10 lines per PR).
 
-`bash .specify/extensions/landspec/scripts/stats.sh` prints one row per branch that opened a PR
-(minutes from start to PR, full and delta review rounds, the first verdict, the test time and
-runs), then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
-the first review. It reads only this clone's log, and groups by branch name, so a branch name used
+`bash .specify/extensions/landspec/scripts/stats.sh` prints one row per branch that opened a task
+or fix PR (minutes from start to its first `pr` event, so a later `pr.sh` run that finds the open
+PR does not move it; full and delta review rounds, the first verdict, the test time and runs),
+then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
+the first review. Spec PRs are left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used
 twice adds both PRs into one row.
 
 ## Using Claude Code well

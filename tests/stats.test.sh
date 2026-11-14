@@ -8,7 +8,8 @@ new_repo standard
 check "when no event was logged yet, then stats refuses and says to open a PR first" \
   'one_refusal "no landspec-events yet: open a PR first" "$s"'
 
-# Two task PRs (one with a fix round recorded from a detached copy, grouped by its branch=), one branch with no PR.
+# Two task PRs (one with a fix round recorded from a detached copy, grouped by its branch=, and a later pr.sh run
+# that found its open PR), a spec PR, and one branch with no PR.
 cat > "$(git rev-parse --git-common-dir)/landspec-events" <<'EOF'
 1000 1970-01-01T00:16Z feat/001-t001-a start task=T001
 1600 1970-01-01T00:26Z feat/001-t001-a review round=full verdict=changes-needed branch=feat/001-t001-a
@@ -22,9 +23,11 @@ cat > "$(git rev-parse --git-common-dir)/landspec-events" <<'EOF'
 3600 1970-01-01T01:00Z feat/001-t002-b pr mode=task url=https://github.com/acme/app/pull/2
 4000 1970-01-01T01:06Z feat/001-t003-c start task=T003
 4100 1970-01-01T01:08Z - review round=plan verdict=ready
+5000 1970-01-01T01:23Z feat/001-spec pr mode=spec url=https://github.com/acme/app/pull/3
+9200 1970-01-01T02:33Z feat/001-t001-a pr mode=task url=https://github.com/acme/app/pull/1
 EOF
 out="$("$s")"
-check "when two branches opened a PR, then each gets one row with start->pr minutes, rounds, first verdict and test time" \
+check "when two branches opened a task PR (one twice) and one a spec PR, then each task branch gets one row, timed to its first PR, with start->pr minutes, rounds, first verdict and test time" \
   '[[ "$(grep -c "start->pr" <<<"$out")" == 2 ]] \
    && grep -qxF "feat/001-t001-a start->pr 20m | reviews 1 full + 1 delta | first changes-needed | tests 90s x2" <<<"$out" \
    && grep -qxF "feat/001-t002-b start->pr 10m | reviews 1 full + 0 delta | first ready | tests 0s x0" <<<"$out"'

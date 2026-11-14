@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Per-PR numbers from the local event log (.git/landspec-events, written by lib.sh event()).
 #   stats.sh
-# Prints one line per branch that opened a PR:
+# Prints one line per branch that opened a task or fix PR (timed to its first pr event; spec PRs are left out):
 #   <branch> start->pr <m>m | reviews <f> full + <d> delta | first <verdict> | tests <s>s x<n>
 # then: PRS=<n> MEDIAN_START_TO_PR=<m>m MEAN_ROUNDS=<x> READY_FIRST=<k>/<n>
 # Nothing leaves .git: the log is never pushed and never reaches a PR body.
@@ -27,7 +27,7 @@ awk '
     if (!(br in first)) first[br] = f["verdict"]
   }
   $4 == "tests" { secs[br] += f["secs"]; runs[br]++ }
-  $4 == "pr" { if (!(br in prt)) order[++n] = br; prt[br] = $1 }
+  $4 == "pr" && f["mode"] != "spec" && !(br in prt) { order[++n] = br; prt[br] = $1 }
   END {
     m = 0; rsum = 0; ready = 0
     for (i = 1; i <= n; i++) {
