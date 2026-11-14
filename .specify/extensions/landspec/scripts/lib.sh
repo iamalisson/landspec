@@ -188,12 +188,13 @@ diff_record() {
 }
 
 # run_tests: run the constitution's test command (none: return 0, the caller says so), logged under
-# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by tree and command,
-# and that pair is not run again; any edit, commit or other command runs it again. Red records nothing.
+# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by copy, tree and
+# command, and that triple is not run again; any edit, commit or other command runs it again. Red
+# records nothing. Ignored files (deps, .env) and the environment are not part of the key.
 run_tests() {
   local cmd d key log clean=false; cmd="$(constitution_cmd test)"; [[ -n "$cmd" ]] || return 0
   d="$(git rev-parse --git-common-dir)/landspec-test"; mkdir -p "$d"
-  key="$(printf '%s %s' "$(git rev-parse 'HEAD^{tree}')" "$cmd" | sha256)"
+  key="$(printf '%s %s %s' "$(git rev-parse --show-toplevel)" "$(git rev-parse 'HEAD^{tree}')" "$cmd" | sha256)"
   [[ -z "$(git status --porcelain -- . ':(exclude).claude/worktrees')" ]] && clean=true
   if $clean && [[ -f "$d/$key" ]]; then echo "landspec: tests already green for this tree ($cmd)"; return 0; fi
   log="$(git branch --show-current)"; log="${log:-$key}" # a detached copy logs by key

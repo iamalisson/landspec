@@ -372,6 +372,10 @@ echo 'export const wip = 3' >> search.ts
 check "when the tree has uncommitted changes on top of a green one, then run_tests runs the command again" \
   '(source "$SCRIPTS/lib.sh"; run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 3 ]]'
 git checkout --quiet -- search.ts
+git worktree add --quiet --detach "$TMP/copy2" HEAD; cp -R .specify "$TMP/copy2/" # ignored, so not checked out
+check "when another copy of the repo has the same tree, then its green run does not count there" \
+  '(cd "$TMP/copy2" && source "$SCRIPTS/lib.sh" && run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 4 ]]'
+git worktree remove --force "$TMP/copy2"
 check "when pr.sh task runs again on an open PR, then the body is updated to the new patch id and no PR is created" \
   'grep -q "^pr edit https://github.com/acme/app/pull/99 --body " "$GH_LOG" && grep -qxF "Independent review recorded for this diff (patch id $id2)" "$GH_LOG" && ! grep -q "^pr create" "$GH_LOG"'
 check "then it prints that the body was replaced from the author's file" 'grep -qxF "PR body replaced from $TMP/body.md; edits made on GitHub are gone" <<<"$out"'
