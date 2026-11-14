@@ -52,6 +52,15 @@ plugin_v="$(ext_version "$here/extension/extension.yml")"; project_v="$(ext_vers
 if ! $downgrade && version_newer "$project_v" "$plugin_v"; then
   die "this plugin copy is $plugin_v, the project is at $project_v; run /reload-plugins (or setup.sh --downgrade)"
 fi
+# A branch behind the base would rewrite an older copy that git cannot carry onto the base.
+# Offline, or without origin, there is nothing to compare with, so it goes on.
+if git remote get-url origin >/dev/null 2>&1; then
+  base="$(base_branch)"; git fetch --quiet origin "$base" 2>/dev/null || true
+  base_v="$(git show "refs/remotes/origin/$base:.specify/extensions/landspec/extension.yml" 2>/dev/null | ext_version /dev/stdin || true)"
+  if version_newer "$base_v" "${project_v:-0}"; then
+    die "origin/$base is at landspec $base_v, this branch at ${project_v:-none}; run it from $base: switch to it and pull, then /landspec:init again"
+  fi
+fi
 
 if [[ ! -d .specify/templates ]]; then
   # The agent's own CLI may be installed later (or never, e.g. in CI); the warning above covers it.

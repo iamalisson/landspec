@@ -34,6 +34,7 @@ disable-model-invocation: true
    When it refuses because `this plugin copy is <plugin>, the project is at <project>`, show that
    line as is and suggest `/reload-plugins` (this session runs an older copy of the plugin); add
    `--downgrade` only when the user asks to take the project back to the older version.
+   When it refuses because `origin/<base> is at landspec <version>`, show that line as is and stop.
 4. **GitHub settings** (every level). Read the visibility with
    `gh repo view --json visibility -q .visibility`. Offer each one, explain it in one line, and run
    it only on yes:
@@ -94,8 +95,8 @@ disable-model-invocation: true
    full and the default branch on lite). Task branches start from `<base>` and scripts read the
    level from the tree, so the setup has to land there, on an update too: anywhere else, the next
    branch loses `.specify` and the git hooks, or keeps the old version. The default branch gets it
-   at the next promotion. On yes: `git fetch origin`, then `git switch -c <branch> origin/<base>`,
-   taking the setup along (if git refuses because the two branches differ in those files, say so,
+   at the next promotion. On yes: `git fetch origin`, then `git switch -c <branch> origin/<base>` as its own command
+   (the guard refuses a commit chained after it), taking the setup along (if git refuses because the two branches differ in those files, say so,
    and stop: run `/landspec:init` again from `<base>`). Stage **by name** only what the setup
    wrote (`.specify`, `.claude/skills`, and each file the script listed as created or updated;
    never `git add -A`), commit `chore: landspec <version> (level <level>)`, and open the PR as a
