@@ -2,9 +2,9 @@
   "schema_version": "1.0",
   "extensions": {
     "landspec": {
-      "version": "2.5.0",
+      "version": "2.6.0",
       "source": "local",
-      "manifest_hash": "sha256:2f726ce57e046656915cf25a3293b4e3977efd737a4c309db15284e1321513e5",
+      "manifest_hash": "sha256:50c5062a85e24bdb748cb41677f2b105a7fc4847c7328624a723526d264c2fa7",
       "enabled": true,
       "priority": 10,
       "registered_commands": {
@@ -17,7 +17,7 @@
         ]
       },
       "registered_skills": [],
-      "installed_at": "2026-11-14T21:34:06.475691+00:00"
+      "installed_at": "2026-11-15T02:04:00.138061+00:00"
     }
   }
 }
