@@ -49,6 +49,7 @@ open_pr() { # open_pr <title> <body> [body-file]
     err="$(gh pr edit "$url" --body "$2" 2>&1 >/dev/null)" || die "could not update the body of $url: ${err%%$'\n'*}"
     echo "PR body replaced from $3; edits made on GitHub are gone"
   fi
+  event pr mode="$mode" url="$url"
   echo "PR=$url"
 }
 
@@ -141,7 +142,9 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     # Never open a PR on red checks; a tree already green with this command is not run again (lib.sh run_tests).
     test_cmd="$(constitution_cmd test)"
     if [[ -n "$test_cmd" ]]; then
-      run_tests || die "the test command failed ($test_cmd); fix it before opening the PR"
+      t0="$(date +%s)"
+      run_tests || { event tests secs=$(( $(date +%s) - t0 )) ok=0; die "the test command failed ($test_cmd); fix it before opening the PR"; }
+      event tests secs=$(( $(date +%s) - t0 )) ok=1
     else
       echo "landspec: tests not run before the PR (no test command in the constitution)" >&2
     fi

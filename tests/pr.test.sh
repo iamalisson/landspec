@@ -49,6 +49,8 @@ check "when the constitution's test command exits 1, then it refuses, prints its
    && grep -qx "red line 30" <<<"$out" && grep -qx "red line 11" <<<"$out" && ! grep -qx "red line 10" <<<"$out" \
    && [[ "$(git ls-remote origin "refs/heads/$(git branch --show-current)")" == "$claim" ]] && ! grep -q "^pr create" "$GH_LOG" \
    && grep -qx "red line 1" "$(git rev-parse --git-common-dir)/landspec-test/feat__001-t001-add-search.log"'
+check "then the red run is logged as a tests event with ok=0 before the refusal" \
+  'grep -qE " feat/001-t001-add-search tests secs=[0-9]+ ok=0$" "$(git rev-parse --git-common-dir)/landspec-events"'
 check "then a red run records nothing, so the next run tests again" \
   '[[ -z "$(find "$(git rev-parse --git-common-dir)/landspec-test" -type f ! -name "*.log")" ]]'
 check "when a scan was recorded for this diff, then the scan check lets the PR through" \
@@ -58,6 +60,8 @@ printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_C
 out="$("$p" task T001 "feat(search): add search" "$TMP/body.md" 2>"$TMP/pr.err")" || true
 check "when the constitution's test command exits 0, then it opens the PR with no warning" \
   '[[ -f "$TMP/green.ran" && "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && grep -q "^pr create" "$GH_LOG" && ! grep -q "^landspec:" "$TMP/pr.err"'
+check "then the green run and the PR are logged, in that order" \
+  'tail -2 "$(git rev-parse --git-common-dir)/landspec-events" | cut -d" " -f3- | tr "\n" "|" | grep -qE "^feat/001-t001-add-search tests secs=[0-9]+ ok=1\|feat/001-t001-add-search pr mode=task url=https://github.com/acme/app/pull/99\|$"'
 check "then the body names each scanner that did not run" \
   'grep -qxF "Scanners not run: gitleaks (missing), osv-scanner (missing), semgrep (missing)" "$GH_LOG"'
 rm -f "$TMP/green.ran"

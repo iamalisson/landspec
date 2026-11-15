@@ -8,6 +8,15 @@ LANDSPEC_EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 die() { echo "landspec: $*" >&2; exit 1; }
 
+# event <name> [key=value...]: append "<epoch> <UTC time> <branch> <name> ..." to the local log
+# that stats.sh reads (.git/landspec-events, shared by every worktree; "-" when detached). Never prints, never fails.
+# A caller outside its branch (a detached copy) passes branch=<name>, which the reader prefers.
+# shortcut: no rotation, about 10 lines per PR; add one if the file passes a few MB
+event() {
+  { local b; b="$(git branch --show-current)"
+    echo "$(date -u '+%s %Y-%m-%dT%H:%MZ') ${b:--} $*" >> "$(git rev-parse --git-common-dir)/landspec-events"; } 2>/dev/null || true
+}
+
 # Run every script from the repository root.
 # A spec-kit project in a subfolder of a bigger repo is refused, not half-supported: git hooks and
 # CI live at the repository root, so landspec's files would land in the wrong place.

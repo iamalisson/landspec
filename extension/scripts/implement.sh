@@ -162,11 +162,12 @@ case "$action" in
       if ((round >= MAX_ROUNDS)); then set -- "$@" "failed=review rounds"; fi
     fi
     write_rec "$t" "$@" "round=$round"
+    event mark task="$t" phase="$phase" round="$round" branch="$b"
     echo "MARKED=$t PHASE=$phase ROUND=$round" ;;
   fail)
     t="${1:-}"; why="${2:-}"; valid_task "$t"; [[ -n "$why" ]] || die "usage: implement.sh fail <task> <reason>"
     b="$(task_branch "$t")"; head=""; [[ -z "$b" ]] || head="$(git rev-parse "refs/heads/$b")"
-    write_rec "$t" "head=$head" "failed=$why"; echo "FAILED=$t" ;;
+    write_rec "$t" "head=$head" "failed=$why"; event fail task="$t" branch="$b"; echo "FAILED=$t" ;;
   retry)
     t="${1:-}"; valid_task "$t"
     if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
