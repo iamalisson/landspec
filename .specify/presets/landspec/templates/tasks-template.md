@@ -53,7 +53,9 @@ description: "Task list template for feature implementation"
 - Under each task, add these sub-bullets (they become the issue body):
   - `  - Comes from: <FR-/SC-/story IDs or plan section>`
   - `  - Impact: <existing code, tests, docs, data files and guards this task must update, found by
-    searching the repo for every symbol, table, file and route it adds, renames or removes>`
+    searching the repo for every symbol, table, file and route it adds, renames, removes or changes
+    the behaviour of (its result, its failure, who it lets through), naming each caller and how it
+    is affected>`
   - `  - Completed when: <a verifiable check: a command that passes, an output, a screenshot>`
 - **Ground every task in the real code, not in memory.** Before writing a task, search the repo
   for what it touches. If a task removes or renames something, list every reference to it,
