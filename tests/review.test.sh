@@ -64,19 +64,65 @@ check "when the base is merged in without touching the change, then the review s
 git switch --quiet main
 check "when no plan review was recorded, then check --plan refuses" 'fails_with "no independent review" "$r" check --plan'
 check "then the plan hint keeps --plan" 'fails_with "record its report: review.sh record --plan <report-file>" "$r" check --plan'
-report ready
-check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/report.md" >/dev/null && "$r" check --plan'
+plan_report
+check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/plan.md" >/dev/null && "$r" check --plan'
 sed -i.bak 's/ — #5$/ — #9/' specs/001-demo/tasks.md
 check "when only the issue numbers changed, then the plan review still holds" '"$r" check --plan'
 echo '# Plan: data model changed' > specs/001-demo/plan.md
 check "when plan.md changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
-"$r" record --plan "$TMP/report.md" >/dev/null
+plan_review >/dev/null
 printf '%s\n' '- [ ] T002 New task in `b`' >> specs/001-demo/tasks.md
 check "when a task was added, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
+
+# #186: the record holds only for the plan state the reviewer read (its "Plan state:" line).
+printf '%s\n' '  - What: the first version' >> specs/001-demo/tasks.md
+plan_report
+check "when a ready plan report carries the current Plan state:, then record --plan prints REVIEW=ready" \
+  '[[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
+sed -i.bak 's/the first version/an edited version/' specs/001-demo/tasks.md
+check "when a sub-bullet in tasks.md is edited and the same report is recorded again, then it fails and check --plan fails" \
+  'fails_with "the plan changed since this review: run the review again" "$r" record --plan "$TMP/plan.md" && fails_with "changed since" "$r" check --plan'
+plan_report
+sed -i.bak -E '/ — #[0-9]+$/!s/^(- \[ \] T00[0-9].*)$/\1 — #42/' specs/001-demo/tasks.md
+check "when only — #N is appended to the task lines, then the same report still records ready" \
+  'grep -q "T002 New task in \`b\` — #42$" specs/001-demo/tasks.md && [[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
+st="$("$r" state --plan)"
+printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"
+check "when the plan report has no Plan state: line, then record --plan refuses it" \
+  'fails_with "the report has no Plan state line: run the review again (this landspec version records it)" "$r" record --plan "$TMP/plan.md"'
+printf 'Plan read.\n\n**Plan state:** %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$st" > "$TMP/plan.md"
+check "when the line is written **Plan state:** <hash>, then it is read" '[[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
+printf 'Plan read.\n\nPlan state: unavailable (refused)\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' > "$TMP/plan.md"
+check "when the line is Plan state: unavailable (refused), then record refuses it as missing" \
+  'fails_with "the report has no Plan state line" "$r" record --plan "$TMP/plan.md"'
+printf 'Plan read.\n\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(tr a-f A-F <<<"$st")" > "$TMP/plan.md"
+check "when the Plan state: hash is not lowercase hex, then record refuses it as missing" \
+  'fails_with "the report has no Plan state line" "$r" record --plan "$TMP/plan.md"'
+printf 'Plan read.\n\nPlan state: %s\nPlan state: %064d\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$st" 0 > "$TMP/plan.md"
+check "when the report has two Plan state: lines, then the last one decides" \
+  'fails_with "the plan changed since this review" "$r" record --plan "$TMP/plan.md"'
+# The reviewer runs state in its own clean copy: no record folder, no active feature.
+git add specs; git commit --quiet -m "plan"; git push --quiet origin main
+git clone --quiet --branch main "$TMP/origin.git" "$TMP/fresh" 2>/dev/null
+cp -R .specify "$TMP/fresh/"
+check "when state --plan runs in a clone with no .git/landspec-review, then it prints the state and the folder still does not exist" \
+  '[[ ! -e "$TMP/fresh/.git/landspec-review" && "$(cd "$TMP/fresh" && "$r" state --plan)" == "$st" && ! -e "$TMP/fresh/.git/landspec-review" ]]'
+check "when state runs without --plan, then it fails with its usage and writes nothing" \
+  '(cd "$TMP/fresh" && fails_with "usage: review.sh state --plan" "$r" state) && [[ ! -e "$TMP/fresh/.git/landspec-review" ]]'
+rm -rf "$TMP/fresh/.specify"; snap="$TMP/fresh/snap"; mkdir -p "$snap" "$TMP/fresh/sub"; cp specs/001-demo/plan.md specs/001-demo/tasks.md "$snap/"
+check "when state --plan <dir> runs in a clone with no .specify/feature.json, then it prints the same state as the active feature" \
+  '[[ "$(cd "$TMP/fresh" && "$r" state --plan "$snap")" == "$st" ]]'
+check "when <dir> is relative, then it is read from where state was called, not the repository root" \
+  '[[ "$(cd "$TMP/fresh/sub" && "$r" state --plan ../snap)" == "$st" ]]'
+rm "$snap/tasks.md"
+check "when <dir> has no tasks.md, then state --plan fails" '(cd "$TMP/fresh" && fails_with "no tasks.md in" "$r" state --plan "$snap")'
+cp specs/001-demo/tasks.md "$snap/"; rm "$snap/plan.md"
+check "when <dir> has no plan.md, then state --plan fails" '(cd "$TMP/fresh" && fails_with "no plan.md in" "$r" state --plan "$snap")'
+rm -rf "$snap" "$TMP/fresh"
 printf 'Plan read.\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when a plan report has no Model: line, then record --plan refuses" \
   'fails_with "the report must state Model: <id> for the plan: run the review again" "$r" record --plan "$TMP/plan.md"'
-printf 'Plan read.\n\nModel: ghp_abc123\n\nAssessment: ready\n' > "$TMP/plan.md"
+printf 'Plan read.\n\nPlan state: %s\nModel: ghp_abc123\n\nAssessment: ready\n' "$st" > "$TMP/plan.md"
 check "when a plan report's Model: is ghp_abc123, then the plan record stores unknown" \
   '"$r" record --plan "$TMP/plan.md" >/dev/null 2>&1; grep -qx "model: unknown" "$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"'
 
@@ -361,7 +407,7 @@ copy() {
 }
 # copy_report <Copy: value> [plan]: a ready report naming that copy.
 copy_report() {
-  if [[ "${2:-}" == plan ]]; then printf 'Copy: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" > "$TMP/report.md"
+  if [[ "${2:-}" == plan ]]; then printf 'Copy: %s\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" "$("$r" state --plan)" > "$TMP/report.md"
   else printf 'What changed: x\n\nCopy: %s\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" "$(range)" > "$TMP/report.md"; fi
 }
 before="$(author)"

@@ -5,6 +5,8 @@
 #   review.sh record --plan <report-file>   plan review: tied to the feature's plan.md and tasks.md (issue numbers aside)
 #   review.sh record --feature <report-file>  feature review: the whole feature's check copy against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
+#   review.sh state --plan [<dir>]          print the plan state (of <dir>/plan.md and tasks.md, or the feature's),
+#                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
 #   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
@@ -12,11 +14,13 @@
 #                                           (never the report's text: pr.sh puts this in the public PR body)
 #   review.sh risk [<from>]                 the diff's risky paths, one "RISK=<category> <path>" line each (RISK=none)
 # The report ends with a line "Assessment: ready" or "Assessment: changes needed", and states the
-# lines "Model: <id>" and, for a task, "Reviewed: <from>..<head>" (plus "Delta from: <last>" for a delta).
+# lines "Model: <id>" and, for a task, "Reviewed: <from>..<head>" (plus "Delta from: <last>" for a delta),
+# or, for a plan, "Plan state: <hash>" (the state of the files it read).
 # Records live in .git, so they never dirty the tree; a new commit or an edited tasks.md needs a new review.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
+start="$PWD" # state --plan <dir> resolves a relative <dir> from where it was called
 landspec_cd_root
 
 action="${1:-}"; shift || true
@@ -33,16 +37,25 @@ fi
 if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, not a branch: drop --branch"; fi
 if $plan && $delta; then die "a plan review is always full: review.sh record --plan <report-file>"; fi
 if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review has none"; fi
+if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
 # A fix round may change this many lines outside the previous findings' files (tests aside);
 # more means the fix is new work, which gets a full review.
 DELTA_LINES=20
-dir="$(git rev-parse --git-common-dir)/landspec-review"; mkdir -p "$dir"
+dir="$(git rev-parse --git-common-dir)/landspec-review"
 
 if $plan; then
-  fdir="$(feature_dir)"; name="plan-$(basename "$fdir")"; what="the plan ($fdir/plan.md and tasks.md)"
+  # state --plan <dir>: the copies the reviewer read; no active feature needed.
+  if [[ "$action" == state && -n "${1:-}" ]]; then
+    fdir="$1"; [[ "$fdir" == /* ]] || fdir="$start/$fdir"
+    for f in plan.md tasks.md; do [[ -f "$fdir/$f" ]] || die "no $f in $1"; done
+  else fdir="$(feature_dir)"; fi
+  name="plan-$(basename "$fdir")"; what="the plan ($fdir/plan.md and tasks.md)"
   state() { # plan.md and tasks.md, without the issue numbers issues.sh appends
-    { cat "$fdir/plan.md" 2>/dev/null; sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/tasks.md"; } | sha256
+    # A feature may have no plan.md yet; `|| true` keeps that the same under set -e (state) and without it ($(state)).
+    { cat "$fdir/plan.md" 2>/dev/null || true; sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/tasks.md"; } | sha256
   }
+  # Read-only and before any write: the reviewer runs it in its own copy.
+  if [[ "$action" == state ]]; then state; exit 0; fi
 elif [[ "$action" != risk ]] && ! $feat; then # risk reads only the diff, and a feature review no branch, so neither needs one
   branch="${bopt:-$(git branch --show-current)}"; [[ -n "$branch" ]] || die "not on a branch (detached HEAD); switch to the task's branch first"
   # --branch <b> reads <b> by name, from any HEAD: its tip, not this checkout, is what is reviewed.
@@ -53,6 +66,7 @@ elif [[ "$action" != risk ]] && ! $feat; then # risk reads only the diff, and a 
   name="task-${branch//\//__}"; what="this branch's diff"; [[ -z "$bopt" ]] || what="the diff of $bopt"
   state() { local id; id="$(diff_id ${bopt:+"$bopt"})" || exit 1; echo "$id"; }
 fi
+mkdir -p "$dir"
 tip="$(branch_tip ${bopt:+"$bopt"})"
 # db: diff_base of the branch this call is about.
 db() { diff_base ${bopt:+"$bopt"}; }
@@ -62,8 +76,8 @@ record="$dir/${name:-}"
 # so nothing in the report below it can add or override a field.
 hdr() { K="$1" awk '/^$/ { exit } index($0, ENVIRON["K"] ": ") == 1 { print substr($0, length(ENVIRON["K"]) + 3) }' "${2:-$record}"; }
 
-# field <name>: the value of the report's last exact line "<name>: <value>" (optional bold), or nothing.
-field() { grep -iE "^\**$1\**: *[^[:space:]*]+\**$" "$report" | tail -1 | sed -E 's/^[^:]*: *//; s/\*+$//' || true; }
+# field <name>: the value of the report's last exact line "<name>: <value>" (optional bold, also "**<name>:**"), or nothing.
+field() { grep -iE "^\**$1\**:\** *[^[:space:]*]+\**$" "$report" | tail -1 | sed -E 's/^[^:]*:\** *//; s/\*+$//' || true; }
 
 # commit <sha>: the full sha of that commit, or nothing.
 commit() { git rev-parse --verify --quiet "$1^{commit}" 2>/dev/null || true; }
@@ -216,6 +230,9 @@ case "$action" in
     model="$(field model)"; from=""; head=""; carried=""
     if $plan; then
       [[ -n "$model" ]] || die "the report must state Model: <id> for the plan: run the review again"
+      # The state the reviewer hashed from the files it read (review.sh state --plan <its copies>).
+      [[ "$(field 'plan state')" =~ ^[0-9a-f]{64}$ ]] || die "the report has no Plan state line: run the review again (this landspec version records it)"
+      [[ "${BASH_REMATCH[0]}" == "$st" ]] || die "the plan changed since this review: run the review again"
     else
       head="$(git rev-parse "$tip")"; df="$(field 'delta from')"
       rf=""; rh=""; rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
@@ -295,5 +312,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh risk [<from>]" ;;
 esac

@@ -139,6 +139,13 @@ shallow_repo() {
   git switch --quiet "$b"
 }
 
+# plan_report [<model>]: a ready plan report at $TMP/plan.md, with the current plan's state.
+plan_report() {
+  printf 'Plan read.\n\nPlan state: %s\nModel: %s\n\nAssessment: ready\n' "$("$SCRIPTS/review.sh" state --plan)" "${1:-claude-sonnet-4-7}" > "$TMP/plan.md"
+}
+# plan_review [<model>]: write that report and record it.
+plan_review() { plan_report "$@" && "$SCRIPTS/review.sh" record --plan "$TMP/plan.md"; }
+
 # commit_tasks <content>: write tasks.md, commit it on main and develop.
 commit_tasks() {
   printf '%s\n' "$1" > specs/001-demo/tasks.md
