@@ -8,7 +8,8 @@
 # Each git command is checked against the repository it runs in: the hook's directory, moved by a
 # `cd`/`pushd` earlier in the chain or by `git -C`, or the one --git-dir/GIT_DIR= names. A
 # repository without landspec is not checked.
-# Best effort: it catches the usual forms (chains, env/command/VAR= prefixes, sh -c '...', git
+# Best effort: it catches the usual forms (chains, subshells, $(...) and backquotes (quoted or not), { ...; } and if blocks,
+# env/command/VAR=/timeout/nice/xargs/sudo prefixes, sh -c '...', git
 # global options, bundled flags), not every possible shell trick. The real boundary is CI plus
 # branch protection. People are not affected; their git hooks still apply.
 set -uo pipefail
@@ -94,8 +95,35 @@ switched() {
 # its own. A # at the start of a word starts a comment. In awk, linear in the length (bash's ${s:i:1} is not).
 words() {
   awk '
-    { text = text $0 "\n" }
-    END {
+    # A command substitution ($(…) or `…`, quoted or not) runs before the command that holds it, and
+    # holding it must not split that command: `git commit -m "$(cat m)" --no-verify` is one commit.
+    # So its text is kept aside and checked as its own command, between "|(" and "|)", once the
+    # command around it ends. Quoted runs are read whole; single quotes hold no substitution.
+    # Both scans jump from match to match: a per-character substr() is O(n) per call in a UTF-8
+    # BSD awk, which made a long quoted message quadratic (the 100k-character test hung on macOS).
+    function close_paren(t, i,   d, k) { # the ) that closes the ( at i, or 0
+      d = 0
+      while (match(substr(t, i), /[()]/)) {
+        k = i + RSTART - 1; if (substr(t, k, 1) == "(") d++; else if (--d == 0) return k
+        i = k + 1
+      }
+      return 0
+    }
+    function keep(t, i,   j, n) { # set aside the substitution starting at i ($ or `); returns where it ends
+      n = length(t)
+      if (substr(t, i, 1) == "`") { j = index(substr(t, i + 1), "`"); j = j ? i + j : n + 1; pend = pend "\001" substr(t, i + 1, j - i - 1); return j }
+      j = close_paren(t, i + 1); if (!j) j = n + 1; pend = pend "\001" substr(t, i + 2, j - i - 2); return j
+    }
+    function subs(part,   i) {
+      i = 1
+      while (match(substr(part, i), /`|[$][(]/)) i = keep(part, i + RSTART - 1) + 1
+    }
+    function flush(   p, k, m, parts) {
+      if (pend == "") return
+      p = pend; pend = ""; m = split(p, parts, "\001")
+      for (k = 2; k <= m; k++) { print "|("; tok(parts[k]); print "|)" }
+    }
+    function tok(text,   n, w, inw, i, c, j, part, d, s) {
       n = length(text); w = ""; inw = 0
       for (i = 1; i <= n; i++) {
         c = substr(text, i, 1)
@@ -103,9 +131,16 @@ words() {
           # The whole quoted run at once: no per-character work inside long messages.
           j = index(substr(text, i + 1), c); if (j == 0) j = n - i + 1
           part = substr(text, i + 1, j - 1); gsub(/\n/, " ", part)
+          if (c == "\"") subs(part)
           w = w part; inw = 1; i += j; continue
         }
         if (c == "#" && !inw) { while (i < n && substr(text, i + 1, 1) != "\n") i++; continue }
+        if (c == "`" || c == "$" && substr(text, i + 1, 1) == "(") { i = keep(text, i); w = w "_"; inw = 1; continue }
+        # ( and ) open and close a subshell ("|(" and "|)").
+        if (c == "(" || c == ")") {
+          if (inw) { print w; w = ""; inw = 0 }
+          flush(); print (c == "(" ? "|(" : "|)"); continue
+        }
         # A redirection ends the word before it (bash does too) but is not a separator: it becomes
         # its own word, keeping a file descriptor number (2>&1) and the & of >&2 or &>f.
         if (c == "<" || c == ">" || c == "&" && substr(text, i + 1, 1) == ">") {
@@ -119,13 +154,16 @@ words() {
           if (c == "|" && d == "|" || c == "&" && d == "&") i++
           else if (c == "|") { s = "|>"; if (d == "&") i++ }
           else if (c == "&") s = "|&"
-          if (c != " " && c != "\t") print s
+          if (c != " " && c != "\t") { print s; flush() }
           continue
         }
         w = w c; inw = 1
       }
       if (inw) print w
+      flush()
     }
+    { text = text $0 "\n" }
+    END { tok(text) }
   ' <<<"$1"
 }
 
@@ -217,9 +255,10 @@ check_git() {
       for w in "$@"; do
         [[ "$w" == --no-verify ]] && block "--no-verify skips the secret checks; fix what the hook reports instead"
       done ;;
-    add)
+    add|stage)
+      # --a and --al are prefixes of --all (git takes them); ./ and :/. name the whole tree too.
       for w in "$@"; do
-        case "$w" in -A|--all|.|:/|-[a-zA-Z]*A*) block "stage files by name (git add path/to/file), not everything at once" ;; esac
+        case "$w" in -A|--a|--al|--all|.|./|:/|:/.|:/./|-[a-zA-Z]*A*) block "stage files by name (git add path/to/file), not everything at once" ;; esac
       done ;;
     push)
       local targets="" remote_seen=false
@@ -245,15 +284,18 @@ check_git() {
 # check_command <command text> [nested]: every command in it, including ones inside sh -c '...'.
 # An env prefix (SKIP=) belongs to one top-level command; inside sh -c it carries over.
 check_command() {
-  local cmd=() w nested="${2:-}" before="$dir" piped=false
+  local cmd=() w nested="${2:-}" before="$dir" piped=false saved=""
   while IFS= read -r w; do
     case "$w" in
-      "|"|"|>"|"|&")
+      "|"|"|>"|"|&"|"|("|"|)")
         [[ -n "$nested" ]] || skip_env=false
         check_words ${cmd[@]+"${cmd[@]}"}; cmd=()
         # A pipeline stage or a background job runs in a subshell: its cd does not last.
-        if $piped || [[ "$w" != "|" ]]; then dir="$before"; fi
+        if $piped || [[ "$w" == "|>" || "$w" == "|&" ]]; then dir="$before"; fi
         if [[ "$w" == "|>" ]]; then piped=true; else piped=false; fi
+        # Neither does a cd inside ( … ) or $( … ): the directory comes back at the ")".
+        if [[ "$w" == "|(" ]]; then saved="$dir"$'\n'"$saved"; fi
+        if [[ "$w" == "|)" && -n "$saved" ]]; then dir="${saved%%$'\n'*}"; saved="${saved#*$'\n'}"; fi
         before="$dir" ;;
       *) cmd+=("$w") ;;
     esac
@@ -295,14 +337,24 @@ check_words() {
   for w in "$@"; do
     if [[ "$w" == GIT_CONFIG_*=* ]] && hookspath "$w"; then no_hooks; fi
   done
-  # Prefixes that still run git: VAR=value, env [VAR=value...], command, exec, time, nohup.
+  # Prefixes that still run git: VAR=value, env [VAR=value...], command, exec, time, nohup, the
+  # shell's own words ({ ! if then …), and runners with options (timeout 30, nice -n 5, xargs, sudo).
   # SKIP= (pre-commit) is remembered: it also reaches the commands inside a `sh -c '...'`.
+  local p
   while (($#)); do
     case "$1" in
       SKIP=*|PRE_COMMIT_ALLOW_NO_CONFIG=*) skip_env=true; shift ;;
       GIT_DIR=*) git_dir="${1#*=}"; shift ;;
       GIT_WORK_TREE=*) work_tree="${1#*=}"; shift ;;
-      *=*|env|command|exec|time|nohup|sudo) shift ;;
+      *=*|env|command|exec|time|nohup|'{'|'}'|'!'|if|then|else|elif|fi|do|done|while|until) shift ;;
+      timeout|nice|xargs|stdbuf|sudo|doas)
+        p="$1"; shift
+        while [[ "${1:-}" == -* ]]; do
+          # Options that take the next word as their value.
+          case "$p:$1" in timeout:-s|timeout:-k|timeout:--signal|timeout:--kill-after|nice:-n|xargs:-[InLPdsaE]|stdbuf:-[ioe]|sudo:-[ug]|doas:-u) shift ;; esac
+          shift
+        done
+        if [[ "$p" == timeout ]]; then shift; fi ;; # its duration
       *) break ;;
     esac
   done

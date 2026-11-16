@@ -34,6 +34,22 @@ check "when gh only reads PRs, then it is allowed" '"$g" "gh pr list" && "$g" "g
 
 check "when no-verify hides in a bundled flag, a global option or a wrapper, then it is blocked" \
   'blocked "git commit -nm x" && blocked "git --no-pager commit -n -m x" && blocked "env git commit --no-verify -m x" && blocked "GIT_X=1 command git push --no-verify"'
+check "when the command sits in a subshell, braces, an if block or a \$(…), then it is still blocked" \
+  'blocked "(git commit --no-verify -m x)" && blocked "{ git commit --no-verify -m x; }" && blocked "if true; then git push origin main; fi" && blocked "URL=\$(gh pr create --title x)" && blocked "URL=\`gh pr create --title x\`"'
+check "when a \$(…) or backquote sits inside double quotes, then the command inside is still checked" \
+  'blocked "URL=\"\$(gh pr create --title x)\"" && blocked "x=\"\$(git push origin main)\"" && blocked "echo \"\`git commit --no-verify -m x\`\""'
+check "when a \$(…) sits inside a command, then the rest of that command is still checked" \
+  'blocked "git commit -m \"\$(cat m)\" --no-verify" && blocked "git commit -m \$(cat m) --no-verify" && blocked "git commit -m \`cat m\` --no-verify" && blocked "x=\$(cd /tmp); git push origin main"'
+check "when single quotes hold a \$(…), then it is text and allowed" \
+  '"$g" "echo '"'"'literal \$(git push origin main)'"'"'" && "$g" "echo \$((1+2))" && "$g" "git commit -m \"\$(cat m)\""'
+check "when timeout, nice, xargs or sudo run git, with their own options, then it is still blocked" \
+  'blocked "timeout 30 git push origin main" && blocked "timeout -s KILL 30 git commit --no-verify -m x" && blocked "nice -n 5 git commit --no-verify -m x" && blocked "xargs -n 1 git push origin main" && blocked "sudo git push origin main" && blocked "sudo -u me git push origin main"'
+check "when a cd happens inside ( … ), then the commands after it are checked where they really run" \
+  'blocked "(cd /tmp && git status); git push origin main"'
+check "when parentheses or braces are only inside a quoted message or format, then it is allowed" \
+  '"$g" "git commit -m \"fix (parser) and {braces}\"" && "$g" "git log --format=\"(%h)\" -n 3" && "$g" "echo \"\$(date)\"; git status"'
+check "when everything is staged through git stage, --al or ./, then it is blocked" \
+  'blocked "git stage -A" && blocked "git add --al" && blocked "git add ./" && blocked "git add :/."'
 check "when hooks are switched off with -c core.hooksPath, then it is blocked" \
   'blocked "git -c core.hooksPath=/dev/null commit -m x" && blocked "git -c core.hooksPath /dev/null commit -m x"'
 check "when pre-commit hooks are skipped with SKIP=, then it is blocked" \
@@ -69,6 +85,9 @@ check "when other git commands use -n (git log -n 5), then they are allowed" '"$
 long="git commit -m \"$(head -c 100000 /dev/zero | tr '\0' 'a')\""
 check "when a 100 KB command is checked under a UTF-8 locale, then it takes under 3 seconds (the hook allows 10)" \
   'start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long"; (( $(date +%s) - start < 3 ))'
+long2="git commit -m \"$(head -c 100000 /dev/zero | tr '\0' 'a') \$(date) \$(echo (\""
+check "when that command also holds a \$(…) and an unclosed one in quotes, then it still takes under 3 seconds" \
+  'start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long2"; (( $(date +%s) - start < 3 ))'
 
 # F2.3: git accepts a unique prefix of a long option, so every cut of the option is refused. The
 # cuts are made here at run time; the file holds no list of them.

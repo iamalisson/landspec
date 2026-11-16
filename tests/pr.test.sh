@@ -21,7 +21,7 @@ check "when not on the task's branch, then it refuses" 'fails_with "not on T001"
 
 "$SCRIPTS/branch.sh" T001 >/dev/null
 echo 'export const search = 1' > search.ts
-check "when there are uncommitted changes, then it refuses" 'fails_with "uncommitted" "$p" task T001 "feat: add search"'
+check "when there are uncommitted changes, then it refuses and names the files" 'fails_with "uncommitted changes; commit the work first (or git-ignore what the tests create): search.ts" "$p" task T001 "feat: add search"'
 git add search.ts; git commit --quiet -m "feat(search): add search"
 mkdir -p .claude/worktrees/agent-x; echo x > .claude/worktrees/agent-x/f
 check "when only an untracked .claude/worktrees/agent-x/ folder is there, then it does not refuse for uncommitted changes" \
