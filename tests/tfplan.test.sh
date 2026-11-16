@@ -19,7 +19,7 @@ done
 NOPY="$TMP/bin:$TMP/nopy"
 
 cat > "$TMP/plan.json" <<'EOF'
-{"format_version": "1.2", "variables": {"db_password": {"value": "hunter2hunter2"}},
+{"format_version": "1.2", "planned_values": {}, "variables": {"db_password": {"value": "hunter2hunter2"}},
  "resource_changes": [
   {"address": "aws_instance.web", "type": "aws_instance", "change": {"actions": ["create"], "after": {"user_data": "hunter2hunter2"}}},
   {"address": "aws_security_group.web", "type": "aws_security_group", "change": {"actions": ["update"]}},
@@ -90,7 +90,7 @@ check "when a second root is recorded, then it adds a section; recording the fir
 record infra/envs/dev --chdir ../prod >/dev/null
 check "when --chdir names the root, then that root's section is the one written" '[[ "$(grep -c "^\[" "$(rec)")" == 2 && "$(grep -c "^\[infra/envs/prod\]$" "$(rec)")" == 1 ]]'
 
-printf '{"format_version": "1.2", "resource_changes": [{"address": "aws_instance.tmp", "type": "aws_instance", "change": {"actions": ["delete"]}}, {"address": "aws_iam_role.r", "type": "aws_iam_role", "change": {"actions": ["create", "delete"]}}]}\n' > "$TMP/plain.json"
+printf '{"format_version": "1.2", "planned_values": {}, "resource_changes": [{"address": "aws_instance.tmp", "type": "aws_instance", "change": {"actions": ["delete"]}}, {"address": "aws_iam_role.r", "type": "aws_iam_role", "change": {"actions": ["create", "delete"]}}]}\n' > "$TMP/plain.json"
 out="$(TF_PLAN_JSON="$TMP/plain.json" record infra/envs/dev)"
 check "when only stateless resources are destroyed or replaced, then no STATEFUL line, and create-then-delete counts as a replace" '[[ "$out" == "PLAN=create 1 change 0 destroy 2" ]]'
 printf 'No changes. Your infrastructure matches the configuration.\n' > "$TMP/none.txt"
@@ -106,6 +106,12 @@ check "when the text output has neither a Plan: line nor No changes., then it re
   'echo "Error: nothing" > "$TMP/bad.txt"; ! PATH="$NOPY" TF_PLAN_TEXT="$TMP/bad.txt" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
 check "when the JSON is not a plan, then it refuses and writes no record" \
   'echo "{}" > "$TMP/bad.json"; ! TF_PLAN_JSON="$TMP/bad.json" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
+check "when the JSON is a state file (format_version, no planned_values), then it refuses and writes no record" \
+  'echo "{\"format_version\": \"1.0\", \"values\": {}}" > "$TMP/state.json"; ! TF_PLAN_JSON="$TMP/state.json" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
+printf '  # aws_rds_cluster.main is tainted, so must be replaced\n  # aws_kms_key.k will be replaced, as requested\n\nPlan: 2 to add, 0 to change, 2 to destroy.\n' > "$TMP/taint.txt"
+check "when the text plan has a tainted and a requested replace, then both are STATEFUL=replace lines with the bare address" \
+  '[[ "$(PATH="$NOPY" TF_PLAN_TEXT="$TMP/taint.txt" record infra/envs/dev)" == "$(printf "PLAN=create 2 change 0 destroy 2\nSTATEFUL=replace aws_rds_cluster.main\nSTATEFUL=replace aws_kms_key.k")" ]]'
+rm -f "$(rec)"
 echo corrupt > infra/envs/dev/tfplan; later infra/envs/dev/tfplan
 check "when terraform cannot read the plan file, then it exits 1 and writes no record" \
   'set +e; (cd infra/envs/dev && bash "$t" record tfplan); rc=$?; set -e; ((rc == 1)) && [[ ! -f "$(rec)" ]]'
@@ -146,6 +152,11 @@ git switch --quiet -c tmp-rm origin/develop
 git rm --quiet infra/envs/prod/main.tf; git commit --quiet -m "chore: drop prod"; rmdir infra/envs/prod 2>/dev/null || true
 set_cfg aws_prod_paths "infra/envs/none, ./infra/envs/prod/"
 check "when the diff deletes a prod root (listed with a space and ./), then the gate still wants its section" \
+  'record infra/envs/dev >/dev/null && one_refusal "in infra/envs/prod, then" bash "$t" gate'
+set_cfg aws_prod_paths infra/envs/prod
+git switch --quiet -c tmp-mv origin/develop
+mkdir -p infra/old; git mv infra/envs/prod/main.tf infra/old/main.tf; git commit --quiet -m "chore: move prod"
+check "when a commit moves a prod .tf file elsewhere and only another root is recorded, then the gate refuses naming infra/envs/prod" \
   'record infra/envs/dev >/dev/null && one_refusal "in infra/envs/prod, then" bash "$t" gate'
 set_cfg aws off
 check "when aws is off, then the gate prints nothing and lets it through, record or not" 'rm -f "$(rec)"; [[ -z "$(bash "$t" gate)" ]]'

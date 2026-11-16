@@ -37,7 +37,8 @@ try:
     p = json.load(sys.stdin)
 except ValueError:
     sys.exit(0)
-if not isinstance(p, dict) or "format_version" not in p:
+# A state file has format_version too, but no planned_values: it is no plan.
+if not isinstance(p, dict) or "format_version" not in p or "planned_values" not in p:
     sys.exit(0)
 c = u = d = 0
 hits = []
@@ -69,9 +70,9 @@ summarize_text() {
         if ($i == "to" && $(i + 1) == "change,") u = n
         if ($i == "to" && $(i + 1) ~ /^destroy[.,]?$/) d = n } next }
     /^No changes\./ { plan = 1; next }
-    /^  # .* (must be replaced|will be destroyed)$/ {
-      a = substr($0, 5); kind = (a ~ / must be replaced$/) ? "replace" : "destroy"
-      sub(/ (must be replaced|will be destroyed)$/, "", a); sub(/ \(deposed object [^)]*\)$/, "", a)
+    /^  # .* (must be replaced|will be destroyed|will be replaced, as requested)$/ {
+      a = substr($0, 5); kind = (a ~ / will be destroyed$/) ? "destroy" : "replace"
+      sub(/ (is tainted, so must be replaced|must be replaced|will be destroyed|will be replaced, as requested)$/, "", a); sub(/ \(deposed object [^)]*\)$/, "", a)
       t = a; while (t ~ /^module\.[^.[]+(\[[^]]*\])?\./) sub(/^module\.[^.[]+(\[[^]]*\])?\./, "", t)
       sub(/\..*$/, "", t)
       if (t ~ re) hits[++h] = kind " " a }
@@ -132,7 +133,7 @@ case "${1:-}" in
     ;;
   gate)
     [[ "$(cfg aws off)" == on && "$(landspec_level)" != lite ]] || exit 0
-    touched="$(git diff --name-only "$(diff_base)" HEAD -- '*.tf')"
+    touched="$(git diff --name-only --no-renames "$(diff_base)" HEAD -- '*.tf')"
     [[ -n "$touched" ]] || exit 0
     rec="$(diff_record landspec-tfplan)" || exit 1
     need="no Terraform plan recorded for this diff; run terraform plan -out=tfplan in"

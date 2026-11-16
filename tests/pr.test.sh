@@ -518,7 +518,7 @@ check "when pr.sh spec runs on a stacked task branch, then the spec branch start
 # ── Spec 006 T006: with aws: on, an infrastructure diff needs its Terraform plan recorded ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
 fake_terraform
-printf '{"format_version": "1.2", "resource_changes": [{"address": "aws_s3_bucket.logs", "type": "aws_s3_bucket", "change": {"actions": ["delete"]}}, {"address": "aws_vpc.main", "type": "aws_vpc", "change": {"actions": ["create"]}}]}\n' > "$TMP/plan.json"
+printf '{"format_version": "1.2", "planned_values": {}, "resource_changes": [{"address": "aws_s3_bucket.logs", "type": "aws_s3_bucket", "change": {"actions": ["delete"]}}, {"address": "aws_vpc.main", "type": "aws_vpc", "change": {"actions": ["create"]}}]}\n' > "$TMP/plan.json"
 export TF_PLAN_JSON="$TMP/plan.json"
 later() { local s=$(($(date +%s) + 2)); touch -d "@$s" "$1" 2>/dev/null || touch -t "$(date -r "$s" +%Y%m%d%H%M.%S)" "$1"; }
 new_repo standard
