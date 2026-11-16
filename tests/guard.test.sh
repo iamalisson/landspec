@@ -251,5 +251,12 @@ check "when the session is in a repo with aws off but the command cds into an aw
 long3="aws s3 cp x \"$(head -c 100000 /dev/zero | tr '\0' 'a')\""
 check "when a 100 KB aws command is checked in an aws: on repo under a UTF-8 locale, then it takes under 3 seconds" \
   'cd "$TMP/aws"; start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long3"; (( $(date +%s) - start < 3 ))'
+a100k="$(head -c 100000 /dev/zero | tr '\0' 'a')"; eq100k="$(head -c 100000 /dev/zero | tr '\0' '=')"
+check "when cat, grep or head get a 100 KB word (no <>=, a leading =, all =) in an aws: on repo, then each takes under 3 seconds and a .env after it is still blocked" \
+  'cd "$TMP/aws"; for r in cat grep head; do for w in "$a100k" "=$a100k" "$eq100k" "$a100k/.env"; do start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$r $w x" 2>/dev/null; (( $(date +%s) - start < 3 )) || { echo "$r ${w:0:2}"; exit 1; }; done; done \
+   && blocked "cat $a100k; cat .env" && blocked "cat $a100k/.env" && blocked "cat x/.ENV" && blocked "cat .Env.local" && "$g" "cat $a100k"'
+check "when terraform or tofu apply takes -destroy=<true>, then it is blocked; -destroy=false (or 0, f) is allowed" \
+  'cd "$TMP/aws"; blocked "terraform apply -destroy=true" && blocked "terraform apply --destroy=true" && blocked "tofu apply -auto-approve -destroy=1" && blocked "terraform apply -destroy=" \
+   && "$g" "terraform apply -destroy=false" && "$g" "tofu apply --destroy=0" && "$g" "terraform apply -destroy=f" && "$g" "terraform apply -destroyx"'
 
 exit "$FAIL"

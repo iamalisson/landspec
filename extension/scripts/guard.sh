@@ -384,7 +384,12 @@ check_tf() {
   case "$sub" in
     destroy) no_destroy "$tool destroy" ;;
     apply)
-      for w in "$@"; do [[ "$w" != -destroy && "$w" != --destroy ]] || no_destroy "$tool apply -destroy"; done
+      for w in "$@"; do
+        case "$w" in -destroy|--destroy|-destroy=*|--destroy=*)
+          # Go's flag parsing takes -destroy=<bool>; only a false value keeps it off.
+          case "${w#*=}" in 0|f|F|false|FALSE|False) ;; *) no_destroy "$tool apply -destroy" ;; esac ;;
+        esac
+      done
       if prod_profile "$aws_profile"; then no_prod "$tool apply" "AWS_PROFILE=$aws_profile"; fi
       if [[ -n "$tfdir" ]] && prod_dir "$tfdir"; then no_prod "$tool apply" "${tfdir#"$atop"/}"; fi ;;
     state) [[ "${1:-}" != pull ]] || no_secret "$tool state pull" ;;
@@ -425,10 +430,12 @@ check_aws() {
 check_read() {
   local tool="$1" w f; shift
   for w in "$@"; do
-    f="${w##*[<>=]}"; f="${f##*/}" # a glued redirection or --file=, then the file name
+    # Only the last 256 characters (a file name is shorter): ## over a whole long word is quadratic.
+    f="${w: -256}"; [[ ${#w} -gt 256 ]] || f="$w"
+    f="${f##*[<>=]}"; f="${f##*/}" # a glued redirection or --file=, then the file name
     case "$f" in
       .env.example|.env.sample|.env.template|.env.dist) ;;
-      .env|.env.*|*.tfstate|*.tfstate.*) no_secret "$tool $w" ;;
+      .[eE][nN][vV]|.[eE][nN][vV].*|*.tfstate|*.tfstate.*) no_secret "$tool $f" ;;
     esac
   done
 }
