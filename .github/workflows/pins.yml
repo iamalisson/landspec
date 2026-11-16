@@ -4,7 +4,7 @@ name: Pins
 # actions: never runs (if: false). It uses every PIN_* action exactly as pins.sh writes it, so
 #   Dependabot (which reads the uses: lines under jobs, whatever the if:) proposes their updates;
 #   bin/sync-pins.sh then copies a bump back into pins.sh.
-# tools: weekly, compares the pinned tool versions with their latest releases (bin/check-tools.sh)
+# tools: weekly, compares the pinned tool versions with their newest releases out for three weeks (bin/check-tools.sh)
 #   and opens one "Tool pins behind" issue when any is behind.
 on:
   schedule:

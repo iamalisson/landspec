@@ -104,8 +104,9 @@ adds parallel reviewers and adversarial verification.
   proposes updates for every pinned action: landspec's own
   [`pins.yml`](../.github/workflows/pins.yml) uses each one in a job that never runs, and
   `bin/sync-pins.sh` copies a bump back into `pins.sh`. Dependabot does not see the scanner
-  versions, so `pins.yml` checks them weekly against their latest releases (`bin/check-tools.sh`)
-  and opens one "Tool pins behind" issue when any is behind.
+  versions, so `pins.yml` checks them weekly against their newest releases out for three weeks
+  (`bin/check-tools.sh`; a younger release or a prerelease does not count) and opens one "Tool
+  pins behind" issue when any is behind.
 
 ## Limits
 
