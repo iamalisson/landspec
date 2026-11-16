@@ -102,7 +102,11 @@ render() {
 }
 block="<!-- landspec:start (managed by /landspec:level; edit outside this block) -->"$'\n'
 block+="## Defaults (landspec, level: $level)"$'\n'
-for l in "${levels[@]}"; do block+=$'\n'"$(render "$LANDSPEC_EXT_DIR/levels/$l.md")"$'\n'; done
+aws_on=false; [[ "$(cfg aws off)" == on ]] && aws_on=true
+for l in "${levels[@]}"; do
+  block+=$'\n'"$(render "$LANDSPEC_EXT_DIR/levels/$l.md")"$'\n'
+  if $aws_on; then block+=$'\n'"$(render "$LANDSPEC_EXT_DIR/levels/aws/$l.md")"$'\n'; fi
+done
 block+="<!-- landspec:end -->"
 
 const=".specify/memory/constitution.md"
@@ -369,6 +373,28 @@ dependabot_yaml() {
   infra_dirs terraform '\.tf$'
 }
 
+# The AWS MCP server, run as the dev agent profile. JSON has no comments, so no marker: written once.
+mcp_json() {
+  cat <<EOF
+{
+  "mcpServers": {
+    "aws-mcp": {
+      "command": "uvx",
+      "args": [
+        "mcp-proxy-for-aws==$MCP_PROXY_VERSION",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata",
+        "AWS_REGION=us-east-1"
+      ],
+      "env": {
+        "AWS_PROFILE": "landspec-agent-dev"
+      }
+    }
+  }
+}
+EOF
+}
+
 for l in "${levels[@]}"; do
   src="$LANDSPEC_EXT_DIR/scaffold/$l"
   [[ -d "$src" ]] || continue
@@ -390,6 +416,8 @@ for l in "${levels[@]}"; do
           printf '# Every change needs a review from an owner.\n* @%s\n' "${owner:-OWNER}" | put .github/CODEOWNERS generated ;;
   esac
 done
+# No "generated" flag: no older release wrote .mcp.json, so its "kept (written by landspec …)" line would be wrong.
+if $aws_on; then mcp_json | put .mcp.json; fi
 
 # ── Git hooks ────────────────────────────────────────────────────────────────
 # core.hooksPath is per clone: every teammate's /landspec:init (or this script) sets it.

@@ -58,6 +58,12 @@ check "when pins.yml's tools job is read, then it runs bin/check-tools.sh with i
   'grep -q "bin/check-tools.sh" <<<"$tools_job" && grep -qE "^ +issues: write" <<<"$tools_job"'
 check "then pins.yml runs on a weekly schedule" 'grep -qE "^ +- cron: \"[0-9]+ [0-9]+ \* \* [0-6]\"" .github/workflows/pins.yml'
 
+# The PyPI pin is bumped by hand (check-tools.sh reads GitHub only): the generated .mcp.json must follow it.
+mcp_v="$(sed -nE 's/^MCP_PROXY_VERSION="([^"]+)".*/\1/p' extension/scripts/pins.sh)"
+check "when pins.sh sets MCP_PROXY_VERSION, then the .mcp.json level.sh generates runs that exact version" \
+  '[[ -n "$mcp_v" ]] && cd "$TMP" && new_repo lite >/dev/null && echo "aws: on" >> .specify/extensions/landspec/landspec-config.yml && "$SCRIPTS/level.sh" lite --no-branches >/dev/null && [[ "$(grep -oE "mcp-proxy-for-aws==[^\"]+" .mcp.json)" == "mcp-proxy-for-aws==$mcp_v" ]]'
+check "then docs/reference.md says this pin is bumped by hand" 'grep -qF "MCP_PROXY_VERSION" docs/reference.md'
+
 if python3 -c "import yaml" 2>/dev/null; then
   check "every workflow is valid YAML" 'python3 -c "import sys, yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" $workflows'
 else
