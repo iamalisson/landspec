@@ -4,6 +4,9 @@
 # weeks (fake gh, whose release lists are filtered by check-tools' own --jq through real jq).
 # shellcheck source=helpers.sh
 source "$(dirname "$0")/helpers.sh"
+# The fixtures and the fake gh run real jq (gh has its own built in, so check-tools.sh needs none);
+# the busybox job has no jq, so this file is skipped there, as pr.test.sh skips its jq checks.
+if ! command -v jq >/dev/null; then echo "skip - check-tools.test.sh needs jq"; exit 0; fi
 # shellcheck source=../extension/scripts/pins.sh
 source "$ROOT/extension/scripts/pins.sh"
 fake_gh
