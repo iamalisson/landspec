@@ -36,6 +36,12 @@ check "when no-verify hides in a bundled flag, a global option or a wrapper, the
   'blocked "git commit -nm x" && blocked "git --no-pager commit -n -m x" && blocked "env git commit --no-verify -m x" && blocked "GIT_X=1 command git push --no-verify"'
 check "when the command sits in a subshell, braces, an if block or a \$(…), then it is still blocked" \
   'blocked "(git commit --no-verify -m x)" && blocked "{ git commit --no-verify -m x; }" && blocked "if true; then git push origin main; fi" && blocked "URL=\$(gh pr create --title x)" && blocked "URL=\`gh pr create --title x\`"'
+check "when a \$(…) or backquote sits inside double quotes, then the command inside is still checked" \
+  'blocked "URL=\"\$(gh pr create --title x)\"" && blocked "x=\"\$(git push origin main)\"" && blocked "echo \"\`git commit --no-verify -m x\`\""'
+check "when a \$(…) sits inside a command, then the rest of that command is still checked" \
+  'blocked "git commit -m \"\$(cat m)\" --no-verify" && blocked "git commit -m \$(cat m) --no-verify" && blocked "git commit -m \`cat m\` --no-verify" && blocked "x=\$(cd /tmp); git push origin main"'
+check "when single quotes hold a \$(…), then it is text and allowed" \
+  '"$g" "echo '"'"'literal \$(git push origin main)'"'"'" && "$g" "echo \$((1+2))" && "$g" "git commit -m \"\$(cat m)\""'
 check "when timeout, nice, xargs or sudo run git, with their own options, then it is still blocked" \
   'blocked "timeout 30 git push origin main" && blocked "timeout -s KILL 30 git commit --no-verify -m x" && blocked "nice -n 5 git commit --no-verify -m x" && blocked "xargs -n 1 git push origin main" && blocked "sudo git push origin main" && blocked "sudo -u me git push origin main"'
 check "when a cd happens inside ( … ), then the commands after it are checked where they really run" \

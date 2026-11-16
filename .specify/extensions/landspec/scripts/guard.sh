@@ -8,7 +8,7 @@
 # Each git command is checked against the repository it runs in: the hook's directory, moved by a
 # `cd`/`pushd` earlier in the chain or by `git -C`, or the one --git-dir/GIT_DIR= names. A
 # repository without landspec is not checked.
-# Best effort: it catches the usual forms (chains, subshells, $(...), { ...; } and if blocks,
+# Best effort: it catches the usual forms (chains, subshells, $(...) and backquotes (quoted or not), { ...; } and if blocks,
 # env/command/VAR=/timeout/nice/xargs/sudo prefixes, sh -c '...', git
 # global options, bundled flags), not every possible shell trick. The real boundary is CI plus
 # branch protection. People are not affected; their git hooks still apply.
@@ -95,8 +95,30 @@ switched() {
 # its own. A # at the start of a word starts a comment. In awk, linear in the length (bash's ${s:i:1} is not).
 words() {
   awk '
-    { text = text $0 "\n" }
-    END {
+    # A command substitution ($(…) or `…`, quoted or not) runs before the command that holds it, and
+    # holding it must not split that command: `git commit -m "$(cat m)" --no-verify` is one commit.
+    # So its text is kept aside and checked as its own command, between "|(" and "|)", once the
+    # command around it ends. Quoted runs are read whole; single quotes hold no substitution.
+    function close_paren(t, i,   d, n, c) { # the ) that closes the ( at i, or 0
+      d = 0; n = length(t)
+      for (; i <= n; i++) { c = substr(t, i, 1); if (c == "(") d++; else if (c == ")" && --d == 0) return i }
+      return 0
+    }
+    function keep(t, i,   j, n) { # set aside the substitution starting at i ($ or `); returns where it ends
+      n = length(t)
+      if (substr(t, i, 1) == "`") { j = index(substr(t, i + 1), "`"); j = j ? i + j : n + 1; pend = pend "\001" substr(t, i + 1, j - i - 1); return j }
+      j = close_paren(t, i + 1); if (!j) j = n + 1; pend = pend "\001" substr(t, i + 2, j - i - 2); return j
+    }
+    function subs(part,   i, n, c) {
+      n = length(part)
+      for (i = 1; i <= n; i++) { c = substr(part, i, 1); if (c == "`" || c == "$" && substr(part, i + 1, 1) == "(") i = keep(part, i) }
+    }
+    function flush(   p, k, m, parts) {
+      if (pend == "") return
+      p = pend; pend = ""; m = split(p, parts, "\001")
+      for (k = 2; k <= m; k++) { print "|("; tok(parts[k]); print "|)" }
+    }
+    function tok(text,   n, w, inw, i, c, j, part, d, s) {
       n = length(text); w = ""; inw = 0
       for (i = 1; i <= n; i++) {
         c = substr(text, i, 1)
@@ -104,13 +126,15 @@ words() {
           # The whole quoted run at once: no per-character work inside long messages.
           j = index(substr(text, i + 1), c); if (j == 0) j = n - i + 1
           part = substr(text, i + 1, j - 1); gsub(/\n/, " ", part)
+          if (c == "\"") subs(part)
           w = w part; inw = 1; i += j; continue
         }
         if (c == "#" && !inw) { while (i < n && substr(text, i + 1, 1) != "\n") i++; continue }
-        # ( and ) open and close a subshell or a $(…) ("|(" and "|)"); a backquote separates.
-        if (c == "(" || c == ")" || c == "`") {
+        if (c == "`" || c == "$" && substr(text, i + 1, 1) == "(") { i = keep(text, i); w = w "_"; inw = 1; continue }
+        # ( and ) open and close a subshell ("|(" and "|)").
+        if (c == "(" || c == ")") {
           if (inw) { print w; w = ""; inw = 0 }
-          print (c == "(" ? "|(" : c == ")" ? "|)" : "|"); continue
+          flush(); print (c == "(" ? "|(" : "|)"); continue
         }
         # A redirection ends the word before it (bash does too) but is not a separator: it becomes
         # its own word, keeping a file descriptor number (2>&1) and the & of >&2 or &>f.
@@ -125,13 +149,16 @@ words() {
           if (c == "|" && d == "|" || c == "&" && d == "&") i++
           else if (c == "|") { s = "|>"; if (d == "&") i++ }
           else if (c == "&") s = "|&"
-          if (c != " " && c != "\t") print s
+          if (c != " " && c != "\t") { print s; flush() }
           continue
         }
         w = w c; inw = 1
       }
       if (inw) print w
+      flush()
     }
+    { text = text $0 "\n" }
+    END { tok(text) }
   ' <<<"$1"
 }
 
