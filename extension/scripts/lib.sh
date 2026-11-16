@@ -290,8 +290,11 @@ infra_files() {
 }
 
 # task_summary <task line>: the description without its file list, for titles and branch names.
-# Cuts at " in `path`" or at " in some/path…" (spec-kit writes the paths either way).
-task_summary() { task_desc "$1" | sed -E 's/ in `.*//; s/ in [^ ]*[/][^ ]*.*//'; }
+# Drops a trailing "(depends on …)" (any case; BSD sed has no I flag), then cuts at " in `path`"
+# or at " in some/path…" (spec-kit writes the paths either way).
+task_summary() {
+  task_desc "$1" | sed -E 's/[[:space:]]*\([Dd][Ee][Pp][Ee][Nn][Dd][Ss] [Oo][Nn][^)]*\)[[:space:]]*$//; s/ in `.*//; s/ in [^ ]*[/][^ ]*.*//'
+}
 
 # feature_key <feature dir or name>: its number, as spec-kit names features: a sequential prefix
 # of 3+ digits (001-search -> 001) or a timestamp (20261104-153000-search -> 20261104-153000).

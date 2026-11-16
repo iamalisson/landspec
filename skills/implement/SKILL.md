@@ -110,7 +110,8 @@ check runs on the base itself, once per base commit, and only from "The release"
      .specify/extensions/landspec/scripts/next.sh <feature>` (so the feature is the active one).
    - Append one task line per `not met` item to the feature's `tasks.md`, with the next free ids, in
      the format of the others (`- [ ] Tnnn <what> in <files>`, then the sub-bullets `Comes from:`
-     the item, `What`, `Completed when`); never change a line that already ends in `— #N`.
+     the item, `What`, `Completed when`); never change the description of a line that already ends in
+     `— #N` (only its `(depends on …)` suffix).
    - A plan review of those lines, as `issues.md` step 2 says (`review.sh record --plan`), then
      `issues.sh` for their issues, then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
    - `git switch --detach` there, last.

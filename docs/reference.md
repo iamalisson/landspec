@@ -91,7 +91,11 @@ on standard and full, the managed `close-linked-issues.yml` closes them on a mer
 or `staging`, and its job fails, naming `could not close: #N`, when one of them cannot be closed.
 
 A task whose line says `(depends on T003)` is **blocked** until T003's issue closes, so `next`
-never offers work whose prerequisite has not merged.
+never offers work whose prerequisite has not merged. The clause is not part of the task's summary:
+a trailing `(depends on …)` (any case) is left out of the issue title, the branch slug and the text
+`next` shows, before the ` in <path>` part is cut; one in the middle of a line stays. So a linked
+line (`— #N`) may gain or lose a dependency: run the plan review again, record it, then
+`issues.sh --sync` rewrites the issue's body, and its title and branch name stay as they were.
 
 A task branch can also start **stacked** on another task's branch: `branch.sh [feature] T003 --from
 <branch>` starts it from that branch's head, only when that head has a recorded `ready` review, and
