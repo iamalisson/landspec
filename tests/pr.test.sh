@@ -114,7 +114,7 @@ mkdir -p specs/002-new
 printf '%s\n' '- [ ] T001 Thing in `a` — #11' '- [ ] T002 Other in `b` — #12' > specs/002-new/tasks.md
 echo '{ "feature_directory": "specs/002-new" }' > .specify/feature.json
 set_cfg milestone v2; set_cfg project Board
-printf 'Plan read.\n\nModel: claude-haiku-4-5\n\nAssessment: ready\n' > "$TMP/plan.md"; "$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null 2>&1
+plan_review claude-haiku-4-5 >/dev/null 2>&1
 echo "local data" > a
 check "when tasks.md names a file that is only untracked here, then the spec PR is refused before any switch" \
   'fails_with "not in git: a" "$p" spec && [[ "$(git branch --show-current)" == main ]]'
@@ -134,13 +134,13 @@ check "when the first spec PR was opened, then its commit says add" \
   '[[ "$(git log -1 --format=%s HEAD~0)" == "docs(specs): add 002-new spec, plan and tasks" ]]'
 # #115/#116: a task added after the spec PR opened reaches its body, and the commit says update.
 printf '%s\n' '- [ ] T004 Added after review in `d` — #14' >> specs/002-new/tasks.md
-"$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null 2>&1
+plan_review claude-haiku-4-5 >/dev/null 2>&1
 : > "$GH_LOG"; out="$("$p" spec)"
 check "when the open spec PR is updated with a new task issue, then its body is rewritten with every issue" \
   'grep -q "^pr edit https://github.com/acme/app/pull/99 --body" "$GH_LOG" && grep -q "#11 #12 #14" "$GH_LOG" && grep -qF "PR body replaced from the generated spec body" <<<"$out"'
 check "then the new commit says update, not add" '[[ "$(git log -1 --format=%s)" == "docs(specs): update 002-new spec, plan and tasks" ]]'
 printf '%s\n' '- [ ] T005 Outra tarefa em `e` — #15' >> specs/002-new/tasks.md
-"$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null 2>&1
+plan_review claude-haiku-4-5 >/dev/null 2>&1
 "$p" spec "docs(specs): adiciona a tarefa T005" >/dev/null
 check "when a title is given, then the commit uses it as written (the project's language)" \
   '[[ "$(git log -1 --format=%s)" == "docs(specs): adiciona a tarefa T005" ]]'
@@ -154,7 +154,7 @@ git -C "$TMP" clone --quiet "$TMP/origin.git" squash 2>/dev/null
 git fetch --quiet origin; rm -f "$GH_PR"; git switch --quiet main
 mkdir -p specs/002-new; git checkout --quiet origin/develop -- specs/002-new; git reset --quiet
 printf '%s\n' '- [ ] T003 Added by converge in `c` — #13' >> specs/002-new/tasks.md
-"$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null 2>&1
+plan_review claude-haiku-4-5 >/dev/null 2>&1
 "$p" spec >/dev/null
 check "when a later spec PR follows a squash-merged one, then it starts fresh from the base" \
   'git merge-base --is-ancestor origin/develop HEAD && [[ "$(git branch --show-current)" == spec/002-new ]]'
@@ -397,10 +397,9 @@ check "when a report's map names a token outside the diff, then it never reaches
 
 # ── A stale plan review stops pr.sh spec ──
 git switch --quiet main; rm -f "$GH_PR"; : > "$GH_LOG"
-printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when no plan review was recorded, then pr.sh spec stops and opens nothing" \
   'fails_with "no independent review" "$p" spec && ! grep -q "^pr create" "$GH_LOG"'
-"$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null
+plan_review >/dev/null
 printf '%s\n' '- [ ] T002 Added by analysis in `b`' >> specs/001-demo/tasks.md
 printf '## Specification Analysis Report\n\nCoverage Summary Table\n' > "$TMP/analysis.md"; "$SCRIPTS/analyzed.sh" "$TMP/analysis.md" >/dev/null
 check "when the analysis changed tasks.md after the plan review, then pr.sh spec stops, pushes nothing and stays on the branch" \
@@ -453,7 +452,7 @@ echo a > app.txt; git add app.txt; git commit --quiet -m app; git push --quiet o
 echo b > app.txt; git add app.txt; git commit --quiet -m app2   # local only: HEAD differs from origin/develop...
 echo c > app.txt                                                  # ...and an unstaged edit on top: git switch refuses
 printf '%s\n' '- [ ] T001 Thing in `a` — #11' > specs/001-demo/tasks.md; echo draft > specs/001-demo/spec.md
-"$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null
+plan_review >/dev/null
 check "when the switch to the spec branch is refused, then it fails and the spec folder is put back untouched" \
   'fails_with "put back" "$p" spec && [[ "$(cat specs/001-demo/spec.md)" == draft && "$(cat specs/001-demo/tasks.md)" == *"#11" && "$(git branch --show-current)" == main ]]'
 
@@ -510,7 +509,7 @@ check "when the branch is not stacked, then its PR goes into the base, not as a 
   'grep -q "^pr create --base develop --head $P" "$GH_LOG" && ! grep -q -- "--draft" "$GH_LOG" && ! grep -q "never runs" "$TMP/pr.err" && ! grep -q "Stacked on" "$GH_LOG"'
 git switch --quiet "$C"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
 f="$(ls -d specs/001-*)"; echo '- [ ] T003 Add sort in `src/sort.ts`' >> "$f/tasks.md"
-printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"; "$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null 2>&1
+plan_review >/dev/null 2>&1
 "$p" spec >/dev/null 2>"$TMP/pr.err" || true
 check "when pr.sh spec runs on a stacked task branch, then the spec branch starts from the base, with none of the parent's commits" \
   's="$(git rev-parse --verify --quiet "refs/heads/spec/$(basename "$f")")" && [[ "$(git merge-base "$s" "$P")" == "$(git merge-base origin/develop "$P")" ]] && ! git merge-base --is-ancestor "$(git rev-parse "$P")" "$s"'

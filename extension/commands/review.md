@@ -39,8 +39,12 @@ If you are that subagent:
    /landspec:init".
 1. `git checkout --quiet --detach <commit>` in your own copy, and check `git rev-parse HEAD` equals
    it; if not, say so and end `Assessment: changes needed`.
-2. A plan review reads `<checkout>/specs/NNN-*/` in place, and copies a spec-folder script into your
-   copy only to run it.
+2. A plan review first copies `<checkout>/specs/NNN-*/plan.md` and `tasks.md` into a `mktemp -d`
+   folder, runs `bash .specify/extensions/landspec/scripts/review.sh state --plan <folder>` in your
+   own copy, and reviews those copied files; it reads the other spec files in place, and copies a
+   spec-folder script into your copy only to run it. Write `Plan state: <the printed hash>` in the
+   report; if the command fails, write `Plan state: unavailable (<reason>)` and end
+   `Assessment: changes needed`.
 3. Never write to `<checkout>`: no editing command, no `git checkout`, `reset`, `clean`, `stash` or
    `restore` there, no lock or temp files there. Do not run a command that writes outside your copy,
    except `mktemp` for the report file.
@@ -129,7 +133,9 @@ step 2 allows.
    findings: follow each one's own scenario through the fix. A plan review or a feature review
    skips this step.
 
-**Plan review** (before the issues are created): apply step 1 and read every task in `tasks.md`,
+**Plan review** (before the issues are created): review the copies of `plan.md` and `tasks.md`
+hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text
+you read; apply step 1 and read every task in `tasks.md`,
 asking what happens where state already exists. *Impact* names every reference the task touches and every caller of a function whose behaviour it changes (search each symbol), and the newest
 sibling of each file it adds; *Completed when* is a command that proves the real path, not only a
 fresh state, at the level the behavior demands (logic: unit; through the interface: integration
@@ -202,8 +208,10 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
   `git rev-parse HEAD`), and `Model: <your model id>`. A delta report also has `Delta from: <sha>`. A plan report
-  has only `Copy:` and `Model:`. `review.sh record` refuses a report without them, a range that is not the
-  branch's (or the delta's), and a commit made after the review started. Then one count line, exactly
+  has only `Copy:`, `Plan state: <hash>` (or `Plan state: unavailable (<reason>)`) and `Model:`.
+  `review.sh record` refuses a report without them, a range that is not the
+  branch's (or the delta's), a commit made after the review started, and a plan state that is not
+  a hash or not the plan's current one. Then one count line, exactly
   `Findings: <n> high, <n> medium, <n> low` (security ones included; `record` does not read it).
 - The last line, exactly: `Assessment: ready`, or `Assessment: changes needed` when there is a
   High or Medium in the lines this review covers (the branch's diff, or a delta's commits). `review.sh record` reads that line; without it the report cannot be recorded.

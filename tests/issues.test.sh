@@ -4,7 +4,7 @@
 source "$(dirname "$0")/helpers.sh"
 fake_gh
 i="$SCRIPTS/issues.sh"
-plan_reviewed() { printf 'Plan read.\n\nModel: claude-opus-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"; "$SCRIPTS/review.sh" record --plan "$TMP/plan.md" >/dev/null; }
+plan_reviewed() { plan_review claude-opus-4-7 >/dev/null; }
 
 new_repo standard
 commit_tasks '# Tasks
