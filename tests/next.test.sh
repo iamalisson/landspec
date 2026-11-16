@@ -70,6 +70,13 @@ check "when the tasks it depends on are done, then it is open and picked" \
   'out="$("$n")"; grep -q "^open T005 #8" <<<"$out" && [[ "$out" == *"NEXT=T005"* ]]'
 closed 2 3
 check "when only one dependency is still open, then it stays blocked" 'out="$("$n")"; grep -q "^blocked T005" <<<"$out"'
+# #185: the clause at the end of the line, after its summary was cut: still enforced, not shown.
+printf '%s\n' '- [ ] T006 Export screen (depends on T001) — #9' >> specs/001-demo/tasks.md
+check "when the dependency ends the line, then the task is still blocked by it and shown without the clause" \
+  'out="$("$n")"; grep -qx "blocked T006 #9 Export screen" <<<"$out"'
+closed 1 2 3
+check "then once that dependency is done, it is open" 'out="$("$n")"; grep -qx "open T006 #9 Export screen" <<<"$out"'
+sed -i.bak '/T006/d' specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak
 sed -i.bak '/T005/d' specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak; closed
 
 # Several features: a second one with tasks to start.

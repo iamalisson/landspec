@@ -81,6 +81,40 @@ printf '%s\n' '- [ ] T008 Brand new summary in `n`' >> specs/001-demo/tasks.md; 
 check "when an open issue has the same [NNN] Tnnn: prefix but another summary, then a new issue is created" \
   'out="$("$i")"; [[ "$(grep -c "^issue create" "$GH_LOG")" == "$((creates + 1))" ]] && ! grep -q "#$((lost + 50))" specs/001-demo/tasks.md && grep -q "T008 Brand new summary in \`n\` — #[0-9]*$" specs/001-demo/tasks.md'
 
+# #185: the "(depends on …)" suffix is not part of the summary, so it can change on a linked line.
+ts() { (source "$SCRIPTS/lib.sh"; task_summary "$1"); }
+check "when task_summary reads each line of the data-model table, then it prints that table's summary" \
+  '[[ "$(ts "- [ ] T007 [P] [US4] Show the class in \`a/b.py\` (depends on T004)")" == "Show the class" \
+   && "$(ts "- [ ] T007 Show the class (depends on T004, T005)")" == "Show the class" \
+   && "$(ts "- [ ] T007 Show the class")" == "Show the class" \
+   && "$(ts "- [ ] T007 Mostrar a turma, em a/b.py (depends on T004) — #13")" == "Mostrar a turma, em a/b.py" ]]'
+check "when the clause sits in the middle of a line, then the summary keeps it" \
+  '[[ "$(ts "- [ ] T007 Use (depends on X) as a label in docs")" == "Use (depends on X) as a label in docs" ]]'
+check "when the clause is in another case or has spaces around it, then it is still left out" \
+  '[[ "$(ts "- [ ] T007 Show the class  (DEPENDS ON T004)  ")" == "Show the class" && "$(ts "- [ ] T007 Show the class (Depends On T004)")" == "Show the class" ]]'
+check "when the parenthesis says something else, then it is kept" \
+  '[[ "$(ts "- [ ] T007 Show the class (depends T004)")" == "Show the class (depends T004)" && "$(ts "- [ ] T007 Show the class (see T004)")" == "Show the class (see T004)" ]]'
+printf '%s\n' '- [ ] T011 Sync a dependency (depends on T001)' >> specs/001-demo/tasks.md; plan_reviewed
+: > "$GH_LOG"; "$i" >/dev/null
+t011="$(grep -o 'T011 Sync a dependency (depends on T001) — #[0-9]*$' specs/001-demo/tasks.md)"; t011="${t011##*#}"
+check "when a task has a dependency, then its issue title leaves it out" \
+  '[[ -n "$t011" ]] && grep -qF -- "--title [001] T011: Sync a dependency --body" "$GH_LOG"'
+sed -i.bak 's/T011 Sync a dependency (depends on T001) —/T011 Sync a dependency (depends on T001, T002) —/' specs/001-demo/tasks.md && rm -f specs/001-demo/tasks.md.bak
+: > "$GH_LOG"
+check "when a linked task's dependency changes and the plan was not reviewed again, then --sync refuses and edits nothing" \
+  'fails_with "changed since" "$i" --sync && ! grep -q "^issue edit" "$GH_LOG"'
+plan_reviewed; : > "$GH_LOG"
+check "when the plan was reviewed again, then --sync updates that issue's body once, with the new dependency, and creates nothing nor touches a title" \
+  'out="$("$i" --sync)"; grep -qxF "T011 → #$t011 (updated)" <<<"$out" && [[ "$(grep -c "^issue edit $t011 --body" "$GH_LOG")" == 1 ]] \
+   && grep -qF "**Task:** Sync a dependency (depends on T001, T002)" "$GH_LOG" && ! grep -q "^issue create" "$GH_LOG" && ! grep -qF -- "--title" "$GH_LOG"'
+rm -f "$GH_N.failed"
+printf '%s\n' '- [ ] T010 Survive a dependency (depends on T001)' >> specs/001-demo/tasks.md; plan_reviewed
+GH_FAIL_CREATE_ONCE=1 "$i" >/dev/null 2>&1 || true
+lost="$(cat "$GH_N")"; creates="$(grep -c "^issue create" "$GH_LOG")"
+sed -i.bak 's/^- \[ \] T010 Survive a dependency (depends on T001)$/- [ ] T010 Survive a dependency (depends on T001, T002)/' specs/001-demo/tasks.md && rm -f specs/001-demo/tasks.md.bak; plan_reviewed
+check "when a create reached GitHub unlinked and the dependency then changed, then a rerun finds it by title and creates no second issue" \
+  'out="$("$i")"; grep -qx "T010 → #$lost (existing)" <<<"$out" && [[ "$(grep -c "^issue create" "$GH_LOG")" == "$creates" ]] && grep -qx -- "- \[ \] T010 Survive a dependency (depends on T001, T002) — #$lost" specs/001-demo/tasks.md'
+
 # gh picks upstream, then github, before origin, while every push goes to origin.
 slug_of() { (git remote set-url origin "$1"; source "$SCRIPTS/lib.sh"; origin_slug); }
 check "when origin is on github.com, then its owner/name is read from any URL form, dots in the name kept" \

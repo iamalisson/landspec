@@ -33,6 +33,16 @@ git add specs/002-reports; git commit --quiet -m "docs: 002"; git push --quiet o
 check "when a feature is named before the task, then that feature's task is used, not the active one" \
   '"$b" 002 T001 | grep -q "BRANCH=feat/002-t001-monthly-report ISSUE=30" && grep -q specs/002-reports .specify/feature.json'
 check "when the feature name matches nothing, then it refuses" '! "$b" 009 T001'
+
+# #185: a short task without " in <path>" keeps its branch name when it gains a dependency.
+git switch --quiet main
+mkdir -p specs/003-ship; printf '%s\n' '- [ ] T001 Ship it — #40' > specs/003-ship/tasks.md
+git add specs/003-ship; git commit --quiet -m "docs: 003"; git push --quiet origin main; git push --quiet origin main:develop
+"$b" 003 T001 >/dev/null; git switch --quiet main
+printf '%s\n' '- [ ] T001 Ship it (depends on T002) — #40' > specs/003-ship/tasks.md
+git add specs/003-ship; git commit --quiet -m "docs: 003 dependency"; git push --quiet origin main; git push --quiet origin main:develop
+check "when a task without a path gains a dependency, then branch.sh gives the same branch name as before" \
+  '"$b" 003 T001 | grep -qx "BRANCH=feat/003-t001-ship-it ISSUE=40 TASK=T001 BASE=develop" && [[ "$(git branch --show-current)" == feat/003-t001-ship-it ]]'
 git switch --quiet main; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 git switch --quiet main

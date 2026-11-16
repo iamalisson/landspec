@@ -40,8 +40,10 @@ or one with another summary never matches.
    - **Independent tests:** expected values are literals in the test, never imported from the
      code under test.
 
-   Never renumber tasks, and never rewrite the text of a line that already ends in `— #N` (its
-   issue is linked to that ID and text). A missing task is appended with the next free ID; a
+   Never renumber tasks, and never rewrite the description of a line that already ends in `— #N`
+   (its issue is linked to that ID and title). Its `(depends on …)` suffix may change: add or
+   remove a dependency there, run the plan review again (step 2) and record it, then run
+   `issues.sh --sync` so the issue body follows. A missing task is appended with the next free ID; a
    linked task gets sub-bullets added or fixed, not a new line. Report what changed in one short
    list.
 2. **Independent review of the plan.** Launch the reviewer exactly as `commands/review.md`
