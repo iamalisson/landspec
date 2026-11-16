@@ -89,7 +89,7 @@ is ever copied (they may hold secrets).
 
 - **Invariant (the agent's reach)**: the agent acts only as itself. It holds no IAM write
   (`PowerUserAccess` excludes `iam:*` but service-linked roles; `ReadOnlyAccess` has none), and its
-  inline deny refuses `iam:PassRole`, `sts:AssumeRole*`, `sts:AssumeRoot` and Identity Center writes (`sso-admin:*`,
+  inline deny refuses `iam:PassRole`, `sts:AssumeRole*`, `sts:AssumeRoot` and Identity Center writes (`sso:*`, `sso-directory:*`,
   `identitystore:*`) in both modes. So it can make no principal, and use none, other than its own
   session, and its explicit deny applies to every call it makes, resource policies included
   (an explicit deny in the caller's identity policy always wins). **Outside the invariant**:

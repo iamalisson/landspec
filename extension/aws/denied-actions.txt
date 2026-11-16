@@ -21,5 +21,6 @@ account:* account:CloseAccount
 iam:PassRole
 sts:AssumeRole* sts:AssumeRole
 sts:AssumeRoot
-sso-admin:* sso-admin:CreatePermissionSet
+sso:* sso:CreatePermissionSet
+sso-directory:* sso-directory:CreateUser
 identitystore:* identitystore:CreateUser

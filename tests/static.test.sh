@@ -471,7 +471,10 @@ role_problems() {
   awk '$2 == "Allow" && $3 !~ /^@/ && ($1 ~ /^Trust/ ? $3 != "sts:AssumeRole" : $3 != "iam:GetRole" && $3 != "iam:SimulatePrincipalPolicy") {print "an allow grants " $3 " (" $1 ")"}' <<<"$st"
   grep -qx "ReadIam Allow iam:GetRole" <<<"$st" || echo "ReadIam does not allow iam:GetRole"
   for f in "ReadIam Allow" "DenySelfEdit Deny"; do [[ "$(awk -v s="${f% *}" '$1 == s && $3 ~ /^@/' <<<"$st")" == "$f $own" ]] || echo "${f% *} is not on the role's own ARN alone"; done
-  for f in iam:PassRole "sts:AssumeRole*" sts:AssumeRoot "sso-admin:*" "identitystore:*"; do grep -qxF "DenyListed Deny $f" <<<"$st" || echo "the deny lacks $f"; done
+  for f in iam:PassRole "sts:AssumeRole*" sts:AssumeRoot "sso:*" "sso-directory:*" "identitystore:*"; do grep -qxF "DenyListed Deny $f" <<<"$st" || echo "the deny lacks $f"; done
+  # sso-admin is the SDK client's name; IAM Identity Center's action prefix is sso, so sso-admin:* matches nothing.
+  ! grep -qE "(^| )sso-admin:" "$2" <(cut -d" " -f3 <<<"$st") || echo "an entry uses sso-admin: (the IAM prefix is sso:)"
+  grep -qxF '    AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"' <<<"$(awk '/^  PermissionSetName:/{f=1;next} /^  [A-Za-z]/{f=0} f' "$t")" || echo "PermissionSetName does not refuse * and ?"
   for f in UpdateStack DeleteStack CreateChangeSet ExecuteChangeSet SetStackPolicy; do grep -qxF "DenyOwnStack Deny cloudformation:$f" <<<"$st" || echo "the stack deny lacks cloudformation:$f"; done
   grep -qxF 'DenyOwnStack Deny @arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*' <<<"$st" || echo "the stack deny is not on \${AWS::StackName}"
   grep -qF 'sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_*' "$t" || echo "the trust does not match /*AWSReservedSSO_<PermissionSetName>_*"
@@ -485,8 +488,8 @@ role_problems() {
 aws_lists="extension/aws/denied-actions.txt extension/aws/denied-read-actions.txt"
 problems="$(role_problems "$role" $aws_lists | tr "\n" ";")"
 check "when agent-role.yaml is checked against contracts/template.md, then nothing is wrong${problems:+ — $problems}" '[[ -z "$problems" ]]'
-check "then its Deny holds the 25 actions of denied-actions.txt and its read deny the 20 of denied-read-actions.txt" \
-  '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 25 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 20 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 25 ]]'
+check "then its Deny holds the 26 actions of denied-actions.txt and its read deny the 20 of denied-read-actions.txt" \
+  '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 26 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 20 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 26 ]]'
 check "then the read deny exists only when Access=read" \
   'grep -B2 -- "- Sid: DenyReadData" '"$role"' | grep -q -- "- IsRead"'
 # The failure paths: a broken copy is named.
@@ -510,6 +513,12 @@ check "when the stack deny names a fixed stack, then the check names it" \
   'broken "the stack deny is not on \${AWS::StackName}" "{sub(/stack\\/\\\$\\{AWS::StackName\\}/, \"stack/landspec-agent\")} 1"'
 check "when the trust uses sso.amazonaws.com/*/AWSReservedSSO_, then the check names it" \
   'broken "the trust uses sso.amazonaws.com/*/AWSReservedSSO_" "{sub(/sso.amazonaws.com\\/\\*AWSReservedSSO_/, \"sso.amazonaws.com/*/AWSReservedSSO_\")} 1"'
+check "when sso-admin:* is put back in the template and the list, then the check names it" \
+  'broken "an entry uses sso-admin:" "{sub(/- sso:\\*$/, \"- sso-admin:*\")} 1" "{sub(/^sso:\\* sso:/, \"sso-admin:* sso-admin:\")} 1"'
+check "when PermissionSetName loses its AllowedPattern, then the check names it" \
+  'broken "PermissionSetName does not refuse * and ?" "!/AllowedPattern: \"\\^\\[A-Za-z0-9/"'
+check "then the PermissionSetName pattern takes a name and empty, and refuses * and ?" \
+  'for v in Dev_Admin ""; do [[ "$v" =~ ^[A-Za-z0-9+=,.@_-]*$ ]]; done; for v in "*" "Dev?" "a*b"; do ! [[ "$v" =~ ^[A-Za-z0-9+=,.@_-]*$ ]]; done'
 check "when the template adds an access key, then the check names it (SC-003)" \
   'broken "the template has AWS::IAM::AccessKey" "{print} /^Resources:/{print \"  Key:\"; print \"    Type: AWS::IAM::AccessKey\"}"'
 check "when the template adds a permissions boundary, then the check names it" \

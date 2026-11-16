@@ -28,6 +28,7 @@ Parameters:
   PermissionSetName:
     Type: String
     Default: ""
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"
     Description: Identity Center permission set whose users may assume the role (required for sso)
   LoginUserNames:
     Type: CommaDelimitedList
@@ -161,7 +162,8 @@ Resources:
                   - iam:PassRole
                   - sts:AssumeRole*
                   - sts:AssumeRoot
-                  - sso-admin:*
+                  - sso:*
+                  - sso-directory:*
                   - identitystore:*
                 Resource: "*"
               - Sid: DenySelfEdit
