@@ -202,4 +202,54 @@ mkdir -p "$TMP/plain/sub/.specify"
 check "when the guard cannot decide (spec-kit in a subfolder), then it blocks instead of letting the command through" \
   'rc=0; (cd "$TMP/plain/sub" && "$g" "git status") 2>/dev/null || rc=$?; [[ $rc == 2 ]]'
 
+# 006 T005: the AWS rules, only in a repository with aws: on.
+cp -R "$TMP/repo" "$TMP/aws"
+printf 'aws: on\naws_prod_profiles: prod, prod-eu\naws_prod_paths: infra/envs/prod\n' >> "$TMP/aws/.specify/extensions/landspec/landspec-config.yml"
+mkdir -p "$TMP/aws/infra/envs/prod/eu" "$TMP/aws/infra/envs/dev" "$TMP/aws/infra/envs/prod2" "$TMP/norepo"
+refused=("terraform destroy" "terraform apply -destroy" "terraform -chdir=infra/envs/prod apply" "AWS_PROFILE=prod terraform apply"
+  "aws --profile prod s3 rm s3://b/k" "aws ec2 terminate-instances --profile=prod --instance-ids i-1"
+  "aws secretsmanager get-secret-value --secret-id x" "aws secretsmanager batch-get-secret-value --secret-id-list x"
+  "aws ssm get-parameter --name x --with-decryption" "aws ssm get-parameter-history --name x --with-decryption"
+  "cat .env" "head -5 infra/terraform.tfstate" "terraform state pull")
+allowed=("aws --profile prod ec2 describe-instances" "aws s3 ls" "terraform plan -out=tfplan"
+  "terraform -chdir=infra/envs/dev apply" "cat .env.example" "aws ssm get-parameter --name x")
+cd "$TMP/aws"
+check "when aws is on, then each refused command is blocked plain, in a chain, in a subshell and behind timeout 30" \
+  'for c in "${refused[@]}"; do blocked "$c" && blocked "true && $c" && blocked "( $c )" && blocked "timeout 30 $c" || { echo "$c"; exit 1; }; done'
+check "when aws is on, then the read-only and non-prod commands are allowed" \
+  'for c in "${allowed[@]}"; do "$g" "$c" || { echo "$c"; exit 1; }; done'
+check "when aws is on, then each refusal is one line naming its reason" \
+  'one_refusal "destroys go through a reviewed PR and a human" "$g" "terraform destroy" && one_refusal "destroys go through" "$g" "tofu apply -auto-approve -destroy" \
+   && one_refusal "aims at prod (infra/envs/prod): prod changes go through a PR; the pipeline applies them" "$g" "terraform -chdir=infra/envs/prod apply" \
+   && one_refusal "aims at prod (AWS_PROFILE=prod)" "$g" "AWS_PROFILE=prod terraform apply" && one_refusal "aims at prod (profile prod-eu)" "$g" "aws --profile prod-eu s3 cp a s3://b/a" \
+   && one_refusal "secret values stay out of the conversation" "$g" "aws secretsmanager get-secret-value --secret-id x" && one_refusal "secret values stay out" "$g" "cat .env"'
+check "when the prod path is the directory, a subfolder of it or reached by cd, then apply is blocked; a sibling with a longer name is not" \
+  'blocked "cd infra/envs/prod && terraform apply" && blocked "terraform -chdir=infra/envs/prod/eu apply" && blocked "cd infra && terraform -chdir=envs/prod apply" \
+   && "$g" "terraform -chdir=infra/envs/prod2 apply" && "$g" "terraform -chdir=infra/envs/prod plan" && "$g" "cd infra/envs/prod && terraform plan"'
+check "when a write verb runs under a prod profile, then it is blocked; under another profile or with a read verb it is allowed" \
+  'blocked "aws --profile prod ec2 run-instances --image-id x" && blocked "AWS_PROFILE=prod-eu aws s3 sync . s3://b" && blocked "aws --region eu-west-1 --profile=prod s3 rb s3://b" \
+   && blocked "AWS_PROFILE=prod bash -c \"aws dynamodb delete-table --table-name t\"" && blocked "/usr/local/bin/aws --profile prod iam create-user --user-name u" \
+   && "$g" "aws --profile staging s3 rm s3://b/k" && "$g" "aws --profile prod s3 ls s3://b" && "$g" "aws --profile production ec2 terminate-instances --instance-ids i-1" \
+   && "$g" "aws s3 rm s3://b/k" && "$g" "aws --profile prod ssm send-command --document-name x"'
+check "when the readers print a .env or state file in any form, then it is blocked; the example files and other files are allowed" \
+  'for r in cat less more head tail bat grep sed awk strings xxd /bin/cat; do blocked "$r x .env.local" || { echo "$r"; exit 1; }; done \
+   && blocked "cat infra/.env" && blocked "cat < .env" && blocked "cat <.env" && blocked "grep -f .env x" && blocked "tail terraform.tfstate.backup" && blocked "cat \".env\"" \
+   && "$g" "cat .env.sample .env.template .env.dist README.md" && "$g" "cat env.txt foo.env.md" && "$g" "ls .env" && "$g" "echo .env"'
+check "when terraform shows a state file or the current state, then it is blocked; a plan file is allowed" \
+  'blocked "terraform show" && blocked "terraform show -json" && blocked "terraform show terraform.tfstate" && "$g" "terraform show -json tfplan" && "$g" "terraform state list" && "$g" "tofu output"'
+check "when the command runs outside any repository or in one with aws off, then the AWS rules are off" \
+  '"$g" "cd $TMP/norepo && terraform destroy" && "$g" "cd $TMP/repo && cat .env" && "$g" "cd $TMP/other && aws secretsmanager get-secret-value --secret-id x"'
+check "when the hook gets aws s3 rm under a prod profile in an aws: on repo, then it passes it to the guard and exits 2" \
+  'rc=0; json "$TMP/aws" "aws --profile prod s3 rm s3://b/k" | bash "$shim" 2>/dev/null || rc=$?; [[ $rc == 2 ]]'
+check "when the hook gets ls -la, then it exits 0 at once, without the guard (which would block in that folder)" \
+  'json "$TMP/plain/sub" "ls -la" | bash "$shim" && rc=0 && { json "$TMP/plain/sub" "git status" | bash "$shim" 2>/dev/null || rc=$?; } && [[ $rc == 2 ]]'
+cd "$TMP/repo"
+check "when aws is off (the default), then every one of those commands is allowed" \
+  'for c in "${refused[@]}" "${allowed[@]}"; do "$g" "$c" && "$g" "true && $c" || { echo "$c"; exit 1; }; done'
+check "when the session is in a repo with aws off but the command cds into an aws: on repo, then it is blocked there" \
+  'blocked "cd $TMP/aws && terraform destroy" && blocked "cd $TMP/aws && cat .env" && "$g" "cd $TMP/aws && cd $TMP/repo && terraform destroy"'
+long3="aws s3 cp x \"$(head -c 100000 /dev/zero | tr '\0' 'a')\""
+check "when a 100 KB aws command is checked in an aws: on repo under a UTF-8 locale, then it takes under 3 seconds" \
+  'cd "$TMP/aws"; start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long3"; (( $(date +%s) - start < 3 ))'
+
 exit "$FAIL"

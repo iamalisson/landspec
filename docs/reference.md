@@ -288,6 +288,21 @@ folder directly under `.claude/worktrees/`, a listed worktree at the reviewed co
 current checkout; otherwise it prints why it left it. `pr.sh` and `branch.sh` never count
 `.claude/worktrees/` as uncommitted work.
 
+### The guard's AWS rules
+
+With `aws: on` in the repository a command runs in (its config is read once per repository top;
+outside a repository the rules are off), the guard refuses, in every shell form it already parses:
+`terraform`/`tofu destroy` and `apply -destroy`; `apply` whose directory (the current one, a `cd`,
+or `-chdir=`) is or sits under an `aws_prod_paths` entry, or under an `AWS_PROFILE=` named in
+`aws_prod_profiles`; an `aws` write verb under a prod `--profile`, `--profile=` or `AWS_PROFILE=`;
+secret reads (`secretsmanager get-secret-value`/`batch-get-secret-value`, `ssm get-parameter`,
+`get-parameters`, `get-parameters-by-path`, `get-parameter-history` with `--with-decryption`);
+`cat`, `less`, `more`, `head`, `tail`, `bat`, `grep`, `sed`, `awk`, `strings` and `xxd` on a
+`.env*` or `*.tfstate*` file (`.env.example`, `.sample`, `.template` and `.dist` are allowed),
+`terraform state pull`, and `terraform show` without a plan file. Reads (`describe-*`, `list-*`,
+`get-*`, `plan`, `show <planfile>`, `output`) stay allowed. The plugin hook hands the guard any
+command that mentions `git`, `gh`, `aws`, `terraform`, `tofu`, `.env` or `.tfstate`.
+
 ## AI attribution
 
 `.claude/settings.json` turns off the "Generated with Claude Code" and
