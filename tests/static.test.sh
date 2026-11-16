@@ -464,7 +464,8 @@ role_problems() {
   local t="$1" st f d own='@arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RoleName}'
   st="$(statements "$t")"
   for f in "$2:DenyListed" "$3:DenyReadData"; do
-    d="$(diff <(awk -v s="${f#*:}" '$1 == s && $2 == "Deny" && $3 !~ /^@/ {print $3}' <<<"$st" | sort) <(cut -d" " -f1 "${f%:*}" | sort) | grep "^[<>]" | tr "\n" " " || true)"
+    # comm, not diff: busybox diff prints unified output by default, with no </> lines
+    d="$(comm -3 <(awk -v s="${f#*:}" '$1 == s && $2 == "Deny" && $3 !~ /^@/ {print $3}' <<<"$st" | sort) <(cut -d" " -f1 "${f%:*}" | sort) | awk -F'\t' '{printf "%s ", ($1 == "" ? "> " $2 : "< " $1)}')"
     [[ -z "$d" ]] || echo "the ${f#*:} deny differs from ${f%:*}: $d"
     awk '$1 ~ /\*/ && ($2 == "" || $2 ~ /\*/) || NF > 2 {print "no concrete action to simulate for " $1 " in " FILENAME}' "${f%:*}"
   done
