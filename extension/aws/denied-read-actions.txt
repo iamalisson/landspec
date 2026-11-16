@@ -1,0 +1,20 @@
+secretsmanager:GetSecretValue
+secretsmanager:BatchGetSecretValue
+ssm:GetParameter* ssm:GetParameter
+kms:Decrypt
+s3:GetObject* s3:GetObject
+dynamodb:GetItem
+dynamodb:BatchGetItem
+dynamodb:Query
+dynamodb:Scan
+rds-db:connect
+rds-data:ExecuteStatement
+logs:StartLiveTail
+lambda:GetFunction
+lambda:GetFunctionConfiguration
+logs:GetLogEvents
+logs:FilterLogEvents
+logs:GetQueryResults
+athena:GetQueryResults
+kinesis:GetRecords
+sqs:ReceiveMessage
