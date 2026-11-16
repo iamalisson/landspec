@@ -140,6 +140,9 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
       || die "no security-scan.sh --changed result for this diff; run bash .specify/extensions/landspec/scripts/security-scan.sh --changed after the last commit"
     gaps="$(awk '$2=="missing"||$2=="failed"{printf "%s%s (%s)", s, $1, $2; s=", "}' "$scan")"
     [[ -z "$gaps" ]] || body+=$'\n\n'"Scanners not run: $gaps"
+    # With aws: on, an infrastructure diff needs its Terraform plan recorded (tfplan.sh), which the body shows.
+    tfplan="$(bash "$LANDSPEC_EXT_DIR/scripts/tfplan.sh" gate)" || exit 1
+    [[ -z "$tfplan" ]] || body+=$'\n\n'"$tfplan"
     # Never open a PR on red checks; a tree already green with this command is not run again (lib.sh run_tests).
     test_cmd="$(constitution_cmd test)"
     if [[ -n "$test_cmd" ]]; then

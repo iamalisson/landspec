@@ -515,4 +515,34 @@ printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/p
 check "when pr.sh spec runs on a stacked task branch, then the spec branch starts from the base, with none of the parent's commits" \
   's="$(git rev-parse --verify --quiet "refs/heads/spec/$(basename "$f")")" && [[ "$(git merge-base "$s" "$P")" == "$(git merge-base origin/develop "$P")" ]] && ! git merge-base --is-ancestor "$(git rev-parse "$P")" "$s"'
 
+# ── Spec 006 T006: with aws: on, an infrastructure diff needs its Terraform plan recorded ──
+rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
+fake_terraform
+printf '{"format_version": "1.2", "resource_changes": [{"address": "aws_s3_bucket.logs", "type": "aws_s3_bucket", "change": {"actions": ["delete"]}}, {"address": "aws_vpc.main", "type": "aws_vpc", "change": {"actions": ["create"]}}]}\n' > "$TMP/plan.json"
+export TF_PLAN_JSON="$TMP/plan.json"
+later() { local s=$(($(date +%s) + 2)); touch -d "@$s" "$1" 2>/dev/null || touch -t "$(date -r "$s" +%Y%m%d%H%M.%S)" "$1"; }
+new_repo standard
+echo tfplan >> .gitignore
+commit_tasks '- [ ] T001 Add infra in `infra/main.tf` — #5'
+printf 'aws: on\n' >> .specify/extensions/landspec/landspec-config.yml
+"$SCRIPTS/branch.sh" T001 >/dev/null
+mkdir infra; echo 'resource "aws_s3_bucket" "logs" {}' > infra/main.tf; git add infra; git commit --quiet -m "feat: infra"
+reviewed; scanned
+check "when aws is on, the level standard and the diff touches infra/main.tf with no plan recorded, then it refuses and opens nothing" \
+  'fails_with "landspec: no Terraform plan recorded for this diff; run terraform plan -out=tfplan in infra, then bash .specify/extensions/landspec/scripts/tfplan.sh record tfplan" "$p" task T001 "feat: infra" "$TMP/body.md" && ! grep -q "^pr create" "$GH_LOG"'
+echo plan > infra/tfplan; later infra/tfplan; (cd infra && bash "$SCRIPTS/tfplan.sh" record tfplan >/dev/null)
+"$p" task T001 "feat: infra" "$TMP/body.md" >/dev/null 2>&1 || true
+check "after tfplan.sh record, then the body has ## Terraform plan with the stateful lines before the counts" \
+  'grep -qx "## Terraform plan" "$GH_LOG" && grep -qx "### infra" "$GH_LOG" \
+   && [[ "$(grep -nxF "**Destroys or replaces stateful resources:**" "$GH_LOG" | cut -d: -f1)" -lt "$(grep -nx "create 1 · destroy 1" "$GH_LOG" | cut -d: -f1)" ]] \
+   && grep -qx -- "- destroy \`aws_s3_bucket.logs\`" "$GH_LOG" && ! grep -q aws_vpc "$GH_LOG"'
+rm -f "$GH_PR"; : > "$GH_LOG"
+echo 'resource "aws_vpc" "main" {}' >> infra/main.tf; git commit --quiet -am "feat: vpc"; reviewed; scanned
+check "when a new commit follows the plan, then it refuses again" 'fails_with "no Terraform plan recorded for this diff" "$p" task T001 "feat: infra" "$TMP/body.md"'
+printf 'infra_dir: deploy\n' >> .specify/extensions/landspec/landspec-config.yml
+check "then the refusal names infra_dir as the folder to plan in" 'fails_with "run terraform plan -out=tfplan in deploy, then" "$p" task T001 "feat: infra" "$TMP/body.md"'
+set_cfg aws off
+"$p" task T001 "feat: infra" "$TMP/body.md" >/dev/null 2>&1 || true
+check "when aws is off, then the same diff opens with no plan and no Terraform section" 'grep -q "^pr create" "$GH_LOG" && ! grep -q "Terraform plan" "$GH_LOG"'
+
 exit "$FAIL"
