@@ -99,9 +99,14 @@ words() {
     # holding it must not split that command: `git commit -m "$(cat m)" --no-verify` is one commit.
     # So its text is kept aside and checked as its own command, between "|(" and "|)", once the
     # command around it ends. Quoted runs are read whole; single quotes hold no substitution.
-    function close_paren(t, i,   d, n, c) { # the ) that closes the ( at i, or 0
-      d = 0; n = length(t)
-      for (; i <= n; i++) { c = substr(t, i, 1); if (c == "(") d++; else if (c == ")" && --d == 0) return i }
+    # Both scans jump from match to match: a per-character substr() is O(n) per call in a UTF-8
+    # BSD awk, which made a long quoted message quadratic (the 100k-character test hung on macOS).
+    function close_paren(t, i,   d, k) { # the ) that closes the ( at i, or 0
+      d = 0
+      while (match(substr(t, i), /[()]/)) {
+        k = i + RSTART - 1; if (substr(t, k, 1) == "(") d++; else if (--d == 0) return k
+        i = k + 1
+      }
       return 0
     }
     function keep(t, i,   j, n) { # set aside the substitution starting at i ($ or `); returns where it ends
@@ -109,9 +114,9 @@ words() {
       if (substr(t, i, 1) == "`") { j = index(substr(t, i + 1), "`"); j = j ? i + j : n + 1; pend = pend "\001" substr(t, i + 1, j - i - 1); return j }
       j = close_paren(t, i + 1); if (!j) j = n + 1; pend = pend "\001" substr(t, i + 2, j - i - 2); return j
     }
-    function subs(part,   i, n, c) {
-      n = length(part)
-      for (i = 1; i <= n; i++) { c = substr(part, i, 1); if (c == "`" || c == "$" && substr(part, i + 1, 1) == "(") i = keep(part, i) }
+    function subs(part,   i) {
+      i = 1
+      while (match(substr(part, i), /`|[$][(]/)) i = keep(part, i + RSTART - 1) + 1
     }
     function flush(   p, k, m, parts) {
       if (pend == "") return

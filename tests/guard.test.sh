@@ -85,6 +85,9 @@ check "when other git commands use -n (git log -n 5), then they are allowed" '"$
 long="git commit -m \"$(head -c 100000 /dev/zero | tr '\0' 'a')\""
 check "when a 100 KB command is checked under a UTF-8 locale, then it takes under 3 seconds (the hook allows 10)" \
   'start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long"; (( $(date +%s) - start < 3 ))'
+long2="git commit -m \"$(head -c 100000 /dev/zero | tr '\0' 'a') \$(date) \$(echo (\""
+check "when that command also holds a \$(…) and an unclosed one in quotes, then it still takes under 3 seconds" \
+  'start=$(date +%s); LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 "$g" "$long2"; (( $(date +%s) - start < 3 ))'
 
 # F2.3: git accepts a unique prefix of a long option, so every cut of the option is refused. The
 # cuts are made here at run time; the file holds no list of them.
