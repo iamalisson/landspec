@@ -15,6 +15,33 @@ reset
 echo "API_KEY=" > .env.example; staged .env.example
 check "when only .env.example is staged, then it passes" '"$s" staged'
 reset
+echo "API_KEY=" > .env.dist; staged .env.dist
+check "when only .env.dist is staged, then it passes" '"$s" staged'
+reset
+
+echo "{}" > prod.tfstate; staged prod.tfstate
+check "when a Terraform state file is staged, then it is refused" 'fails_with "prod.tfstate: secret-bearing file" "$s" staged'
+reset
+
+echo "X=1" > .ENV; mkdir -p certs; echo x > certs/key.PEM; staged .ENV certs/key.PEM
+check "when a secret-bearing file name is in upper case (.ENV, key.PEM), then it is still refused" \
+  'out="$("$s" staged 2>&1)" && exit 1; grep -q ".ENV: secret-bearing file" <<<"$out" && grep -q "certs/key.PEM: secret-bearing file" <<<"$out"'
+reset
+
+mkdir -p café; echo "X=1" > café/.env; staged café/.env
+check "when a .env sits under a non-ASCII path, then it is refused by its real name" 'fails_with "café/.env: secret-bearing file" "$s" staged'
+reset
+printf 'k = "AKIA%s"\n' "$(printf 'A%.0s' {1..16})" > ação.py; staged ação.py
+check "when a secret is in a file with a non-ASCII name, then the finding names that file" 'fails_with "ação.py:1: possible AWS access key" "$s" staged'
+reset
+
+printf '++ t = "ghp_%s"\n' "$(printf 'a%.0s' {1..36})" > notes.txt; staged notes.txt
+check "when an added line itself starts with ++, then it is still scanned" 'fails_with "notes.txt:1: possible GitHub token" "$s" staged'
+reset
+
+printf 'see task-assessment-for-the-new-customer-onboarding-flow-v2\n<div class="risk-assessment-panel-header-with-a-very-long-name">\nakiaabcdefghijklmnop\n' > notes.md; staged notes.md
+check "when lowercase prose, a slug or a CSS class only looks like a key without case, then it passes" '"$s" staged'
+reset
 
 mkdir -p keys; printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n' > keys/deploy; staged keys/deploy
 check "when a private key is staged under any name, then it is refused" 'fails_with "keys/deploy:1: possible private key" "$s" staged'
@@ -37,6 +64,9 @@ reset
 
 printf 'url = "postgres://app:s3cretpw@db:5432/app"\n' > cfg.toml; staged cfg.toml
 check "when a database URL carries a password, then it is refused" 'fails_with "cfg.toml" "$s" staged'
+reset
+printf 'remote = https://deploy:%s@git.example.com/app.git\n' "s3cretpw" > cfg.ini; staged cfg.ini
+check "when an https URL carries a password, then it is refused" 'fails_with "cfg.ini:1: possible URL with a password" "$s" staged'
 reset
 
 printf 'aws = "AKIAABCDEFGHIJKLMNOP"  # landspec:allow-secret (AWS docs example key)\n' > doc.py; staged doc.py
@@ -61,6 +91,11 @@ git reset --quiet --hard HEAD~1
 zero=0000000000000000000000000000000000000000
 check "when pushing a branch whose commits leak a secret, then pre-push refuses" \
   'fails_with "pay.rb" bash "$SCRIPTS/prepush.sh" <<<"refs/heads/feat/x $(git rev-parse HEAD) refs/heads/feat/x $zero"'
+unknown=1111111111111111111111111111111111111111
+check "when the remote's tip was never fetched (moved on, or a --force), then pre-push scans what no remote has instead of failing on the range" \
+  'out="$(bash "$SCRIPTS/prepush.sh" <<<"refs/heads/feat/x $(git rev-parse HEAD) refs/heads/feat/x $unknown" 2>&1)" && exit 1; [[ $out == *pay.rb* && $out != *fatal* ]]'
+check "then a clean push over an unfetched remote tip passes" \
+  'bash "$SCRIPTS/prepush.sh" <<<"refs/heads/feat/x $(git rev-parse HEAD~1) refs/heads/feat/x $unknown"'
 check "when pushing straight to develop on standard, then pre-push refuses" \
   'fails_with "open a pull request" bash "$SCRIPTS/prepush.sh" <<<"refs/heads/develop $(git rev-parse HEAD~1) refs/heads/develop $(git rev-parse HEAD~1)"'
 check "when a remote branch is deleted, then prepush.sh lets it through, a protected one too" \
@@ -141,11 +176,15 @@ sample() { # sample <kind>: the added line for that kind of secret
     "SendGrid key") echo "t = SG.$(rep a 22).$(rep a 43)" ;;
     "private key") printf "%s%s\n" "-----BEGIN RSA " "PRIVATE KEY-----" ;;
     "URL with a password") echo "u = mongodb+srv://app:$(rep a 8)@db/app" ;;
+    "AWS secret key") echo "aws_secret_access_key = $(rep a 40)" ;;
+    "npm token") echo "//registry.npmjs.org/:_authToken=npm_$(rep a 36)" ;;
+    "JSON web token") echo "t = eyJ$(rep a 12).eyJ$(rep a 12).$(rep a 12)" ;;
     "hard-coded credential") echo "client_secret = \"$(rep a 12)\"" ;;
   esac
 }
 kinds=("AWS access key" "GitHub token" "GitHub fine-grained token" "GitLab token" "Slack token" "Stripe live key" "Google API key"
-  "Anthropic key" "OpenAI key" "SendGrid key" "private key" "URL with a password" "hard-coded credential")
+  "Anthropic key" "OpenAI key" "SendGrid key" "private key" "URL with a password" "hard-coded credential"
+  "AWS secret key" "npm token" "JSON web token")
 mkdir -p "$TMP/pats" && cd "$TMP/pats" && git init --quiet -b feat/pats && git config user.email t@t && git config user.name t
 mkdir -p .specify/extensions/landspec && ln -s "$SCRIPTS" .specify/extensions/landspec/scripts
 echo ok > f.txt; git add f.txt; git commit --quiet --no-verify -m base

@@ -34,6 +34,16 @@ check "when gh only reads PRs, then it is allowed" '"$g" "gh pr list" && "$g" "g
 
 check "when no-verify hides in a bundled flag, a global option or a wrapper, then it is blocked" \
   'blocked "git commit -nm x" && blocked "git --no-pager commit -n -m x" && blocked "env git commit --no-verify -m x" && blocked "GIT_X=1 command git push --no-verify"'
+check "when the command sits in a subshell, braces, an if block or a \$(…), then it is still blocked" \
+  'blocked "(git commit --no-verify -m x)" && blocked "{ git commit --no-verify -m x; }" && blocked "if true; then git push origin main; fi" && blocked "URL=\$(gh pr create --title x)" && blocked "URL=\`gh pr create --title x\`"'
+check "when timeout, nice, xargs or sudo run git, with their own options, then it is still blocked" \
+  'blocked "timeout 30 git push origin main" && blocked "timeout -s KILL 30 git commit --no-verify -m x" && blocked "nice -n 5 git commit --no-verify -m x" && blocked "xargs -n 1 git push origin main" && blocked "sudo git push origin main" && blocked "sudo -u me git push origin main"'
+check "when a cd happens inside ( … ), then the commands after it are checked where they really run" \
+  'blocked "(cd /tmp && git status); git push origin main"'
+check "when parentheses or braces are only inside a quoted message or format, then it is allowed" \
+  '"$g" "git commit -m \"fix (parser) and {braces}\"" && "$g" "git log --format=\"(%h)\" -n 3" && "$g" "echo \"\$(date)\"; git status"'
+check "when everything is staged through git stage, --al or ./, then it is blocked" \
+  'blocked "git stage -A" && blocked "git add --al" && blocked "git add ./" && blocked "git add :/."'
 check "when hooks are switched off with -c core.hooksPath, then it is blocked" \
   'blocked "git -c core.hooksPath=/dev/null commit -m x" && blocked "git -c core.hooksPath /dev/null commit -m x"'
 check "when pre-commit hooks are skipped with SKIP=, then it is blocked" \

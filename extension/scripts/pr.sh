@@ -74,7 +74,8 @@ case "$mode" in
         || die "on '${branch:-a detached HEAD}': a PR comes from its own branch (git switch -c fix/<slug>), never a base branch"
     fi
     # A reviewer's copy (Claude Code puts it under .claude/worktrees) is not the author's work.
-    [[ -z "$(git status --porcelain -- . ':(exclude).claude/worktrees')" ]] || die "uncommitted changes; commit the work first"
+    dirty="$(git status --porcelain -- . ':(exclude).claude/worktrees' | awk 'NR <= 5 { printf "%s ", substr($0, 4) }')" # awk reads it all: head would SIGPIPE git under pipefail
+    [[ -z "$dirty" ]] || die "uncommitted changes; commit the work first (or git-ignore what the tests create): $dirty"
     # A task stacked on another task's branch (branch.sh --from) opens its PR into that branch.
     parent=""; parent_pr=""
     if [[ "$mode" == task ]]; then parent="$(git config --get "branch.$branch.landspec-parent" || true)"; fi

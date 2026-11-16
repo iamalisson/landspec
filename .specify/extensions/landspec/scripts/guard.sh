@@ -8,7 +8,8 @@
 # Each git command is checked against the repository it runs in: the hook's directory, moved by a
 # `cd`/`pushd` earlier in the chain or by `git -C`, or the one --git-dir/GIT_DIR= names. A
 # repository without landspec is not checked.
-# Best effort: it catches the usual forms (chains, env/command/VAR= prefixes, sh -c '...', git
+# Best effort: it catches the usual forms (chains, subshells, $(...), { ...; } and if blocks,
+# env/command/VAR=/timeout/nice/xargs/sudo prefixes, sh -c '...', git
 # global options, bundled flags), not every possible shell trick. The real boundary is CI plus
 # branch protection. People are not affected; their git hooks still apply.
 set -uo pipefail
@@ -106,6 +107,11 @@ words() {
           w = w part; inw = 1; i += j; continue
         }
         if (c == "#" && !inw) { while (i < n && substr(text, i + 1, 1) != "\n") i++; continue }
+        # ( and ) open and close a subshell or a $(…) ("|(" and "|)"); a backquote separates.
+        if (c == "(" || c == ")" || c == "`") {
+          if (inw) { print w; w = ""; inw = 0 }
+          print (c == "(" ? "|(" : c == ")" ? "|)" : "|"); continue
+        }
         # A redirection ends the word before it (bash does too) but is not a separator: it becomes
         # its own word, keeping a file descriptor number (2>&1) and the & of >&2 or &>f.
         if (c == "<" || c == ">" || c == "&" && substr(text, i + 1, 1) == ">") {
@@ -217,9 +223,10 @@ check_git() {
       for w in "$@"; do
         [[ "$w" == --no-verify ]] && block "--no-verify skips the secret checks; fix what the hook reports instead"
       done ;;
-    add)
+    add|stage)
+      # --a and --al are prefixes of --all (git takes them); ./ and :/. name the whole tree too.
       for w in "$@"; do
-        case "$w" in -A|--all|.|:/|-[a-zA-Z]*A*) block "stage files by name (git add path/to/file), not everything at once" ;; esac
+        case "$w" in -A|--a|--al|--all|.|./|:/|:/.|:/./|-[a-zA-Z]*A*) block "stage files by name (git add path/to/file), not everything at once" ;; esac
       done ;;
     push)
       local targets="" remote_seen=false
@@ -245,15 +252,18 @@ check_git() {
 # check_command <command text> [nested]: every command in it, including ones inside sh -c '...'.
 # An env prefix (SKIP=) belongs to one top-level command; inside sh -c it carries over.
 check_command() {
-  local cmd=() w nested="${2:-}" before="$dir" piped=false
+  local cmd=() w nested="${2:-}" before="$dir" piped=false saved=""
   while IFS= read -r w; do
     case "$w" in
-      "|"|"|>"|"|&")
+      "|"|"|>"|"|&"|"|("|"|)")
         [[ -n "$nested" ]] || skip_env=false
         check_words ${cmd[@]+"${cmd[@]}"}; cmd=()
         # A pipeline stage or a background job runs in a subshell: its cd does not last.
-        if $piped || [[ "$w" != "|" ]]; then dir="$before"; fi
+        if $piped || [[ "$w" == "|>" || "$w" == "|&" ]]; then dir="$before"; fi
         if [[ "$w" == "|>" ]]; then piped=true; else piped=false; fi
+        # Neither does a cd inside ( … ) or $( … ): the directory comes back at the ")".
+        if [[ "$w" == "|(" ]]; then saved="$dir"$'\n'"$saved"; fi
+        if [[ "$w" == "|)" && -n "$saved" ]]; then dir="${saved%%$'\n'*}"; saved="${saved#*$'\n'}"; fi
         before="$dir" ;;
       *) cmd+=("$w") ;;
     esac
@@ -295,14 +305,24 @@ check_words() {
   for w in "$@"; do
     if [[ "$w" == GIT_CONFIG_*=* ]] && hookspath "$w"; then no_hooks; fi
   done
-  # Prefixes that still run git: VAR=value, env [VAR=value...], command, exec, time, nohup.
+  # Prefixes that still run git: VAR=value, env [VAR=value...], command, exec, time, nohup, the
+  # shell's own words ({ ! if then …), and runners with options (timeout 30, nice -n 5, xargs, sudo).
   # SKIP= (pre-commit) is remembered: it also reaches the commands inside a `sh -c '...'`.
+  local p
   while (($#)); do
     case "$1" in
       SKIP=*|PRE_COMMIT_ALLOW_NO_CONFIG=*) skip_env=true; shift ;;
       GIT_DIR=*) git_dir="${1#*=}"; shift ;;
       GIT_WORK_TREE=*) work_tree="${1#*=}"; shift ;;
-      *=*|env|command|exec|time|nohup|sudo) shift ;;
+      *=*|env|command|exec|time|nohup|'{'|'}'|'!'|if|then|else|elif|fi|do|done|while|until) shift ;;
+      timeout|nice|xargs|stdbuf|sudo|doas)
+        p="$1"; shift
+        while [[ "${1:-}" == -* ]]; do
+          # Options that take the next word as their value.
+          case "$p:$1" in timeout:-s|timeout:-k|timeout:--signal|timeout:--kill-after|nice:-n|xargs:-[InLPdsaE]|stdbuf:-[ioe]|sudo:-[ug]|doas:-u) shift ;; esac
+          shift
+        done
+        if [[ "$p" == timeout ]]; then shift; fi ;; # its duration
       *) break ;;
     esac
   done

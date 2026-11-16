@@ -33,8 +33,10 @@ while read -r _local_ref local_sha remote_ref remote_sha; do
       status=1; continue
     fi
   fi
-  if [[ "$remote_sha" == "$zero" ]]; then
-    # New remote branch: every commit no remote has yet, down to the root on a first push.
+  if [[ "$remote_sha" == "$zero" ]] || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    # New remote branch: every commit no remote has yet, down to the root on a first push. Also
+    # when the remote's tip was never fetched (the remote moved on, or a deliberate --force): a
+    # range from it would fail, and git itself still says "fetch first" where it applies.
     from=-
   else
     from="$remote_sha"
