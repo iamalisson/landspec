@@ -164,7 +164,9 @@ words() {
         }
         # The whole run of ordinary characters at once, like a quoted run: one substr() per
         # character is O(n) per call in busybox and BSD awk, so a long unquoted word was quadratic.
-        if (match(substr(text, i), /^[^ \t\n;|&<>()"\047`$]+/)) { w = w substr(text, i, RLENGTH); i += RLENGTH - 1 }
+        # The slice is bounded so many short words do not copy the rest of the text each time;
+        # a longer run just matches again on the next pass.
+        if (match(substr(text, i, 256),/^[^ \t\n;|&<>()"\047`$]+/)) { w = w substr(text, i, RLENGTH); i += RLENGTH - 1 }
         else w = w c
         inw = 1
       }
