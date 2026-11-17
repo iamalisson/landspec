@@ -65,7 +65,7 @@ for e in allow:mcp__aws-mcp__aws___search_documentation allow:mcp__aws-mcp__aws_
 done
 
 # One deploy per account kind: dev builds (reads only on lite), prod always reads.
-dev_access=build; [[ "$level" == lite ]] && dev_access=read
+dev_access=build; [[ "$level" == lite ]] && dev_access="read"
 kinds="dev:$dev_access"; [[ -n "$(cfg aws_prod_profiles "")" ]] && kinds+=" prod:read"
 for k in $kinds; do
   echo "deploy: aws cloudformation deploy --stack-name landspec-agent --template-file .specify/extensions/landspec/aws/agent-role.yaml --capabilities CAPABILITY_NAMED_IAM --parameter-overrides Access=${k#*:} TrustMode=sso PermissionSetName=<name> --profile <your ${k%%:*} admin profile>"
