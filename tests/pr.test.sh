@@ -550,4 +550,116 @@ set_cfg aws off
 "$p" task T001 "feat: infra" "$TMP/body.md" >/dev/null 2>&1 || true
 check "when aws is off, then the same diff opens with no plan and no Terraform section" 'grep -q "^pr create" "$GH_LOG" && ! grep -q "Terraform plan" "$GH_LOG"'
 
+# ── Spec 007 T010: pr.sh state reads a PR's conflict, CI and Copilot state, and answers Copilot's threads ──
+check "when pr.sh state has no PR number, then it prints its usage" 'fails_with "usage: pr.sh state <pr> [--reply <thread id> [<file>]]" "$p" state'
+check "when pr.sh state gets a PR that is not a number, then it prints its usage" 'fails_with "usage: pr.sh state" "$p" state abc'
+if ! command -v jq >/dev/null; then echo "skip - pr.sh state checks need jq (the fake gh runs the script's own --jq)"
+else
+export GH_STATE="$TMP/state.json"
+cop=copilot-pull-request-reviewer
+# st <mergeable> [rollup] [requests] [reviews] [comments] [threads]: GitHub's JSON answer to the PR query
+st() { printf '{"data":{"repository":{"pullRequest":{"headRefOid":"h1","mergeable":"%s","commits":{"nodes":[{"commit":{"oid":"h1","statusCheckRollup":%s}}]},"reviewRequests":{"nodes":[%s]},"reviews":{"nodes":[%s]},"comments":{"nodes":[%s]},"reviewThreads":{"nodes":[%s]}}}}}\n' \
+  "$1" "${2:-null}" "${3:-}" "${4:-}" "${5:-}" "${6:-}" > "$GH_STATE"; }
+ctx() { printf '{"contexts":{"nodes":[%s]}}' "$1"; }
+crun() { printf '{"__typename":"CheckRun","name":"%s","status":"%s","conclusion":%s}' "$1" "$2" "$3"; }
+sctx() { printf '{"__typename":"StatusContext","context":"%s","state":"%s"}' "$1" "$2"; }
+req() { printf '{"requestedReviewer":{"login":"%s"}}' "$1"; }
+rev() { printf '{"author":{"login":"%s"},"commit":{"oid":"h1"},"body":"%s","submittedAt":"%s"}' "$1" "$2" "$3"; }
+com() { printf '{"author":{"login":"%s"},"body":"%s","createdAt":"%s"}' "$1" "$2" "$3"; }
+# th <n> <isResolved> <isOutdated> <line> <originalLine> <login>...: thread PRRT_<n> on src/f<n>.ts, one comment per login (ids <n>00, <n>01, ...)
+th() {
+  local n=$1 r=$2 o=$3 l=$4 ol=$5 c="" k=0 a; shift 5
+  for a in "$@"; do c+="${c:+,}{\"author\":{\"login\":\"$a\"},\"databaseId\":$n$((k / 10))$((k % 10)),\"body\":\"$a on f$n\\nsecond line\"}"; k=$((k + 1)); done
+  printf '{"id":"PRRT_%s","isResolved":%s,"isOutdated":%s,"path":"src/f%s.ts","line":%s,"originalLine":%s,"comments":{"nodes":[%s]}}' "$n" "$r" "$o" "$n" "$l" "$ol" "$c"
+}
+line() { "$p" state 12 | grep "^$1="; }
+quota="Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota. Try requesting a review at a lower effort level."
+report="$(git rev-parse --git-common-dir)/landspec-review/copilot-12"
+
+st MERGEABLE;   check "when the PR is MERGEABLE, then CONFLICT=no" '[[ "$(line CONFLICT)" == CONFLICT=no ]]'
+st CONFLICTING; check "when the PR is CONFLICTING, then CONFLICT=yes" '[[ "$(line CONFLICT)" == CONFLICT=yes ]]'
+st UNKNOWN;     check "when GitHub has not computed it (UNKNOWN), then CONFLICT=unknown" '[[ "$(line CONFLICT)" == CONFLICT=unknown ]]'
+
+st MERGEABLE "$(ctx "$(crun test IN_PROGRESS null),$(crun lint COMPLETED '"FAILURE"')")"
+check "when one check run is in progress beside a failed one, then CI=pending" '[[ "$(line CI)" == CI=pending ]]'
+st MERGEABLE "$(ctx "$(crun lint COMPLETED '"SUCCESS"'),$(sctx ci/x PENDING)")"
+check "when a status context is pending, then CI=pending" '[[ "$(line CI)" == CI=pending ]]'
+st MERGEABLE "$(ctx "$(crun test COMPLETED '"FAILURE"'),$(crun macos COMPLETED '"CANCELLED"'),$(crun lint COMPLETED '"SUCCESS"')")"
+check "when a run failed and one was cancelled, then CI=fail names both with their conclusion" '[[ "$(line CI)" == "CI=fail test (FAILURE),macos (CANCELLED)" ]]'
+st MERGEABLE "$(ctx "$(crun a COMPLETED '"TIMED_OUT"'),$(crun b COMPLETED '"ACTION_REQUIRED"'),$(crun c COMPLETED '"STARTUP_FAILURE"'),$(sctx ci/x ERROR),$(sctx ci/y FAILURE)")"
+check "when runs timed out, need action or failed to start and statuses errored or failed, then CI=fail names each" \
+  '[[ "$(line CI)" == "CI=fail a (TIMED_OUT),b (ACTION_REQUIRED),c (STARTUP_FAILURE),ci/x (error),ci/y (failure)" ]]'
+st MERGEABLE "$(ctx "$(crun test COMPLETED '"SUCCESS"'),$(crun docs COMPLETED '"SKIPPED"'),$(crun opt COMPLETED '"NEUTRAL"'),$(sctx ci/x SUCCESS)")"
+check "when every check succeeded (or was skipped or neutral), then CI=pass" '[[ "$(line CI)" == CI=pass ]]'
+st MERGEABLE null;        check "when the head has no check at all, however recent the push, then CI=none (never waited for)" '[[ "$(line CI)" == CI=none ]]'
+st MERGEABLE "$(ctx "")"; check "when the rollup has no context, then CI=none" '[[ "$(line CI)" == CI=none ]]'
+
+st MERGEABLE null "$(req $cop)"
+check "when a Copilot review request is open and no review yet, then COPILOT=pending" '[[ "$(line COPILOT)" == COPILOT=pending ]]'
+st MERGEABLE null "$(req octocat)"
+check "when only a user's review is requested, then COPILOT=none" '[[ "$(line COPILOT)" == COPILOT=none ]]'
+st MERGEABLE null "$(req Copilot)" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" "$(th 1 false false 10 10 $cop),$(th 2 false false 3 3 $cop)"
+check "when a Copilot request is open beside unanswered threads, then COPILOT=pending still" '[[ "$(line COPILOT)" == COPILOT=pending ]]'
+st MERGEABLE null "" "" "$(com $cop "$quota" 2026-01-02T00:00:00Z)"
+check "when Copilot's newest comment says it was unable to review, with nothing open, then COPILOT=unavailable and its first sentence" \
+  '[[ "$(line COPILOT)" == "COPILOT=unavailable Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota." ]]'
+st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "$(com $cop "$quota" 2026-01-02T00:00:00Z)" "$(th 1 false false 10 10 $cop),$(th 2 false false 3 3 $cop)"
+check "when the same comment follows a review whose two Copilot threads are unanswered, then COPILOT=comments 2, not unavailable" \
+  '[[ "$(line COPILOT)" == "COPILOT=comments 2 REPORT=$report" ]]'
+st MERGEABLE null "" "$(rev $cop "" 2026-01-03T00:00:00Z)" "$(com $cop "$quota" 2026-01-02T00:00:00Z)"
+check "when a Copilot review is newer than its unable-to-review comment, then COPILOT=clean" '[[ "$(line COPILOT)" == COPILOT=clean ]]'
+st MERGEABLE null "" "" "$(com octocat "Copilot was unable to review this, sadly." 2026-01-02T00:00:00Z)"
+check "when only a user's comment says unable to review, then COPILOT=none" '[[ "$(line COPILOT)" == COPILOT=none ]]'
+
+st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" \
+  "$(th 1 false false 10 9 $cop),$(th 2 false true null 7 $cop),$(th 3 false false 5 5 $cop octocat),$(th 4 true false 6 6 $cop),$(th 5 false false 8 8 octocat)"
+out="$("$p" state 12)"
+check "when a review on the head left two unanswered Copilot threads, one replied and one resolved, then COPILOT=comments 2 with RESOLVE= the replied one" \
+  '[[ "$out" == "$(printf "CONFLICT=no\nCI=none\nCOPILOT=comments 2 REPORT=%s RESOLVE=PRRT_3" "$report")" ]]'
+printf '%s\n' '## Findings' "- src/f1.ts:10 thread=PRRT_1 $cop on f1" "  $cop on f1" '  second line' \
+  "- src/f2.ts:7 thread=PRRT_2 (outdated) $cop on f2" "  $cop on f2" '  second line' > "$TMP/want.md"
+check "then the report holds the two under ## Findings with path:line and ids, the outdated one marked, a null line read from originalLine, and no user's thread" \
+  'diff "$TMP/want.md" "$report"'
+st MERGEABLE null "" "" "" "$(th 1 false false null null $cop)"
+"$p" state 12 >/dev/null
+check "when a thread has neither line nor originalLine, then its report line says :1" 'grep -qx -- "- src/f1.ts:1 thread=PRRT_1 $cop on f1" "$report"'
+st MERGEABLE null "" "" "" "$(th 3 false false 5 5 $cop octocat),$(th 5 false false 8 8 octocat)"
+check "when the only Copilot thread left is replied to, then COPILOT=comments 0 with RESOLVE= it, and a user's thread is never counted" \
+  '[[ "$(line COPILOT)" == "COPILOT=comments 0 REPORT=$report RESOLVE=PRRT_3" && "$(cat "$report")" == "## Findings" ]]'
+st MERGEABLE null "" "" "" "$(th 6 false false 5 5 $cop octocat $cop)"
+check "when Copilot wrote again after a reply, then the thread is unanswered" '[[ "$(line COPILOT)" == "COPILOT=comments 1 REPORT=$report" ]]'
+st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" "$(th 4 true false 6 6 $cop),$(th 5 false false 8 8 octocat)"
+check "when Copilot reviewed and nothing is left, then COPILOT=clean" '[[ "$(line COPILOT)" == COPILOT=clean ]]'
+st MERGEABLE null "" "$(rev octocat "" 2026-01-01T00:00:00Z)" "$(com octocat hi 2026-01-01T00:00:00Z)"
+check "when no Copilot request, review or comment exists, then COPILOT=none" '[[ "$(line COPILOT)" == COPILOT=none ]]'
+check "when given the PR's URL, then it reads that PR" '"$p" state https://github.com/acme/app/pull/12 | grep -qx COPILOT=none'
+
+st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" \
+  "$(th 1 false false 10 9 $cop),$(th 3 false false 5 5 $cop octocat),$(th 4 true false 6 6 $cop),$(th 5 false false 8 8 octocat)"
+printf 'Fixed in abc123.\n' > "$TMP/answer.md"; : > "$TMP/empty.md"; printf ' \n' > "$TMP/blank.md"
+posted() { grep -q replies "$GH_LOG" || grep -q resolveReviewThread "$GH_LOG"; }
+: > "$GH_LOG"; out="$("$p" state 12 --reply PRRT_1 "$TMP/answer.md")"
+check "when --reply answers an unreplied Copilot thread, then it posts the file to its first comment's replies, then resolves it" \
+  '[[ "$out" == REPLIED=PRRT_1 ]] && grep -qxF "api repos/{owner}/{repo}/pulls/12/comments/100/replies -F body=@$TMP/answer.md" "$GH_LOG" \
+   && grep resolveReviewThread "$GH_LOG" | grep -q -- "-F id=PRRT_1 " && [[ "$(grep -n replies "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n resolveReviewThread "$GH_LOG" | cut -d: -f1)" ]]'
+: > "$GH_LOG"; out="$("$p" state 12 --reply PRRT_3 "$TMP/answer.md")"
+check "when --reply names a thread already replied to, then it only resolves it and posts nothing" \
+  '[[ "$out" == RESOLVED=PRRT_3 ]] && ! grep -q replies "$GH_LOG" && grep resolveReviewThread "$GH_LOG" | grep -q -- "-F id=PRRT_3 "'
+: > "$GH_LOG"
+check "when --reply names a user's thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_5 was not opened by Copilot" "$p" state 12 --reply PRRT_5 "$TMP/answer.md" && ! posted'
+check "when --reply names a resolved thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_4 is already resolved" "$p" state 12 --reply PRRT_4 "$TMP/answer.md" && ! posted'
+check "when --reply names a thread of another PR, then it is refused and nothing is posted" 'one_refusal "thread PRRT_9 is not on PR #12" "$p" state 12 --reply PRRT_9 "$TMP/answer.md" && ! posted'
+check "when --reply has no file for an unreplied thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_1 has no reply yet" "$p" state 12 --reply PRRT_1 && ! posted'
+check "when --reply has an empty file for an unreplied thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_1 has no reply yet" "$p" state 12 --reply PRRT_1 "$TMP/empty.md" && ! posted'
+check "when --reply has a blank or a missing file, then it is refused and nothing is posted" \
+  'one_refusal "thread PRRT_1 has no reply yet" "$p" state 12 --reply PRRT_1 "$TMP/blank.md" && one_refusal "thread PRRT_1 has no reply yet" "$p" state 12 --reply PRRT_1 "$TMP/nope.md" && ! posted'
+check "when --reply names no thread, or one that is not a node id, then it prints its usage and posts nothing" \
+  'fails_with "usage: pr.sh state" "$p" state 12 --reply && fails_with "usage: pr.sh state" "$p" state 12 --reply "a\"b" && ! posted'
+check "when pr.sh state gets an unknown option, then it prints its usage" 'fails_with "usage: pr.sh state" "$p" state 12 --bogus'
+check "when the reply cannot be posted, then nothing is resolved" \
+  'GH_FAIL_REPLY=1 fails_with "could not post the reply to thread PRRT_1; nothing resolved" "$p" state 12 --reply PRRT_1 "$TMP/answer.md" && ! grep -q resolveReviewThread "$GH_LOG"'
+set +e; out="$(GH_FAIL_RESOLVE=1 "$p" state 12 --reply PRRT_1 "$TMP/answer.md" 2>/dev/null)"; code=$?; set -e
+check "when the resolve fails, then --reply prints REPLIED= and exits 1" '[[ "$out" == REPLIED=PRRT_1 && "$code" == 1 ]]'
+fi
+
 exit "$FAIL"

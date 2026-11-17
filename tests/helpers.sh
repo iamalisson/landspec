@@ -42,11 +42,20 @@ fake_gh() {
 echo "$*" >> "$GH_LOG"
 echo "${GH_REPO:-(unset)} $1 $2" >> "$GH_LOG.repo"
 case "$1 $2" in
-  "api graphql") # next.sh's issue-state query: prints, as its --jq does, the asked numbers in $GH_CLOSED
+  "api graphql") # pr.sh state's thread resolve: logged; $GH_FAIL_RESOLVE makes it fail
+                 if [[ "$*" == *resolveReviewThread* ]]; then
+                   if [[ -n "${GH_FAIL_RESOLVE:-}" ]]; then echo "GraphQL: Resource not accessible by integration (resolveReviewThread)" >&2; exit 1; fi; exit 0; fi
+                 # pr.sh state's PR query: $GH_STATE is GitHub's JSON answer, shaped by the call's own --jq (real jq)
+                 if [[ "$*" == *reviewThreads* ]]; then
+                   q=""; a=("$@"); for ((i = 0; i < ${#a[@]}; i++)); do if [[ "${a[i]}" == --jq ]]; then q="${a[i+1]:-}"; fi; done
+                   jq -r "$q" "$GH_STATE"; exit; fi
+                 # next.sh's issue-state query: prints, as its --jq does, the asked numbers in $GH_CLOSED
                  if [[ -n "${GH_FAIL_GRAPHQL:-}" ]]; then echo "gh: Could not resolve to an Issue with the number of $GH_FAIL_GRAPHQL." >&2; exit 1; fi
                  for q in $(grep -oE 'issue\(number: *[0-9]+' <<<"$*" | grep -oE '[0-9]+$'); do
                    if grep -qx "$q" "$GH_CLOSED" 2>/dev/null; then echo "$q"; fi
                  done; exit 0 ;;
+  "api repos/"*/replies) # pr.sh state --reply's post: logged; $GH_FAIL_REPLY makes it fail
+                 if [[ -n "${GH_FAIL_REPLY:-}" ]]; then echo "HTTP 422: Validation Failed" >&2; exit 1; fi; echo '{}' ;;
   "api repos/"*) # check-tools.sh's release-list lookup: $GH_API is a JSON object of
                  # "<owner>/<repo>": [releases as GitHub's JSON], filtered by the call's own --jq
                  # (real jq); a repo it does not list fails.
