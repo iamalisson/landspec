@@ -109,7 +109,7 @@ check "when pre-commit is not on PATH, then FORMATTERS=skipped pre-commit is not
 
 rm -rf "$TMP/empty"; mkdir "$TMP/empty"; cd "$TMP/empty"; git init --quiet; config fmt rewrite; run
 check "when the repository has no commit yet, then skipped with git's error, exit 0, no worktree left" \
-  '[[ $code == 0 && "$(wc -l <<<"$out")" == 1 ]] && grep -qE "^FORMATTERS=skipped cannot make a worktree at HEAD: .+" <<<"$out" && no_leftover'
+  '[[ $code == 0 && $(wc -l <<<"$out") -eq 1 ]] && grep -qE "^FORMATTERS=skipped cannot make a worktree at HEAD: .+" <<<"$out" && no_leftover'
 
 fixture "$TMP/term" 9; config slow slow; PATH="$P" bash "$fmt" >/dev/null 2>&1 & pid=$!
 for _ in $(seq 1 50); do [[ "$(git worktree list | wc -l)" -gt 1 ]] && break; sleep 0.1; done
