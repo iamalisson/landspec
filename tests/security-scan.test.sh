@@ -12,6 +12,11 @@ for t in gitleaks osv-scanner semgrep zizmor; do
 echo "\$*" >> "$TMP/$t.log"
 [[ " \${FAKE_FIND:-} " == *" $t "* ]] && exit 1
 [[ " \${FAKE_CRASH:-} " == *" $t "* ]] && { echo "$t-core exited with -11!" >&2; exit 2; }
+# FAKE_SILENT=<tool>: exits 2 with nothing on stderr, writing \$FAKE_JSON (may be empty) to --output.
+if [[ " \${FAKE_SILENT:-} " == *" $t "* ]]; then
+  while (( \$# )); do [[ \$1 == --output ]] && printf '%s' "\${FAKE_JSON:-}" > "\$2"; shift; done
+  exit 2
+fi
 exit 0
 EOF
   chmod +x "$TMP/tools/$t"
@@ -43,6 +48,45 @@ check "when semgrep exits with an error (not findings), then it is reported fail
   'grep -q "^semgrep *failed *exit 2 .*code patterns not scanned" <<<"$out" && ! grep -q "^semgrep *findings" <<<"$out"'
 check "then its stderr is kept in semgrep.log, which the failed line names" \
   'dir="$(sed -n "s/^REPORT_DIR=//p" <<<"$out")"; grep -qxF "semgrep-core exited with -11!" "$dir/semgrep.log" && grep -qF "see $dir/semgrep.log" <<<"$out"'
+
+# Spec 007 T007 (#217): semgrep with --json --output writes its error to the JSON, not the log.
+semgrep_line() { FAKE_SILENT=semgrep FAKE_JSON="$1" PATH="$TMP/tools:$PATH" bash "$scan" | grep "^semgrep "; }
+killed="You are seeing this because the engine was killed."
+out="$(FAKE_SILENT=semgrep FAKE_JSON='{"results": [], "errors": [{"code": 2, "level": "error", "message": "'"$killed"'"}], "paths": {}}' PATH="$TMP/tools:$PATH" bash "$scan")"
+check "when semgrep fails with an empty log and an error in its JSON, then the failed line gives that message and names semgrep.json" \
+  'dir="$(sed -n "s/^REPORT_DIR=//p" <<<"$out")"; grep -qxF "semgrep      failed    exit 2: $killed; see $dir/semgrep.json" <<<"$out"'
+# The shape semgrep 1.185 really writes: the reason is on the line after "Error while running rules:".
+out="$(semgrep_line '{"version":"1.185.0","results":[],"errors":[{"code":2,"level":"error","type":"SemgrepError","message":"Error while running rules: \n                    '"$killed"'\n\n                    The most common reason this happens is because it used too much memory.\n"}],"paths":{"scanned":[]}}')"
+check "when semgrep's first message line ends in a colon, then the next line with text is joined to it" \
+  'grep -qF "exit 2: Error while running rules: $killed; see " <<<"$out"'
+out="$(semgrep_line '')"
+check "when semgrep fails with both its log and its JSON empty, then the line says it wrote no error and names both" \
+  'grep -qE "^semgrep +failed +exit 2: semgrep wrote no error \(.*/semgrep.log and .*/semgrep.json are empty\)$" <<<"$out"'
+out="$(semgrep_line '{"results": [], "errors": [], "paths": {}}')"
+check "when semgrep's JSON holds no error message, then the line says it wrote no error" 'grep -q "semgrep wrote no error" <<<"$out"'
+long="$(printf 'a%.0s' {1..199})bc$(printf 'x%.0s' {1..99})"
+out="$(semgrep_line '{"errors": [{"message": "'"$long"'"}]}')"
+check "when the error message is 300 characters, then it is cut to its first 200" \
+  'grep -qE "exit 2: a{199}b; see " <<<"$out"'
+out="$(semgrep_line '{"errors": [{"message": "'"${long:0:200}"'"}]}')"
+check "when the error message is exactly 200 characters, then it is kept whole" \
+  'grep -qE "exit 2: a{199}b; see " <<<"$out"'
+out="$(semgrep_line '{"results": [{"check_id": "x", "extra": {"message": "a finding"}}], "errors": [{"message": "the error"}, {"message": "a second error"}]}')"
+check "when a finding with its own message comes before the error, then the line gives the first error's message, not the finding's" \
+  'grep -q "exit 2: the error; see " <<<"$out"'
+out="$(semgrep_line '{"errors": [{"message": "line one\nline two"}]}')"
+check "when the error message spans lines, then only its first line is given" 'grep -q "exit 2: line one; see " <<<"$out"'
+out="$(semgrep_line '{"errors": [{"message": "bad \"rule\" id"}]}')"
+check "when the error message has escaped quotes, then they are kept as quotes" "grep -qF 'exit 2: bad \"rule\" id; see ' <<<\"\$out\""
+out="$(semgrep_line '{
+  "results": [],
+  "errors": [
+    {
+      "message": "pretty printed"
+    }
+  ]
+}')"
+check "when semgrep's JSON is spread over lines, then its error message is still found" 'grep -q "exit 2: pretty printed; see " <<<"$out"'
 
 # Every worktree shares .git/landspec-security: two runs in the same second get their own folder.
 mkdir -p "$TMP/clock"; printf '#!/usr/bin/env bash\necho 20260101-000000\n' > "$TMP/clock/date"; chmod +x "$TMP/clock/date"
