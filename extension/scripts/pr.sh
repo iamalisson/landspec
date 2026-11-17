@@ -16,6 +16,14 @@
 #       spec/<feature> and opens a docs PR, or updates the open one (its generated body too, so a
 #       new task issue shows). The title, in the project's language, names the commit and a new PR;
 #       without one, the commit says "add" on a new spec PR and "update" on an open one.
+#   pr.sh state <pr>
+#       Reads the PR (no feature needed, nothing requested, nothing waited for) and prints
+#       CONFLICT=no|yes|unknown, CI=pass|pending|fail <name> (<conclusion>),…|none and
+#       COPILOT=pending|comments <n> REPORT=<file> [RESOLVE=<id>,…]|unavailable <reason>|clean|none.
+#       The report lists Copilot's unanswered threads under "## Findings".
+#   pr.sh state <pr> --reply <thread id> [<file>]
+#       Posts <file> as the reply to Copilot's unanswered thread and resolves it (REPLIED=<id>), or
+#       only resolves one already replied to (RESOLVED=<id>).
 # Prints: PR=<url>
 set -euo pipefail
 # shellcheck source=lib.sh
@@ -23,7 +31,7 @@ source "$(dirname "$0")/lib.sh"
 
 landspec_cd_root
 command -v gh >/dev/null || die "the GitHub CLI (gh) is required: https://cli.github.com"
-fdir=""; [[ "${1:-}" == fix ]] || fdir="$(feature_dir)" # a fix PR belongs to no feature
+fdir=""; [[ "${1:-}" == fix || "${1:-}" == state ]] || fdir="$(feature_dir)" # a fix PR, or any PR's state, belongs to no feature
 base="$(base_branch)"
 mode="${1:-}"
 
@@ -221,5 +229,73 @@ Merge this before starting tasks: \`/speckit-implement Tnnn\` branches from \`$b
 
 </details>" "the generated spec body"
     ;;
-  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"]" ;;
+  state)
+    # One read of the PR, shaped by gh's own --jq (no jq binary). Copilot is any login matching "copilot".
+    # shortcut: 100 checks, threads and reviews, 30 comments per query (a real PR had 44 threads); page them if a PR ever passes that
+    usage='usage: pr.sh state <pr> [--reply <thread id> [<file>]]'
+    pr="${2:-}"; pr="${pr##*/pull/}"
+    [[ "$pr" =~ ^[0-9]+$ ]] || die "$usage"
+    q='query($owner: String!, $name: String!, $pr: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $pr) {
+      headRefOid mergeable
+      commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes { __typename
+        ... on CheckRun { name status conclusion } ... on StatusContext { context state } } } } } } }
+      reviewRequests(first: 20) { nodes { requestedReviewer { ... on Bot { login } ... on User { login } } } }
+      reviews(last: 100) { nodes { author { login } commit { oid } body submittedAt } }
+      comments(last: 30) { nodes { author { login } body createdAt } }
+      reviewThreads(first: 100) { nodes { id isResolved isOutdated path line originalLine
+        comments(first: 100) { nodes { author { login } databaseId body } } } } } } }'
+    cp='def cp: (. // "") | test("copilot"; "i"); .data.repository.pullRequest as $p | '
+    read_pr() { gh api graphql -F owner='{owner}' -F name='{repo}' -F pr="$pr" -f query="$q" --jq "$cp$1" || die "could not read PR #$pr"; }
+    if [[ -z "${3:-}" ]]; then
+      # A thread is Copilot's when Copilot wrote its first comment, and unanswered while Copilot wrote its last.
+      out="$(read_pr '[$p.reviewThreads.nodes[] | select((.isResolved | not) and (.comments.nodes[0].author.login | cp))] as $open
+        | [$open[] | select(.comments.nodes[-1].author.login | cp)] as $un
+        | [$open[] | select(.comments.nodes[-1].author.login | cp | not) | .id] as $rs
+        | [$p.commits.nodes[0].commit.statusCheckRollup.contexts.nodes[]?] as $c
+        | ([($p.reviews.nodes[] | select(.author.login | cp) | {t: .submittedAt, b: .body}),
+            ($p.comments.nodes[] | select(.author.login | cp) | {t: .createdAt, b: .body})] | sort_by(.t) | last | .b // "") as $new
+        | "CONFLICT=" + ({MERGEABLE: "no", CONFLICTING: "yes"}[$p.mergeable // ""] // "unknown"),
+          "CI=" + (if ($c | length) == 0 then "none"
+            elif any($c[]; if .__typename == "CheckRun" then .status != "COMPLETED" else .state == "PENDING" or .state == "EXPECTED" end) then "pending"
+            else [$c[] | if .__typename == "CheckRun"
+                then select(.conclusion | IN("FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE")) | "\(.name) (\(.conclusion))"
+                else select(.state == "FAILURE" or .state == "ERROR") | "\(.context) (\(.state | ascii_downcase))" end]
+              | if length > 0 then "fail " + join(",") else "pass" end end),
+          "COPILOT=" + (if any($p.reviewRequests.nodes[]; .requestedReviewer.login | cp) then "pending"
+            elif ($un | length) > 0 or ($rs | length) > 0 then "comments \($un | length) REPORT=@" + (if ($rs | length) > 0 then " RESOLVE=" + ($rs | join(",")) else "" end)
+            elif ($new | test("unable to review"; "i")) then "unavailable " + ($new | sub("^\\s+"; "") | split("\n")[0] | (capture("^(?<s>.*?[.!?])(\\s|$)").s // .))
+            elif any($p.reviews.nodes[]; .author.login | cp) then "clean" else "none" end),
+          ($un[] | (.comments.nodes[0].body // "") as $b
+            | "- \(.path):\(.line // .originalLine // 1) thread=\(.id)\(if .isOutdated then " (outdated)" else "" end) \($b | split("\n")[0])",
+              ($b | split("\n") | map("  " + .) | join("\n")))')" || exit 1
+      head -n 2 <<<"$out"
+      copilot="$(sed -n 3p <<<"$out")"
+      if [[ "$copilot" == *REPORT=@* ]]; then
+        report="$(git rev-parse --git-common-dir)/landspec-review/copilot-$pr"; mkdir -p "${report%/*}"
+        { echo "## Findings"; tail -n +4 <<<"$out"; } > "$report"
+        copilot="${copilot/REPORT=@/REPORT=$report}"
+      fi
+      echo "$copilot"
+    elif [[ "$3" == --reply ]]; then
+      id="${4:-}"; file="${5:-}"
+      [[ "$id" =~ ^[A-Za-z0-9_=-]+$ ]] || die "$usage" # a GraphQL node id; it goes into the --jq program below
+      t="$(read_pr '$p.reviewThreads.nodes[] | select(.id == "'"$id"'")
+        | "\(.comments.nodes[0].author.login | cp) \(.isResolved) \(.comments.nodes[-1].author.login | cp | not) \(.comments.nodes[0].databaseId)"')" || exit 1
+      [[ -n "$t" ]] || die "thread $id is not on PR #$pr; nothing posted"
+      read -r copilots resolved replied cid <<<"$t"
+      [[ "$copilots" == true ]] || die "thread $id was not opened by Copilot; nothing posted"
+      [[ "$resolved" == false ]] || die "thread $id is already resolved; nothing posted"
+      if [[ "$replied" == false ]]; then
+        grep -q '[^[:space:]]' "${file:-/dev/null}" 2>/dev/null || die "thread $id has no reply yet: give the reply as a non-empty file; nothing posted"
+        gh api "repos/{owner}/{repo}/pulls/$pr/comments/$cid/replies" -F body=@"$file" >/dev/null \
+          || die "could not post the reply to thread $id; nothing resolved"
+        echo "REPLIED=$id"
+      fi
+      gh api graphql -F id="$id" -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }' >/dev/null \
+        || die "could not resolve thread $id; the next pr.sh state lists it in RESOLVE="
+      [[ "$replied" == false ]] || echo "RESOLVED=$id"
+    else die "$usage"
+    fi
+    ;;
+  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
 esac
