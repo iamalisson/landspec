@@ -159,6 +159,56 @@ checked() {
       END { for (i = 1; i <= n; i++) print cats[order[i]] "\t" order[i] }')
 }
 
+# The plan review's passes, in order (review.md "Plan review"): each is a "### Pass: <name>" table in the report.
+PASSES="size requirements rules claims inputs guards rollout orderings"
+
+# pass_rows: one "<pass>\t<first cell>\t<status>\t<row>" line per table row of the report's pass sections
+# (the header, the row just above a |---| line, aside), and one "<pass>\t\t\t" line where each section starts.
+pass_rows() {
+  awk '
+    function cell(s) { gsub(/^[ \t`*]+|[ \t`*]+$/, "", s); return s }
+    function flush(  r, n, c) { if (row == "") return; r = row; sub(/[ \t]+$/, "", r); if (r !~ /\|$/) r = r "|"
+      n = split(r, c, "|"); print sec "\t" cell(c[2]) "\t" cell(c[n - 1]) "\t" row; row = "" }
+    /^#/ { flush(); sec = ""; if ($0 ~ /^### Pass: *[a-z]+ *$/) { sec = $0; sub(/^### Pass: */, "", sec); sub(/ *$/, "", sec); print sec "\t\t\t" }; next }
+    sec == "" { next }
+    /^\|[ \t:|-]*$/ { row = ""; next }
+    /^\|/ { flush(); row = $0 }
+    END { flush() }' "$report"
+}
+
+# pass_tables: dies, naming the pass and the row, unless every pass has a table of rows whose statuses are its
+# own; for a "ready", unless every row passes and every defined FR/SC id of spec.md and task id of tasks.md has its row.
+pass_tables() {
+  local rows err id
+  rows="$(pass_rows)"
+  err="$(P="$PASSES" V="$verdict" awk -F'\t' '
+    BEGIN { np = split(ENVIRON["P"], pass, " ")
+      split("holds proven SAME TRUE provided handled safe holds", good, " ")
+      split("BREAKS: MISSING DIFFERENT: FALSE MISSING MISSING BREAKS: BREAKS:", bad, " ")
+      for (i = 1; i <= np; i++) { g[pass[i]] = good[i]; b[pass[i]] = bad[i] } }
+    function say(m) { if (!e) print m; e = 1 }
+    $2 == "" && $3 == "" && $4 == "" { seen[$1] = 1; next }
+    { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") " or none: <why>" }
+    s ~ /^none: *[^ ]/ { none[$1] = $4; next }
+    s == g[$1] { next }
+    bd ~ /:$/ ? index(s, bd " ") == 1 && length(s) > length(bd) + 1 : s == bd {
+      if (ENVIRON["V"] == "ready") say("the " $1 " pass has a failing row, so the plan is not ready: " $4); next }
+    { say("the " $1 " pass has the row " $4 " whose status \"" s "\" is not one of " list) }
+    END { for (i = 1; i <= np; i++) { p = pass[i]
+        if (!seen[p]) say("the report has no ### Pass: " p " table: run every pass of the plan review")
+        else if (!n[p]) say("the " p " pass has no row: write one row per item, or the one row none: <why>")
+        else if (p in none && n[p] > 1) say("the " p " pass has the row " none[p] " beside other rows: none: <why> is a pass'"'"'s only row") } }' <<<"$rows")"
+  [[ -z "$err" ]] || die "$err"
+  [[ "$verdict" == ready ]] || return 0
+  { [[ -f "$fdir/spec.md" ]] && grep -qE '^- \*\*FR-[0-9]+\*\*' "$fdir/spec.md"; } || die "spec.md has no functional requirement: the requirements pass cannot pass"
+  for id in $(sed -nE 's/^- \*\*((FR|SC)-[0-9]+)\*\*.*/\1/p' "$fdir/spec.md"); do
+    grep -qF "requirements"$'\t'"$id"$'\t' <<<"$rows" || die "the requirements pass has no row for $id (spec.md defines it): add its row"
+  done
+  for id in $(sed -nE 's/^- \[[ xX]\] (T[0-9]+).*/\1/p' "$fdir/tasks.md"); do
+    grep -qF "size"$'\t'"$id"$'\t' <<<"$rows" || die "the size pass has no row for $id (tasks.md lists it): add its row"
+  done
+}
+
 # outside <last>: the lines the fix changed since <last> outside the previous findings' files
 # (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
 # counts as more than the limit.
@@ -252,6 +302,7 @@ case "$action" in
       # The state the reviewer hashed from the files it read (review.sh state --plan <its copies>).
       [[ "$(field 'plan state')" =~ ^[0-9a-f]{64}$ ]] || die "the report has no Plan state line: run the review again (this landspec version records it)"
       [[ "${BASH_REMATCH[0]}" == "$st" ]] || die "the plan changed since this review: run the review again"
+      pass_tables
     else
       head="$(git rev-parse "$tip")"; df="$(field 'delta from')"
       rf=""; rh=""; rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'

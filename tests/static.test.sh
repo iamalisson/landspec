@@ -241,6 +241,12 @@ check "when review.md lists the bugs to look for, then it names data reaching a 
    && "$f" == *"is **Medium** when it is the only proof of a privacy or security rule"* && "$f" == *"Personal data in a log is **High** when the project'"'"'s rules forbid it"* ]]'
 check "when docs/reference.md is read, then the Configuration table has a review_model row, and it says CLAUDE_CODE_SUBAGENT_MODEL_FORCE overrides it and the hook exists only where the plugin is installed" \
   'grep -q "^| \`review_model\` |" docs/reference.md && grep -qF "CLAUDE_CODE_SUBAGENT_MODEL_FORCE" docs/reference.md && grep -qi "only where the plugin is installed" docs/reference.md'
+# FR-001/FR-008: the passes review.md asks for are the ones review.sh checks, in the same order, and its Report names them.
+md_passes="$(grep -oE '^\*\*Pass `[a-z]+`\*\*' extension/commands/review.md | sed -E 's/.*`(.*)`.*/\1/' | tr '\n' ' ')"
+sh_passes="$(sed -n 's/^PASSES="\(.*\)"$/\1/p' extension/scripts/review.sh)"
+check "when review.md's **Pass \`<name>\`** paragraphs and review.sh's PASSES are read, then they name the same eight passes in the same order, as the Report's plan report does" \
+  '[[ "$md_passes" == "$sh_passes " && "$(wc -w <<<"$sh_passes")" -eq 8 ]] \
+   && [[ "$(sed -n "/^- \*\*A plan report\*\*/,/^- Before/p" extension/commands/review.md | grep -oE "\`[a-z]+\`" | tr -d "\`" | tr "\n" " ")" == "$sh_passes " ]]'
 # Issue #108: the plan review reads spec-folder code and orderings, and a repeated class ends the patching.
 check "when the plan review and issues step 2 are read, then spec-folder code gets the bug list, each state machine's orderings meet one invariant, and a repeated class gets the invariant and a full round" \
   'r="$(tr "\n" " " < extension/commands/review.md)"; i="$(tr "\n" " " < extension/commands/issues.md)"

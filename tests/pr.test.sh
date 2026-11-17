@@ -112,6 +112,7 @@ check "when the code changed after the review, then the PR is refused until a ne
 git switch --quiet main; rm -f "$GH_PR"
 mkdir -p specs/002-new
 printf '%s\n' '- [ ] T001 Thing in `a` — #11' '- [ ] T002 Other in `b` — #12' > specs/002-new/tasks.md
+printf '%s\n' '- **FR-001**: the new thing MUST work.' > specs/002-new/spec.md
 echo '{ "feature_directory": "specs/002-new" }' > .specify/feature.json
 set_cfg milestone v2; set_cfg project Board
 plan_review claude-haiku-4-5 >/dev/null 2>&1
@@ -451,10 +452,10 @@ new_repo standard
 echo a > app.txt; git add app.txt; git commit --quiet -m app; git push --quiet origin main; git push --quiet origin main:develop
 echo b > app.txt; git add app.txt; git commit --quiet -m app2   # local only: HEAD differs from origin/develop...
 echo c > app.txt                                                  # ...and an unstaged edit on top: git switch refuses
-printf '%s\n' '- [ ] T001 Thing in `a` — #11' > specs/001-demo/tasks.md; echo draft > specs/001-demo/spec.md
+printf '%s\n' '- [ ] T001 Thing in `a` — #11' > specs/001-demo/tasks.md; printf 'draft\n- **FR-001**: x\n' > specs/001-demo/spec.md
 plan_review >/dev/null
 check "when the switch to the spec branch is refused, then it fails and the spec folder is put back untouched" \
-  'fails_with "put back" "$p" spec && [[ "$(cat specs/001-demo/spec.md)" == draft && "$(cat specs/001-demo/tasks.md)" == *"#11" && "$(git branch --show-current)" == main ]]'
+  'fails_with "put back" "$p" spec && [[ "$(cat specs/001-demo/spec.md)" == "draft"$'"'"'\n'"'"'"- **FR-001**: x" && "$(cat specs/001-demo/tasks.md)" == *"#11" && "$(git branch --show-current)" == main ]]'
 
 # ── A PR that is not a task (pr.sh fix): the same review gate, at every level, without an issue ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"

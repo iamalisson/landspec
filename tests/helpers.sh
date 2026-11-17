@@ -155,6 +155,7 @@ new_repo() {
   cd "$TMP/repo"
   git config user.email t@t; git config user.name t; git config commit.gpgsign false
   mkdir -p .specify/extensions specs/001-demo
+  printf '# Spec\n\n- **FR-001**: the demo MUST search.\n' > specs/001-demo/spec.md # one requirement, for the plan review's tables
   mkdir -p .specify/extensions/landspec && ln -s "$ROOT/extension/scripts" .specify/extensions/landspec/scripts # as spec-kit installs it
   printf 'level: %s\nbase_branch: auto\nbranch_prefix: feat\nissue_labels: "type:task"\nmilestone: ""\nproject: ""\n' "$1" > .specify/extensions/landspec/landspec-config.yml
   echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
@@ -178,9 +179,25 @@ shallow_repo() {
   git switch --quiet "$b"
 }
 
-# plan_report [<model>]: a ready plan report at $TMP/plan.md, with the current plan's state.
+# plan_tables [<dir>]: every pass of review.sh's PASSES as a passing table: one size row per task id of
+# <dir>/tasks.md, one requirements row per FR/SC id <dir>/spec.md defines (default: the active feature's folder).
+plan_tables() {
+  local d="${1:-$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json)}" p id
+  for p in $(sed -n 's/^PASSES="\(.*\)"$/\1/p' "$SCRIPTS/review.sh"); do
+    printf '\n### Pass: %s\n\n| Item | Status |\n|---|---|\n' "$p"
+    case "$p" in
+      size) for id in $(sed -nE 's/^- \[[ xX]\] (T[0-9]+).*/\1/p' "$d/tasks.md" 2>/dev/null); do echo "| $id | holds |"; done
+            grep -qE '^- \[[ xX]\] T[0-9]' "$d/tasks.md" 2>/dev/null || echo '| none: no task yet |' ;;
+      requirements) for id in $(sed -nE 's/^- \*\*((FR|SC)-[0-9]+)\*\*.*/\1/p' "$d/spec.md" 2>/dev/null); do echo "| $id | proven |"; done
+                    grep -qE '^- \*\*(FR|SC)-[0-9]+\*\*' "$d/spec.md" 2>/dev/null || echo '| none: no requirement |' ;;
+      rules) echo '| a rule | SAME |' ;; claims) echo '| a claim | TRUE |' ;; inputs) echo '| an input | provided |' ;;
+      guards) echo '| a guard | handled |' ;; rollout) echo '| a write | safe |' ;; orderings) echo '| an ordering | holds |' ;;
+    esac
+  done
+}
+# plan_report [<model>]: a ready plan report at $TMP/plan.md, every pass passing, with the current plan's state.
 plan_report() {
-  printf 'Plan read.\n\nPlan state: %s\nModel: %s\n\nAssessment: ready\n' "$("$SCRIPTS/review.sh" state --plan)" "${1:-claude-sonnet-4-7}" > "$TMP/plan.md"
+  printf 'Plan read.\n%s\n\nPlan state: %s\nModel: %s\n\nAssessment: ready\n' "$(plan_tables)" "$("$SCRIPTS/review.sh" state --plan)" "${1:-claude-sonnet-4-7}" > "$TMP/plan.md"
 }
 # plan_review [<model>]: write that report and record it.
 plan_review() { plan_report "$@" && "$SCRIPTS/review.sh" record --plan "$TMP/plan.md"; }
