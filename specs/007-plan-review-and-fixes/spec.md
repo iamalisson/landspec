@@ -307,6 +307,46 @@ and it costs no setting: what is installed is what the developer chose.
 
 ---
 
+### User Story 10 - A PR is handed over only when it is mergeable and a Copilot review on it is answered, with its CI state shown (Priority: P2)
+
+A repository can have GitHub's Copilot code review on, by a ruleset that asks for it on every PR
+and push, or by someone asking for it by hand. It posts inline comments some minutes after a push,
+and landspec has never read them: the developer finds a "ready to merge" PR with comments nobody
+answered, or a PR still conflicting with its base, and has to open each PR to see its CI. landspec
+now reads, before it hands any PR over, whether it conflicts and whether a Copilot review is
+coming, done with comments, clean, or could not run, and shows each PR's CI state beside it without
+waiting for it; and it treats
+Copilot's comments as one more outside review, answering each one.
+
+**Why this priority**: it is the same weakness as the rest of this feature, a review whose findings
+are left unread, and a hand-over the developer has to check PR by PR.
+
+**Independent Test**: with a fake `gh` that answers the pull request query, `pr.sh state <pr>`
+prints the conflict, CI and Copilot lines for each case, and a reply marks a thread answered and
+resolved.
+
+**Acceptance Scenarios**:
+
+1. **Given** a PR with a Copilot review request open, **When** landspec checks it, **Then** it
+   reports the PR as waiting for Copilot, never as ready to merge.
+2. **Given** a task PR with unanswered Copilot threads, **When** `/landspec:implement` runs, or
+   `/speckit-implement` runs again for that task, **Then** the task gets a fix round with those
+   comments as its report, each comment is fixed or answered with the reason it is not a defect,
+   and every thread gets a reply and is resolved.
+3. **Given** a spec PR with unanswered Copilot threads, **When** the comments are handled, **Then**
+   the plan is fixed, the plan review runs again, the real ones are counted with `outside --plan`,
+   and every thread gets a reply and is resolved.
+4. **Given** no Copilot request is open, no Copilot thread is unanswered, and Copilot's newest word on the PR is that it could not review it (for example "unable to
+   review this pull request because the user who requested the review has insufficient remaining
+   quota"), **When** landspec checks it, **Then** it reports Copilot as unavailable with that
+   reason and does not wait: the PR is handed over if the rest holds.
+5. **Given** a PR that conflicts with its base, **When** landspec would hand it over, **Then** it
+   lists it with that reason instead of among the PRs to merge; **Given** a PR whose CI is still
+   running or failed, **Then** it is handed over all the same, with "CI still running" or the failed
+   job names beside it: landspec never waits for CI.
+6. **Given** a repository without Copilot code review, **When** landspec checks a PR, **Then**
+   only the conflict line decides, and the CI state is shown (`COPILOT=none`).
+
 ### Edge Cases
 
 - A plan review pass finds no item of its kind: its table says `none: <why>` (User Story 1,
@@ -388,7 +428,7 @@ not reused.
 **The release**
 
 - **FR-018**: Each changed behavior MUST ship with a test that was seen failing before the change,
-  and the release notes MUST describe each reported issue (#187, #188, #206, #216, #217, #218, #234),
+  and the release notes MUST describe each reported issue (#187, #188, #206, #216, #217, #218, #234, #244),
   with an "Upgrading" section for anything a project must redo (a plan report written by an earlier
   version is refused once).
 - **FR-019**: The release MUST be a new minor version (2.8.0), released by the usual whole-feature
@@ -405,6 +445,33 @@ not reused.
 - **FR-021**: The implementer's return and a task review's report MUST carry a `Skills:` line (each
   skill or MCP server used and what it was used for, or `none matched`), and the PR's Evidence MUST
   show the implementer's line (`not reported` when it returned none).
+
+- **FR-022**: `pr.sh state <pr>` MUST print three lines for the PR's head commit:
+  `CONFLICT=no|yes|unknown`; `CI=pass|pending|fail <job> (<conclusion>),…|none` (pending while any
+  check has not completed; a cancelled or timed-out job counts as failed, named with its conclusion);
+  and `COPILOT=pending|unavailable <reason>|comments <n> REPORT=<file> [RESOLVE=<id>,…]|clean|none`.
+  In this order: `pending` while a Copilot review request is open; `comments` when unresolved
+  Copilot threads have no reply after Copilot's comment (`RESOLVE=` names those replied to but not
+  resolved), so unanswered threads are never hidden by a later message; `unavailable` when Copilot's
+  newest review or comment says it was unable to review; `clean` when Copilot reviewed and nothing
+  is left; `none` otherwise. No time window and no push record: in the seconds after a push, before
+  a ruleset's request appears, a PR can read ready, and the next check sees the request (a named
+  limit). It only reads: it never asks Copilot for a review (issue #244).
+- **FR-023**: `pr.sh state <pr> --reply <thread id> [<file>]` MUST post the file as a reply in that
+  thread and then resolve it; on a thread already replied to, it MUST only resolve it, posting
+  nothing; it MUST refuse a thread that is not on the PR, not opened by Copilot, or already
+  resolved, and a first reply with no file or an empty one.
+- **FR-024**: The implement run, the single-task path (when it runs again on a task with an open
+  PR) and the spec PR step MUST act on FR-022's Copilot line: comments on a task PR are a fix round,
+  comments on a spec PR are outside plan findings, and every comment is answered (fixed, with the
+  commit, or not a defect, with the reason) before its thread is resolved.
+- **FR-025**: A PR MUST be handed over as ready to merge (the implement run's End, the single-task
+  path's last step, the spec PR step's last line) only when `pr.sh state` reads `CONFLICT=no` and
+  `COPILOT=` `none`, `clean` or `unavailable`; otherwise it is listed with the reason (conflict,
+  GitHub still computing whether it conflicts, waiting for Copilot, Copilot comments). CI never holds
+  a PR back (the developer's decision: waiting for it takes too long): `CI=pending` is shown as "CI
+  still running" and `CI=fail` as the failed jobs, beside the PR. Every PR the run lists carries its
+  number as a link.
 
 ### Key Entities
 
@@ -443,6 +510,10 @@ not reused.
 - **SC-010**: A static check fails when the implementer's, the reviewer's or the single-task
   path's instructions lose the evaluation step or the `Skills:` line, and the PR instructions lose
   the `Skills:` line in Evidence.
+
+- **SC-011**: No landspec PR is listed as ready to merge while it conflicts, while a Copilot
+  review is coming, or while a Copilot thread is unanswered, and every listed PR shows its CI state;
+  a static check fails when a hand-over step loses the `pr.sh state` rule.
 
 ## Assumptions
 

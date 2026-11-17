@@ -181,3 +181,34 @@ Each decision names the code it rests on, read at `origin/main` 1a02a82 (2.7.0).
 - **Limits**: the figures are one author's 22- and 24-prompt sets on Sonnet 4.5. Claude Code drops
   skill descriptions past a listing budget of about 1% of the context (code.claude.com/docs/en/skills),
   so a very large set of skills can hide the right one; the docs say to install what you need.
+
+## R14. Handing a PR over, and GitHub's Copilot code review (#244)
+
+- **Decision**: one GraphQL query of the pull request gives everything a hand-over needs:
+  `mergeable` (conflict), the head commit's `statusCheckRollup` (CI done and green, or the failed
+  and cancelled jobs), and Copilot's side: `reviewRequests` (an open request for a Bot whose login
+  matches `copilot`), `reviews` (author `copilot-pull-request-reviewer`, the commit it reviewed),
+  issue `comments` (Copilot's "unable to review" message) and `reviewThreads` (`isResolved`,
+  `isOutdated`, `path`, `line`, the comments). Copilot's unanswered threads become a report in the
+  shape of a review's findings (`path:line`); every thread gets a reply
+  (`pulls/<n>/comments/<id>/replies`) before `resolveReviewThread`.
+- **Rationale**: on a real spec PR of a project with Copilot review on by a ruleset, the timeline
+  shows `review_requested` (Copilot) and `copilot_work_started` seconds after each push, and the
+  review some minutes later; it reviewed 7 times and opened 44 threads, answered by hand. Copilot's
+  reviews are always `COMMENTED`, so nothing on GitHub stops a merge while they are unanswered. When
+  Copilot cannot review (quota), it says so in a comment and reviews nothing: waiting would never
+  end. A request appears only after the push, so a check right after it can miss a review that is
+  coming; the next check sees the request (no clock: the developer's Simplify answer). In the same session, macOS CI jobs were cancelled with no runner
+  and shown as failures, and stacked PRs conflicted after their parents merged: the hand-over reads
+  both rather than leaving the developer to open each PR, and reports CI without waiting for it.
+- **Alternatives**: waiting in a loop inside the script: a review can take ten minutes, and the
+  implement run already comes back on the next agent or the next run; requesting Copilot's review
+  from landspec: a repository's ruleset decides that, and a request costs the owner's quota; a
+  delta review of a Copilot fix round: `record --delta` measures the fix against the last recorded
+  review's files, not Copilot's, so a full review is the honest one.
+- **Limits**: 100 threads, 100 reviews, 30 comments and 100 checks per query (the real PR had 44
+  threads and 7 reviews); a login other than one matching `copilot` is not recognised; with no clock, a PR
+  read in the seconds after a push, before a ruleset's request appears, can read ready, and the next
+  check sees the request; a quota message older than the latest push still reads `unavailable` when
+  nothing asked Copilot again. CI is shown, never waited for: the developer chose speed over waiting
+  for it (the plan review's Simplify answers, pr-state).
