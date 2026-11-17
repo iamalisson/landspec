@@ -43,7 +43,7 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
      `bash .specify/extensions/landspec/scripts/security-scan.sh --changed` (it also scans uncommitted
      files). Read every finding and fix the real ones (then commit and
      run it again). List the false positives with the reason, and any `missing` or `failed`
-     scanner (a `failed` one names its log). The script in step 6 refuses a PR without a scan for
+     scanner (a `failed` one gives its error and the file holding it). The script in step 6 refuses a PR without a scan for
      this diff; findings and `missing` or `failed` scanners do not refuse, and the script itself
      adds a "Scanners not run" line naming each one to the body.
    - **The Terraform plan**, only when the config has `aws: on`, the level is not `lite` and the

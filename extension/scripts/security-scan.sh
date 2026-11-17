@@ -62,7 +62,16 @@ if command -v semgrep >/dev/null; then
        --json --output "$dir/semgrep.json" "${targets[@]}" >/dev/null 2>"$dir/semgrep.log" || rc=$?
   if [[ $rc == 0 ]]; then report semgrep ok "no code findings"
   elif [[ $rc == 1 ]]; then report semgrep findings "$dir/semgrep.json"
-  else report semgrep failed "exit $rc from semgrep: code patterns not scanned; see $dir/semgrep.log"; fi
+  elif [[ -s "$dir/semgrep.log" ]]; then report semgrep failed "exit $rc from semgrep: code patterns not scanned; see $dir/semgrep.log"
+  else
+    # With --json --output semgrep puts its error in the JSON. Only the text after "errors" is read,
+    # since each result before it has its own "message". grep and sed: busybox has no jq or python3.
+    msg="$(tr -d '\n' < "$dir/semgrep.json" 2>/dev/null | sed -n 's/.*"errors"[[:space:]]*://p' \
+      | grep -oE '"message"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -n 1 \
+      | sed -e 's/^"message"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' -e 's/\\n.*//' -e 's/\\"/"/g')"
+    if [[ -n "$msg" ]]; then report semgrep failed "exit $rc: ${msg:0:200}; see $dir/semgrep.json"
+    else report semgrep failed "exit $rc: semgrep wrote no error ($dir/semgrep.log and $dir/semgrep.json are empty)"; fi
+  fi
 else missing semgrep "uv tool install semgrep (or pipx install semgrep)"; fi
 
 # zizmor: only when there are workflows
