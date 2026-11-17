@@ -51,11 +51,10 @@ or one with another summary never matches.
    file and the feature folder, nothing of your own conclusions. Save its report to a file outside the repository (`mktemp`) and record it:
    `bash .specify/extensions/landspec/scripts/review.sh record --plan <file>`. Fix what it finds in
    `tasks.md` and `plan.md` under the same rules as step 1, and run it again until it says
-   `ready`. When a round raises a finding of the same class as an earlier round (for example
-   ordering, race, idempotency), do not add one more case: state the invariant they break in
-   `data-model.md` or `plan.md`, replace the case rules with it, and run the next round full:
-   pass the earlier rounds' findings, not your answers. Do this once per class; after that round,
-   later rounds follow the normal rule. The issue bodies are the task lines, so they must be right
+   `ready`. Every round is read cold: pass the next one only the facts review.md lists for a plan
+   review (the feature folder, the last round's report and the output of `review.sh diff
+   --plan`), never your replies to its findings; it checks each earlier finding in its own
+   table. The issue bodies are the task lines, so they must be right
    before any issue exists: `issues.sh` refuses to run without a recorded `ready` plan review for
    the current `tasks.md`.
 3. Then create the issues: run `bash .specify/extensions/landspec/scripts/issues.sh` from the repository root.
