@@ -221,7 +221,8 @@ the diff changed first. Fill a table under a heading exactly `### Earlier findin
 finding of that report, its last cell `resolved` (with the line that resolves it, an invariant or
 a changed text, in a cell before it) or `open`, never `none:`. An `open` row is also a finding.
 `review.sh record --plan` refuses a report without that table when the last recorded round had
-findings (its `Findings:` total above 0), and a `ready` with an `open` row.
+findings (its `Findings:` total above 0), and a `ready` with an `open` row. When that report
+counted no findings (`Findings: 0 high, 0 medium, 0 low`), leave the table out.
 
 ## Report
 
