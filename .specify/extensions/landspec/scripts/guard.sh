@@ -139,7 +139,7 @@ words() {
           if (c == "\"") subs(part)
           w = w part; inw = 1; i += j; continue
         }
-        if (c == "#" && !inw) { while (i < n && substr(text, i + 1, 1) != "\n") i++; continue }
+        if (c == "#" && !inw) { j = index(substr(text, i + 1), "\n"); i = j ? i + j - 1 : n; continue }
         if (c == "`" || c == "$" && substr(text, i + 1, 1) == "(") { i = keep(text, i); w = w "_"; inw = 1; continue }
         # ( and ) open and close a subshell ("|(" and "|)").
         if (c == "(" || c == ")") {
@@ -162,7 +162,11 @@ words() {
           if (c != " " && c != "\t") { print s; flush() }
           continue
         }
-        w = w c; inw = 1
+        # The whole run of ordinary characters at once, like a quoted run: one substr() per
+        # character is O(n) per call in busybox and BSD awk, so a long unquoted word was quadratic.
+        if (match(substr(text, i), /^[^ \t\n;|&<>()"\047`$]+/)) { w = w substr(text, i, RLENGTH); i += RLENGTH - 1 }
+        else w = w c
+        inw = 1
       }
       if (inw) print w
       flush()
