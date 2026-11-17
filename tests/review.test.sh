@@ -63,7 +63,7 @@ check "when the base is merged in without touching the change, then the review s
 # Plan review: tied to the feature folder, ignoring the issue numbers issues.sh appends.
 git switch --quiet main
 # sedi <sed args> <file>: edit in place, leaving no .bak behind (the plan state hashes every file of the folder).
-sedi() { sed -i.bak "$@" && rm -f "${@: -1}.bak"; }
+sedi() { local f="${*: -1}"; sed -i.bak "$@" && rm -f "$f.bak"; }
 check "when no plan review was recorded, then check --plan refuses" 'fails_with "no independent review" "$r" check --plan'
 check "then the plan hint keeps --plan" 'fails_with "record its report: review.sh record --plan <report-file>" "$r" check --plan'
 plan_report
