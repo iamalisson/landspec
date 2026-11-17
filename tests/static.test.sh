@@ -377,6 +377,25 @@ check "then red once goes back to its implementer with the test output, not thro
 check "then the PR step switches to the branch first, runs gh pr ready after pr.sh task on a draft that targets the base, and detaches last" \
   'o="$(sed -n "/\*\*\`OPEN\`\*\*/,/^4\. /p" <<<"$im" | tr "\n" " ")"; [[ "$o" =~ git\ switch\ \<branch\>.*pr\.sh\ task.*gh\ pr\ ready.*git\ switch\ +--detach ]] && grep -qF "never while \`landspec-parent\` is set" <<<"$o"'
 check "then nothing in the skill or the implementer merges a PR" '! grep -qF "gh pr merge" skills/implement/SKILL.md agents/implementer.md'
+# Spec 007 T011: the hand-over rule (FR-025) and Copilot's comments (FR-024) in every hand-over step.
+handover_ok() {
+  local t re='pr\.sh state <pr>`.{0,400}`CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`'
+  t="$(flat < "$1")"; [[ "$t" =~ $re && "$t" == *'"CI still running"'* ]]
+}
+for f in skills/implement/SKILL.md extension/commands/pr.md extension/commands/branch.md extension/commands/issues.md; do
+  check "when $f hands a PR over, then it runs pr.sh state and the CONFLICT=no / COPILOT= rule, with CI still running shown" "handover_ok $f"
+done
+check "when the implement End lists PRs, then each is [#N](<url>) and one waiting for Copilot is listed apart" \
+  'grep -qF "\`[#N](<url>)\`" <<<"$im" && grep -qF "\"waiting for Copilot'"'"'s review\"" <<<"$im"'
+check "when Copilot's threads are answered, then the implement skill, branch.md and issues.md reply with a file and resolve RESOLVE= ones with none" \
+  'i="$(flat < skills/implement/SKILL.md)"; b="$(flat < extension/commands/branch.md)"; s="$(flat < extension/commands/issues.md)"
+   [[ "$i" == *"\`pr.sh state <pr> --reply <thread id> <file>\`"* && "$i" == *"\`pr.sh state <pr> --reply <thread>\`, with no file"* \
+   && "$b" == *"\`pr.sh state <pr> --reply <thread id> <file>\`"* && "$b" == *"\`pr.sh state <pr> --reply <thread id>\` with no file"* \
+   && "$s" == *"\`pr.sh state <spec PR> --reply <thread id> <file>\`"* && "$s" == *"\`--reply <thread id>\` with no file"* ]]'
+check "when the implementer has a Copilot fix round, then it returns one Answer: <thread id> line per thread, fixed or not a defect" \
+  'grep -qF "\`Answer: <thread id> fixed in <sha>\` or \`Answer: <thread id> not a defect: <reason>\` line per thread" <<<"$ag"'
+check "when a hook rewrites files outside the task, then the implementer returns the Failed: formatter line (FR-017)" \
+  'grep -qF "return \`Failed: formatter <hook> rewrote <n> files outside the task'"'"'s change: run /landspec:adopt, or format the code in its own PR first\` and stop" <<<"$ag"'
 check "then a missing Copy: is recreated detached beside the repository" 'grep -qF "git worktree add --detach <repo>-<feature>-<task> <branch>" <<<"$im"'
 check "then a fix round without SendMessage launches a new implementer on the branch" 'grep -qF "if SendMessage is not available, or the" <<<"$im" && grep -qF "launch a new implementer as in \`START\`, on the existing branch" <<<"$im"'
 check "then a failed worktree_setup fails the task with its output" 'grep -qF "I fail <task> \"worktree_setup: <its output>\"" <<<"$im"'

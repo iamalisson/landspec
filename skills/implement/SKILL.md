@@ -13,7 +13,8 @@ run `/landspec:init` first, and stop. Make sure the working tree is clean; if it
 so: never stash or discard. Ask nothing while the loop runs: every question waits for the end.
 
 Keep, for the whole run, the tasks whose agents (implementers and reviewers) are in flight (`in flight`), and for each task its
-copy (`Copy:`), branch (`BRANCH=`) and the `REVIEWED=` sha its last review record printed.
+copy (`Copy:`), branch (`BRANCH=`), the `REVIEWED=` sha its last review record printed, and the
+`Answer: <thread id> …` lines its implementer returned for a Copilot fix round.
 
 ## The loop
 
@@ -28,6 +29,12 @@ Each pass:
    `ORDER=` and `DONE=`.
 3. One step per listed task, in the order printed, skipping any task that is in `in flight` (a task
    under review is listed in `REVIEW=` again until its reviewer returns):
+   - **Each `STATE=pr` task** → `bash .specify/extensions/landspec/scripts/pr.sh state <its PR=>`. On
+     `COPILOT=comments <n> REPORT=<file>` with n > 0, `I mark <task> changes <file>`: Copilot's
+     comments are a fix round (the next pass lists it in `FIX=`; go back to 1 at once when nothing
+     is in flight), and it counts against the
+     task's rounds, so a Copilot that comments on every push stops at the limit as a review does.
+     Each `RESOLVE=` thread (already answered): `pr.sh state <pr> --reply <thread>`, with no file.
    - **`START`** → launch an implementer: the Agent tool with `subagent_type: "landspec:implementer"`,
      `isolation: "worktree"`, `run_in_background: true`, and `model` from `implement_model:` in
      `.specify/extensions/landspec/landspec-config.yml` (`sonnet`, `opus` or `fable`; left out when
@@ -41,7 +48,10 @@ Each pass:
      (`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; base_ref "$0"' <branch>`), so a
      stacked task is reviewed against its parent. A fix round (the task has the `<task>.report` of
      `FIX` below, and you hold the `REVIEWED=` sha its last record printed) is a **delta**, as
-     review.md says: add that sha and that report to the facts. Add the task to `in flight`, so the
+     review.md says: add that sha and that report to the facts. A fix round from a Copilot report
+     (its findings have `thread=` lines) gets a full review instead, recorded with `review.sh record
+     --branch`, never a delta: `record --delta` reads the last recorded review's files, not
+     Copilot's. Add the task to `in flight`, so the
      next pass does not review it again. When it returns, remove it from `in flight`, then record
      it: `review.sh record --branch <branch> <report>`, or for a delta `review.sh record --delta
      --branch <branch> <report>`. When `record --delta` refuses (a restack rebased the branch, or the
@@ -63,8 +73,10 @@ Each pass:
      returned none, or a run resumed after the line was lost, gives `Skills: not reported`, never
      `none matched`. Then `pr.sh task` exactly as `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
      targets the base (its `landspec-parent` setting is gone), run `gh pr ready <pr>` after
-     `pr.sh task`; never while `landspec-parent` is set. Then `I mark <task> pr` and `git switch
-     --detach` in that copy.
+     `pr.sh task`; never while `landspec-parent` is set. After a Copilot fix round is pushed, answer
+     each thread with what the implementer answered: its `Answer: <thread id> <answer>` line's
+     answer written to a `mktemp` file, then `pr.sh state <pr> --reply <thread id> <file>`, which
+     replies and resolves it. Then `I mark <task> pr` and `git switch --detach` in that copy.
 4. Wait for the next agent to return, then go back to 1. Stop when `status` lists nothing in
    `START`, `REVIEW`, `FIX` and `OPEN`, and nothing is in flight (no implementer and no reviewer).
 
@@ -214,7 +226,15 @@ Show the run report, then only what is left for the developer:
   for Tnnn`, or `merge Tnnn or Tmmm first`); for `REASON=locked worktree <path>` (an agent stopped
   mid-task), the commands to free it: `git worktree unlock <path>`, then `git worktree remove <path>`;
 - the PRs to merge, in `ORDER` (parents first: a child's draft becomes ready once its parent is
-  merged and `/landspec:implement` runs again), then "run `/landspec:implement` again";
+  merged and `/landspec:implement` runs again), then "run `/landspec:implement` again". The hand-over
+  rule: run `pr.sh state <pr>` on each; a PR is listed among the PRs to merge only on `CONFLICT=no` and
+  `COPILOT=` `none`, `clean` or `unavailable` (with Copilot's reason: it could not review). Every
+  other PR is listed apart with its reason: "conflict with <base>" (`CONFLICT=yes`), "GitHub is still
+  computing whether it conflicts" (`CONFLICT=unknown`), "waiting for Copilot's review"
+  (`COPILOT=pending`), "Copilot comments being answered" (`COPILOT=comments`). CI never holds a PR
+  back: beside each listed PR, "CI passed" (`CI=pass`), "CI still running" (`CI=pending`), "CI failed:
+  <jobs>" (`CI=fail`) or "no CI" (`CI=none`). Each PR the End names is written `[#N](<url>)` (the
+  url from `gh pr view <N> --json url -q .url`);
 - the whole-feature check: its round, the test result, and each `not met` line of the feature review;
 - each `failed` task with its reason (`I retry <task>` lifts it), each `RESTACK_CONFLICT=`, each
   skipped task;
