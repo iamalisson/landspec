@@ -321,6 +321,10 @@ of `aws/agent-role.yaml` with `Access=build` for dev (`read` on lite) and `Acces
 (printed only with prod profiles), and the `~/.aws/config` profile lines. You run the deploy;
 landspec makes no AWS call.
 
+`aws.sh setup --scp` (alone) only prints the path of the optional organization policy,
+`aws/scp-agent.json`, and to attach it in AWS Organizations to the accounts the agent uses; it
+changes no config key. You attach it; landspec never does.
+
 ### The reviewer's copy
 
 Every review runs in its own copy of the repository: the author passes `isolation: "worktree"`
