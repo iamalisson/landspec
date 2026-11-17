@@ -161,9 +161,16 @@ checked() {
 
 # outside <last>: the lines the fix changed since <last> outside the previous findings' files
 # (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
-# counts as more than the limit.
+# counts as more than the limit. When the base was merged in since <last>, the count starts from <last> with
+# that base merged (merge-tree's first line is the tree even on a conflict, so a resolution's lines count);
+# a git without merge-tree --write-tree (before 2.38) counts from <last>, which only refuses more.
 outside() {
-  local found re a d f n=0
+  local found re a d f n=0 from="$1" mb t
+  mb="$(git merge-base "$tip" "$(base_ref ${bopt:+"$bopt"})" 2>/dev/null || true)"
+  if [[ -n "$mb" && "$mb" != "$(git rev-parse "$tip")" ]] && ! git merge-base --is-ancestor "$mb" "$1"; then
+    t="$(git merge-tree --write-tree "$1" "$mb" 2>/dev/null | head -1 || true)"
+    if git rev-parse --quiet --verify "$t^{tree}" >/dev/null 2>&1; then from="$t"; fi
+  fi
   # Claims lines and their heading are skipped: a claim's stopped-at file is not a finding's file.
   found="$(awk 'NR == 1, /^$/ { next } /^(- (held|broke):|\*\*Claims)/ { next } tolower($0) ~ /findings/ { on = 1 }
     on && match($0, /[A-Za-z0-9_.\/-]+:[0-9]+/) { s = substr($0, RSTART, RLENGTH); sub(/:[0-9]+$/, "", s); print s }' "$record")"
@@ -171,7 +178,7 @@ outside() {
   while IFS=$'\t' read -r a d f; do
     if grep -qxF -- "$f" <<<"$found" || grep -qE -- "$re" <<<"$f"; then continue; fi
     if [[ "$a" == - ]]; then n=$((n + DELTA_LINES + 1)); else n=$((n + a + d)); fi
-  done < <(landspec_numstat "$1" "$tip")
+  done < <(landspec_numstat "$from" "$tip")
   echo "$n"
 }
 
