@@ -118,7 +118,8 @@ to the reviewer's checklist (`pr.md` step 2's test rules and `review.md`'s Metho
 `security-scan.sh --changed` and `mutants.sh` on its branch before it returns; `OPEN` runs them only
 for a diff that has no record of them (after a restack, say). A fix round's review is a delta
 (`review.sh record --delta --branch <branch>`), and a full review when the delta refuses (a restack
-rebased the branch, or the fix grew past 20 lines). An implementer that returns nothing is marked
+rebased the branch, or the fix grew past 20 lines; lines a merge of the base brought in do not count, a
+conflict resolution's and another branch's do, and a git before 2.38 counts them all). An implementer that returns nothing is marked
 `red` and started again once, then `failed`. A task
 that depends on an unmerged one starts stacked on its branch (`branch.sh --from`), and its PR is a draft
 into the parent's. It asks nothing while it runs, never merges, and ends with the PRs to merge in

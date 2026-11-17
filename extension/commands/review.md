@@ -77,7 +77,8 @@ account applies to them, in the diff or not). A bug it notices outside those
 commits is reported at its true severity and does not change the assessment. `record --delta` refuses it unless a round was
 recorded on this branch, `<sha>` is still on the branch, something was committed since, and the fix
 changes at most 20 lines outside the previous findings' files (test files aside); otherwise run a
-new full review.
+new full review. Lines a merge of the base brought in are not counted (a conflict resolution's
+lines and a merge of any other branch are).
 
 **A feature review** checks the whole feature, all its task branches merged together, against its
 spec: read `spec.md` (every FR, every acceptance scenario, every SC), `plan.md`, `tasks.md` and `git diff

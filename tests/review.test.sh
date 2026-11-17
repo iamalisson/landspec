@@ -491,4 +491,49 @@ check "on a spec branch (pr.sh spec mode), then base_ref is the base: it never h
 git switch --quiet "$P"
 check "on the parent (no parent of its own), then base_ref is still the base" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 
+# ── FR-014 (#216): a delta counts the fix round's own lines, not a merge of the base ──
+rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
+new_repo standard
+commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
+"$SCRIPTS/branch.sh" T001 >/dev/null
+echo 'export const search = 1' > search.ts; echo task > c.txt; git add search.ts c.txt; git commit --quiet -m "feat: search"
+rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 the search is wrong"
+"$r" record "$TMP/report.md" >/dev/null || true; h1="$(git rev-parse HEAD)"; cp "$TMP/report.md" "$TMP/full.md"
+# to_base <file> <n>: a commit of <n> lines in <file> on the base (develop), as another task's merged PR.
+to_base() { git switch --quiet main; seq 1 "$2" > "$1"; git add "$1"; git commit --quiet -m "feat: $1"; git push --quiet origin main:develop; git switch --quiet -; git fetch --quiet origin; }
+# fix <n>: a commit of <n> lines in fix.ts, outside the findings' files.
+fix() { seq 1 "$1" | sed 's/^/export const f/; s/$/ = 1/' > fix.ts; git add fix.ts; git commit --quiet -m "fix: $1 lines"; }
+to_base big.txt 300; git merge --quiet --no-edit origin/develop >/dev/null; hm="$(git rev-parse HEAD)"
+# A git that has no merge-tree --write-tree (before 2.38), for the fallback.
+mkdir -p "$TMP/oldgit"; real_git="$(command -v git)"
+printf '#!/usr/bin/env bash\n[[ "$1 $2" == "merge-tree --write-tree" ]] && { echo "error: unknown option" >&2; exit 129; }\nexec "%s" "$@"\n' "$real_git" > "$TMP/oldgit/git"; chmod +x "$TMP/oldgit/git"
+fix 5; drep ready "$h1"
+check "on a git without merge-tree --write-tree, when the base (300 lines) was merged in and a 5-line fix follows, then the delta counts from the last review, as before" \
+  'PATH="$TMP/oldgit:$PATH" fails_with "the delta changes 305 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
+if git merge-tree --write-tree HEAD HEAD >/dev/null 2>&1; then
+  # Refusals first: an accepted delta moves the record on, so each one ends a setup.
+  git reset --quiet --hard "$hm"; fix 30; drep ready "$h1"
+  check "when the base (300 lines) was merged in and a 30-line fix follows, then record --delta refuses, counting the 30 lines only" \
+    'fails_with "the delta changes 30 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
+  git reset --quiet --hard "$hm"; git switch --quiet -c side main; seq 1 25 > side.txt; git add side.txt; git commit --quiet -m side
+  git switch --quiet -; git merge --quiet --no-edit side >/dev/null; drep ready "$h1"
+  check "when a branch other than the base (25 lines) is merged in after the base, then record --delta refuses, counting its 25 lines" \
+    'fails_with "the delta changes 25 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
+  git reset --quiet --hard "$hm"; fix 5; drep ready "$h1"
+  check "when the base (300 lines) was merged in since the full review and a 5-line fix follows, then record --delta gives REVIEW=ready" \
+    'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
+  # The base adds c.txt too: the merge conflicts, and its resolution is 3 lines of neither side.
+  git reset --quiet --hard "$h1"; "$r" record "$TMP/full.md" >/dev/null || true
+  to_base c.txt 1; git merge --quiet --no-edit origin/develop >/dev/null 2>&1 || true
+  printf 'r1\nr2\nr3\n' > c.txt; git add c.txt; git commit --quiet --no-edit; hc="$(git rev-parse HEAD)"; fix 13; drep ready "$h1"
+  # The resolution replaces merge-tree's conflicted c.txt (5 lines: both sides and 3 markers): 5 + 3 lines, plus the fix.
+  check "when a base merge's conflict is resolved by 3 lines of its own and a 13-line fix follows, then record --delta refuses, counting the resolution's lines with the fix's" \
+    'fails_with "the delta changes 21 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
+  git reset --quiet --hard "$hc"; fix 12; drep ready "$h1"
+  check "when the same resolution is followed by a 12-line fix, then record --delta gives REVIEW=ready (20 lines, the limit)" \
+    'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
+else
+  echo "skip - base-merge delta counts (this git has no merge-tree --write-tree); the count from the last review is checked above"
+fi
+
 exit "$FAIL"
