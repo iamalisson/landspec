@@ -279,6 +279,34 @@ failure naming the hook.
 
 ---
 
+### User Story 9 - The skills and MCP tools a developer installed are used when a task fits them (Priority: P2)
+
+A developer installs skills and MCP servers for their stack (a UI/UX skill, a framework's own skill,
+a design tool's server) and expects landspec's implementer and reviewer to use them when a task
+fits. Today nothing asks them to look, and a matching skill fires only about half the time
+(issue #234).
+
+**Why this priority**: it decides whether the developer's own tools reach the code landspec writes,
+and it costs no setting: what is installed is what the developer chose.
+
+**Independent Test**: on any task, the implementer's return and the PR's Evidence carry a
+`Skills:` line naming each skill or MCP server used and why, or `none matched`.
+
+**Acceptance Scenarios**:
+
+1. **Given** a UI skill whose description fits the task's files, **When** the implementer starts,
+   **Then** it writes `<skill> - YES - <reason>` and invokes the skill before writing code, and
+   the PR's Evidence names it.
+2. **Given** no installed skill or MCP server fits the task, **When** the implementer starts,
+   **Then** its return and the PR say `Skills: none matched`.
+3. **Given** a skill whose instructions say to commit, push or open a PR, **When** it is used,
+   **Then** landspec's rules still hold: the task's scope is unchanged and the guard refuses
+   anything the implementer may not do.
+4. **Given** the single-task path (`/speckit-implement`), **When** the task starts, **Then** the
+   same evaluation runs before any code is written.
+
+---
+
 ### Edge Cases
 
 - A plan review pass finds no item of its kind: its table says `none: <why>` (User Story 1,
@@ -360,11 +388,23 @@ not reused.
 **The release**
 
 - **FR-018**: Each changed behavior MUST ship with a test that was seen failing before the change,
-  and the release notes MUST describe each reported issue (#187, #188, #206, #216, #217, #218),
+  and the release notes MUST describe each reported issue (#187, #188, #206, #216, #217, #218, #234),
   with an "Upgrading" section for anything a project must redo (a plan report written by an earlier
   version is refused once).
 - **FR-019**: The release MUST be a new minor version (2.8.0), released by the usual whole-feature
   check, audit and release steps.
+
+- **FR-020**: Before writing code, the implementer (the parallel run's subagent and the
+  single-task path) and the reviewer MUST list the installed skills and MCP servers that could bear
+  on the task (its files, its domain, its *Completed when*), write `<name> - YES/NO - <reason>` for
+  each, and invoke every YES before going on; no setting chooses them. landspec's and spec-kit's
+  own workflow skills are never candidates, and a skill that needs the user's answers is not invoked
+  in a background agent. A skill never widens the task's scope, never makes the reviewer write or
+  change its report's shape, and never bypasses the guard (issue #234). A plan review does not
+  evaluate skills.
+- **FR-021**: The implementer's return and a task review's report MUST carry a `Skills:` line (each
+  skill or MCP server used and what it was used for, or `none matched`), and the PR's Evidence MUST
+  show the implementer's line (`not reported` when it returned none).
 
 ### Key Entities
 
@@ -399,6 +439,10 @@ not reused.
   (today: 2 to 8 each time).
 - **SC-009**: All existing checks keep passing on every supported shell (bash 3.2 and busybox, BSD
   tools, bash 5).
+
+- **SC-010**: A static check fails when the implementer's, the reviewer's or the single-task
+  path's instructions lose the evaluation step or the `Skills:` line, and the PR instructions lose
+  the `Skills:` line in Evidence.
 
 ## Assumptions
 

@@ -118,6 +118,15 @@ description: "Tasks for feature 007: a plan review that can be trusted, and the 
 
 ---
 
+## Phase 9: User Story 9 - The skills and MCP tools a developer installed are used when a task fits them (Priority: P2)
+
+- [ ] T009 [P] [US9] Evaluate the installed skills and MCP servers against each task, by one rule in review.md, and report a `Skills:` line that reaches the PR, in extension/commands/review.md, agents/implementer.md, agents/reviewer.md, extension/commands/branch.md, skills/implement/SKILL.md and extension/commands/pr.md — #238
+  - Comes from: FR-020, FR-021, US9 scenarios 1-4, SC-010, research R13, contracts "`review.md` (Installed skills)", issue #234
+  - What: extension/commands/review.md gains one section, `## Installed skills and MCP servers`, the only copy of the rule: before writing code (an implementer) or reading the diff (a task reviewer), list the installed skills (the Skill tool's list) and MCP servers that could bear on the task (its files, its domain, its *Completed when*), write `<name> - YES/NO - <reason>` for each, and invoke every YES. Never candidates: landspec's own and spec-kit's workflow skills (`landspec:*`, `speckit-*`), whatever their description says, since they run the very flow the agent is part of; a skill that needs answers from the user is written `NO - needs the user` in a background agent and not invoked; a YES that cannot be invoked (the skill errors, its MCP server is down) is written `NO - failed: <error>` and the work goes on. The rule applies to an implementer and to a task review, full or delta; a plan review and a feature review do not evaluate skills. A skill changes how the work is done, never what landspec's steps allow: it never widens the task's scope, never makes a reviewer write a file, run more than its Method says or change the report's shape, and its instructions to commit, push or open a PR give way to landspec's (the guard refuses them too). The Report part of the same file gives a task report one more line, `Skills: <name> (<what it was used for>), …` or `Skills: none matched`, after `Model:`; a plan review does not evaluate skills and its report is unchanged. agents/implementer.md step 3 and extension/commands/branch.md step 3 (the single-task path, `/speckit-implement`) say to follow that section first; agents/reviewer.md says so for a task review, as a step after step 2. The implementer's return gains the same `Skills:` line. skills/implement/SKILL.md keeps it for OPEN, where it goes in *Evidence*; an implementer that returned none, or a run resumed after the line was lost, gives `Skills: not reported`, never `none matched`. extension/commands/pr.md step 5's `## Evidence` bullet names the line. `docs/reference.md` (implement and review rows): what the line means, that no setting chooses the skills, and that a very large set can push descriptions out of Claude Code's listing budget.
+  - Impact: the three copies of review.md (`extension/commands/review.md`, `.specify/extensions/landspec/commands/review.md`, the generated `speckit-landspec-review/SKILL.md` body) and those of branch.md and pr.md stay identical (`tests/static.test.sh:263-273`); `tests/static.test.sh:204-209` (reviewer.md has no `## Method`, review.md stays the one copy) holds, since the rule lives in review.md and reviewer.md only points to it; `:222-223` (reviewer.md's step 0) and `:376-377` (implementer.md) stay true; `review.sh` and `pr.sh` are unchanged (`record` does not read a `Skills:` line, and the main session writes Evidence); T002-T004 rewrite review.md's Plan review and its plan-report paragraph, and edit other paragraphs of agents/reviewer.md and skills/implement/SKILL.md, so a restack may need a small merge there
+  - Completed when: `tests/static.test.sh` passes with a new check that fails when any one of these is removed: review.md's section with `YES/NO - <reason>`, "invoke every YES", the `landspec:*`/`speckit-*` exclusion, `NO - needs the user` and the reviewer's limits; the `Skills:` line with `none matched` in review.md's Report and in agents/implementer.md's return; a pointer to the section in agents/implementer.md, agents/reviewer.md and extension/commands/branch.md; `Skills:` in *Evidence* in skills/implement/SKILL.md (with `not reported`) and extension/commands/pr.md; the existing static checks and the copy check pass
+---
+
 ## Dependencies & Execution Order
 
 - One chain, T001 → T002 → T003 → T004 → T005: each edits `record --plan` or `check --plan` in
@@ -125,11 +134,12 @@ description: "Tasks for feature 007: a plan review that can be trusted, and the 
   earlier ones record (the kept copy, the tables, the tags, the areas).
 - T006, T007, T008 have no dependency and start at once ([P]); T006 touches only `outside()` in
   review.sh, which the chain does not.
+- T009 has no dependency and starts at once ([P]): it edits instructions only, no script.
 
 ## Parallel Example
 
 ```text
-Start together: T001, T006, T007, T008
+Start together: T001, T006, T007, T008, T009
 Then, each after the one before: T002, T003, T004, T005
 ```
 

@@ -89,6 +89,21 @@ It works in a throwaway worktree at `HEAD`, removed on exit (also on an interrup
   `Failed: formatter <hook> rewrote <n> files outside the task's change: run /landspec:adopt, or
   format the code in its own PR first`.
 
+## `review.md` (Installed skills, #234)
+
+- A section `## Installed skills and MCP servers`, the only copy of the rule, followed by the
+  implementer (agents/implementer.md step 3), the single-task path (branch.md step 3) and a task
+  reviewer (agents/reviewer.md): list the installed skills and MCP servers that could bear on the
+  task, write `<name> - YES/NO - <reason>` for each, invoke every YES. Never candidates:
+  `landspec:*` and `speckit-*` workflow skills. A skill that needs the user is `NO - needs the user`
+  in a background agent; a YES that cannot be invoked is `NO - failed: <error>`, and the work goes
+  on. It applies to an implementer and a task review (full or delta), not to a plan or feature
+  review. A skill never widens the scope, never makes a reviewer write, run beyond
+  its Method or change the report's shape, and never commits, pushes or opens a PR.
+- A task report and the implementer's return carry `Skills: <name> (<use>), …` or
+  `Skills: none matched`, after `Model:` in a report. A plan report is unchanged.
+- The PR's *Evidence* shows the implementer's line; `Skills: not reported` when it returned none.
+
 ## Docs
 
 `docs/reference.md`: the plan review (passes, tables, earlier findings, area tags, Simplify,

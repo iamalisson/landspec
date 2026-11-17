@@ -26,6 +26,11 @@ Three bugs are fixed at their root:
 - **#218:** a new `formatters.sh` run by `/landspec:adopt` finds formatter hooks that would rewrite
   most files, in a throwaway worktree (R12).
 
+One addition, #234: the implementer and the reviewer evaluate the installed skills and MCP servers
+against the task (YES/NO with a reason, each YES invoked) before writing code, and report a `Skills:`
+line that the PR's Evidence shows. Research: a forced evaluation of this kind made skills fire on
+100% of a simple and 75% of a hard prompt set, against 50-55% with descriptions alone (R13).
+
 ## Technical Context
 
 **Language/Version**: bash 3.2+ (BSD, busybox, GNU); markdown prompts.
@@ -37,7 +42,7 @@ Three bugs are fixed at their root:
 
 **Storage**: `.git/landspec-review/` (the kept plan copy, area log), `.git/landspec-events` (new event kinds); nothing in the tree.
 
-**Testing**: `tests/run.sh`; checks added to `review`, `stats`, `security-scan`, `static` tests, and a new `tests/formatters.test.sh`; fixtures in `tests/fixtures/plan-review/` (quickstart Q1–Q13, without Q4 and Q6).
+**Testing**: `tests/run.sh`; checks added to `review`, `stats`, `security-scan`, `static` tests, and a new `tests/formatters.test.sh`; fixtures in `tests/fixtures/plan-review/` (quickstart Q1–Q14, without Q4 and Q6).
 
 **Target Platform**: Linux and macOS.
 
@@ -54,7 +59,7 @@ Three bugs are fixed at their root:
 - The reviewer never writes to the author's checkout.
 - `formatters.sh` never writes to the user's files.
 
-**Scale/Scope**: about 15 files plus their project copies; 8 tasks (see Notes).
+**Scale/Scope**: about 15 files plus their project copies; 9 tasks (see Notes).
 
 ## Constitution Check
 
@@ -70,7 +75,7 @@ Three bugs are fixed at their root:
 | Pins and versions agree in one place | no pin changes; the version goes to 2.8.0 in the three files at release | pass |
 | Docs are the product's source of truth | `docs/reference.md` changes in the same PR as each behavior; release notes at the release | pass |
 | No AI attribution | unchanged | pass |
-| One task = one issue = one PR | 8 tasks, each one behavior; the review-prompt tasks are stacked, since they edit the same sections | pass |
+| One task = one issue = one PR | 9 tasks, each one behavior; the review-prompt tasks are stacked, since they edit the same sections | pass |
 
 Post-design re-check: no violation.
 
@@ -100,9 +105,11 @@ extension/scripts/security-scan.sh  # semgrep reason (#217)
 extension/scripts/formatters.sh     # new (#218)
 extension/commands/review.md        # subagent step 2, facts, Plan review as eight passes
 extension/commands/issues.md        # step 2: rounds, Simplify, outside
-agents/reviewer.md                  # step 2: copy the whole folder
-agents/implementer.md               # formatter failure line
-skills/implement/SKILL.md           # plan-review steps it repeats
+extension/commands/branch.md        # single-task path: follow the installed-skills rule (#234)
+extension/commands/pr.md            # Evidence: the Skills: line (#234)
+agents/reviewer.md                  # step 2: copy the whole folder; task review: installed skills
+agents/implementer.md               # formatter failure line; installed skills, Skills: line
+skills/implement/SKILL.md           # plan-review steps it repeats; Skills: in Evidence
 skills/adopt/SKILL.md               # formatters step
 .specify/extensions/landspec/…      # project copies, kept identical
 tests/{review,stats,security-scan,static,formatters}.test.sh, tests/fixtures/plan-review/
@@ -129,6 +136,6 @@ No violations.
   Simplify question. Each refusal is a case of it.
 - **This feature's own plan review** runs with 2.7.0's reviewer, because the new one ships with
   it. Q12 checks the new one on this folder after the merge.
-- **Size of this plan:** 8 tasks.
+- **Size of this plan:** 9 tasks (T009, #234, added after the first review).
 - **The 2.7.0 audit findings** are not part of this feature: the repository is public, and
   `/landspec:security` handles them privately.
