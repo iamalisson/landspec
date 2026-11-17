@@ -16,10 +16,13 @@ source "$LANDSPEC_EXT_DIR/scripts/pins.sh"
 usage="usage: aws.sh setup [--prod-profiles a,b] [--prod-paths p,q]"
 [[ "${1:-}" == setup ]] || die "$usage"; shift
 set_profiles=false; set_paths=false
+# Checked before anything is written. A quote, | or & in a name would break the config line
+# (cfg_set is a sed s|||); a leading - is a flag given where a value was due.
+names() { [[ "$2" =~ ^[A-Za-z0-9_.,/@+=:-]*$ && "$2" != -* ]] || die "$1 takes comma-separated names (letters, digits and _ . / @ + = : -): $2"; }
 while (($#)); do
   case "$1" in
-    --prod-profiles) (($# >= 2)) || die "$usage"; set_profiles=true; profiles="$2"; shift 2 ;;
-    --prod-paths) (($# >= 2)) || die "$usage"; set_paths=true; paths="$2"; shift 2 ;;
+    --prod-profiles) (($# >= 2)) || die "$usage"; names aws_prod_profiles "$2"; set_profiles=true; profiles="$2"; shift 2 ;;
+    --prod-paths) (($# >= 2)) || die "$usage"; names aws_prod_paths "$2"; set_paths=true; paths="$2"; shift 2 ;;
     *) die "$usage" ;;
   esac
 done
@@ -29,10 +32,8 @@ landspec_cd_root
 
 cfg_set aws on
 cfg_set aws_agent_role "$(cfg aws_agent_role landspec-agent)"
-# A quote, | or & in a name would break the config line (cfg_set is a sed s|||).
-list() { [[ "$2" =~ ^[A-Za-z0-9_.,/@+=:-]*$ ]] || die "$1 takes comma-separated names (letters, digits and _ . / @ + = : -): $2"; cfg_set "$1" "${2:-\"\"}"; }
-if $set_profiles; then list aws_prod_profiles "$profiles"; fi
-if $set_paths; then list aws_prod_paths "$paths"; fi
+if $set_profiles; then cfg_set aws_prod_profiles "${profiles:-\"\"}"; fi
+if $set_paths; then cfg_set aws_prod_paths "${paths:-\"\"}"; fi
 if [[ -z "$(cfg infra_dir "")" ]]; then
   # The folder holding the most *.tf files; a tie goes to the first name.
   d="$(infra_files | awk '/\.tf$/ { sub(/\/?[^\/]*$/, ""); print ($0 == "" ? "." : $0) }' \

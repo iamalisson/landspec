@@ -19,9 +19,10 @@ mkdir -p infra/envs/prod modules/net
 touch infra/envs/prod/main.tf infra/envs/prod/vars.tf modules/net/a.tf
 check "when the subcommand is missing or a flag is unknown, then it refuses with the usage and changes nothing" \
   'fails_with "usage: aws.sh setup" "$a" && fails_with "usage: aws.sh setup" "$a" setup --scp-x && fails_with "usage: aws.sh setup" "$a" setup --prod-profiles && ! grep -q "^aws:" "$cfgf"'
-check "when a prod profile has a character that would break the config line, then it is refused" \
-  'fails_with "aws_prod_profiles takes comma-separated names" "$a" setup --prod-profiles "a|b" && fails_with "aws_prod_paths takes" "$a" setup --prod-paths "x\"y"'
-sed -i.bak '/^aws:/d' "$cfgf"
+check "when a prod profile has a character that would break the config line, then it is refused and nothing is written" \
+  'fails_with "aws_prod_profiles takes comma-separated names" "$a" setup --prod-profiles "a|b" && fails_with "aws_prod_paths takes" "$a" setup --prod-paths "x\"y" && ! grep -q "^aws" "$cfgf"'
+check "when a flag stands where a value was due, then it is refused and nothing is written" \
+  'fails_with "aws_prod_profiles takes" "$a" setup --prod-profiles --prod-paths && fails_with "aws_prod_paths takes" "$a" setup --prod-paths -x && ! grep -q "^aws" "$cfgf"'
 
 out="$("$a" setup --prod-profiles prod)"
 check "when setup --prod-profiles prod runs, then the config has aws: on and aws_prod_profiles: prod" \
