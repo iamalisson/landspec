@@ -44,10 +44,10 @@ If you are that subagent:
    /landspec:init".
 1. `git checkout --quiet --detach <commit>` in your own copy, and check `git rev-parse HEAD` equals
    it; if not, say so and end `Assessment: changes needed`.
-2. A plan review first copies `<checkout>/specs/NNN-*/plan.md` and `tasks.md` into a `mktemp -d`
-   folder, runs `bash .specify/extensions/landspec/scripts/review.sh state --plan <folder>` in your
-   own copy, and reviews those copied files; it reads the other spec files in place, and copies a
-   spec-folder script into your copy only to run it. Write `Plan state: <the printed hash>` in the
+2. A plan review first copies the whole feature folder (`cp -R <checkout>/specs/NNN-*/. <folder>`,
+   `<folder>` from `mktemp -d`), runs `bash .specify/extensions/landspec/scripts/review.sh state
+   --plan <folder>` in your own copy, and reviews those copied files; it copies a spec-folder
+   script into your copy only to run it. Write `Plan state: <the printed hash>` in the
    report; if the command fails, write `Plan state: unavailable (<reason>)` and end
    `Assessment: changes needed`.
 3. Never write to `<checkout>`: no editing command, no `git checkout`, `reset`, `clean`, `stash` or
@@ -138,7 +138,7 @@ step 2 allows.
    findings: follow each one's own scenario through the fix. A plan review or a feature review
    skips this step.
 
-**Plan review** (before the issues are created): review the copies of `plan.md` and `tasks.md`
+**Plan review** (before the issues are created): review the copy of the feature folder
 hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text
 you read; apply step 1 and read every task in `tasks.md`,
 asking what happens where state already exists. *Impact* names every reference the task touches and every caller of a function whose behaviour it changes (search each symbol), and the newest
