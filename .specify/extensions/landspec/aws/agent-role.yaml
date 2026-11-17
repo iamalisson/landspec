@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: "2010-09-09"
+# landspec's agent role: the only AWS identity Claude Code works as. A human deploys it, one stack per
+# account and one region, with their own credentials and no --role-arn (aws.sh setup prints the line).
+# Plain YAML (long-form intrinsics, no ! tags), so tests/static.test.sh can parse it.
+# The Deny lists come from denied-actions.txt and denied-read-actions.txt (first column); keep them equal.
+Description: landspec agent role (no IAM write, no PassRole, no AssumeRole; read or build)
+
+Parameters:
+  RoleName:
+    Type: String
+    Default: landspec-agent
+    AllowedPattern: "[A-Za-z0-9+=,.@_-]{1,56}"
+    Description: Name of the role (the guard's SCP and aws.sh check expect the landspec-agent prefix)
+  Access:
+    Type: String
+    Default: read
+    AllowedValues:
+      - read
+      - build
+    Description: read (prod) or build (dev, levels standard and full)
+  TrustMode:
+    Type: String
+    Default: sso
+    AllowedValues:
+      - sso
+      - login
+    Description: sso (IAM Identity Center) or login (aws login, named IAM users)
+  PermissionSetName:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"
+    Description: Identity Center permission set whose users may assume the role (required for sso)
+  LoginUserNames:
+    Type: CommaDelimitedList
+    Default: ""
+    Description: Comma-separated IAM user names that may assume the role through aws login (required for login)
+
+Rules:
+  SsoNeedsPermissionSet:
+    RuleCondition:
+      Fn::Equals:
+        - Ref: TrustMode
+        - sso
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Equals:
+                - Ref: PermissionSetName
+                - ""
+        AssertDescription: TrustMode=sso needs PermissionSetName
+  LoginNeedsUserNames:
+    RuleCondition:
+      Fn::Equals:
+        - Ref: TrustMode
+        - login
+    Assertions:
+      - Assert:
+          Fn::Not:
+            - Fn::Contains:
+                - Ref: LoginUserNames
+                - ""
+        AssertDescription: TrustMode=login needs LoginUserNames (no empty name)
+
+Conditions:
+  IsRead:
+    Fn::Equals:
+      - Ref: Access
+      - read
+  IsSso:
+    Fn::Equals:
+      - Ref: TrustMode
+      - sso
+
+Resources:
+  AgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName:
+        Ref: RoleName
+      Description: landspec agent role, assumed from a short-lived human sign-in
+      MaxSessionDuration: 3600
+      Tags:
+        - Key: landspec:access
+          Value:
+            Ref: Access
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Fn::If:
+              - IsSso
+              # Research R2: the match is on the role ARN; /*AWSReservedSSO_ covers both region forms.
+              - Sid: TrustSso
+                Effect: Allow
+                Principal:
+                  AWS:
+                    Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+                Action:
+                  - sts:AssumeRole
+                Condition:
+                  ArnLike:
+                    aws:PrincipalArn:
+                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_*
+              # Research R3: only an aws login session carries aws:SignInSessionArn; a key-signed call does not.
+              - Sid: TrustLogin
+                Effect: Allow
+                Principal:
+                  AWS:
+                    Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+                Action:
+                  - sts:AssumeRole
+                Condition:
+                  StringEquals:
+                    aws:username:
+                      Ref: LoginUserNames
+                  "Null":
+                    aws:SignInSessionArn: "false"
+      ManagedPolicyArns:
+        - Fn::If:
+            - IsRead
+            - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/ReadOnlyAccess
+            - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess
+      Policies:
+        # aws.sh check reads the role's tag and simulates its denies; PowerUserAccess grants neither.
+        - PolicyName: ReadIam
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadIam
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:SimulatePrincipalPolicy
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RoleName}
+        - PolicyName: Deny
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: DenyListed
+                Effect: Deny
+                Action:
+                  - rds:DeleteDBInstance
+                  - rds:DeleteDBCluster
+                  - rds:DeleteDBSnapshot
+                  - rds:DeleteDBClusterSnapshot
+                  - s3:DeleteBucket
+                  - dynamodb:DeleteTable
+                  - kms:ScheduleKeyDeletion
+                  - kms:DisableKey
+                  - cloudtrail:StopLogging
+                  - cloudtrail:DeleteTrail
+                  - guardduty:DeleteDetector
+                  - budgets:DeleteBudget
+                  - config:StopConfigurationRecorder
+                  - config:DeleteConfigurationRecorder
+                  - iam:CreateUser
+                  - iam:CreateAccessKey
+                  - iam:CreateLoginProfile
+                  - iam:AttachUserPolicy
+                  - organizations:*
+                  - account:*
+                  - iam:PassRole
+                  - sts:AssumeRole*
+                  - sts:AssumeRoot
+                  - sso:*
+                  - sso-directory:*
+                  - identitystore:*
+                Resource: "*"
+              - Sid: DenySelfEdit
+                Effect: Deny
+                Action:
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePermissionsBoundary
+                  - iam:DeleteRolePermissionsBoundary
+                  - iam:UpdateRole
+                  - iam:UpdateRoleDescription
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:DeleteRole
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RoleName}
+              # data-model "Outside the invariant": the agent never changes the stack that holds its role.
+              - Sid: DenyOwnStack
+                Effect: Deny
+                Action:
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                Resource:
+                  Fn::Sub: arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*
+              - Fn::If:
+                  - IsRead
+                  - Sid: DenyReadData
+                    Effect: Deny
+                    Action:
+                      - secretsmanager:GetSecretValue
+                      - secretsmanager:BatchGetSecretValue
+                      - ssm:GetParameter*
+                      - kms:Decrypt
+                      - s3:GetObject*
+                      - dynamodb:GetItem
+                      - dynamodb:BatchGetItem
+                      - dynamodb:Query
+                      - dynamodb:Scan
+                      - rds-db:connect
+                      - rds-data:ExecuteStatement
+                      - logs:StartLiveTail
+                      - lambda:GetFunction
+                      - lambda:GetFunctionConfiguration
+                      - logs:GetLogEvents
+                      - logs:FilterLogEvents
+                      - logs:GetQueryResults
+                      - athena:GetQueryResults
+                      - kinesis:GetRecords
+                      - sqs:ReceiveMessage
+                    Resource: "*"
+                  - Ref: AWS::NoValue
+
+Outputs:
+  RoleArn:
+    Value:
+      Fn::GetAtt:
+        - AgentRole
+        - Arn
+  ProfileSnippet:
+    Description: The ~/.aws/config lines aws.sh setup also prints
+    Value:
+      Fn::Sub: |-
+        [profile ${RoleName}-<env>]
+        role_arn = ${AgentRole.Arn}
+        source_profile = <your sso profile>

@@ -42,6 +42,7 @@ only on an explicit "yes, I accept this". Record the decision in `plan.md` or
 | A production database with no backups, or backups never restored | GitLab 2017: backups silently failing, 6 hours of data lost for ~5,000 projects [GL] | automated backups, an alert on failure, one restore drill |
 | Debug mode, `CORS *`, default credentials or public storage in production | Misconfiguration is OWASP #2 [OW] | secure production defaults; debug only locally |
 | An LLM that can write, delete, send or pay, or whose output runs as code/SQL/shell | OWASP LLM01 prompt injection, LLM06 excessive agency [LLM] | read-only tools, validated output, human approval for consequential actions |
+| An AI agent working in AWS with long-lived access keys or admin rights | AWS: use temporary credentials and least privilege, not long-term keys [IAMBP]; an agent's calls carry the caller's own permissions, so its role is the limit [MCP] | a role assumed from a short-lived sign-in (landspec ships `agent-role.yaml`), with no IAM write, read-only in prod |
 | A package nobody can verify (few downloads, days old, or suggested by an AI) | AI assistants invent package names, at least 5.2% of suggestions for commercial models, 21.7% for open models [SP] | check it exists, is maintained and is widely used; prefer the standard library |
 | Microservices, Kubernetes, event sourcing or a service mesh for a small team with no load yet | Prime Video cut costs by over 90% moving one system back to a monolith [PV]; "monolith first" [MF] | one deployable, modules by feature. This one is reversible: don't block, but require a stated reason and record it |
 
@@ -85,6 +86,8 @@ Apply these unless the person says otherwise. Mention each in a short line so th
 - [OW] OWASP Top 10:2025: https://owasp.org/Top10/
 - [CWE] CWE Top 25 (2025): https://cwe.mitre.org/top25/
 - [LLM] OWASP Top 10 for LLM Applications 2025: https://genai.owasp.org/llm-top-10/
+- [IAMBP] AWS IAM security best practices: https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html
+- [MCP] AWS Security Blog, Understanding IAM for managed AWS MCP servers: https://aws.amazon.com/blogs/security/understanding-iam-for-managed-aws-mcp-servers
 - [YU] Yuan et al., "Simple Testing Can Prevent Most Critical Failures", OSDI 2014: https://www.usenix.org/conference/osdi14/technical-sessions/presentation/yuan
 - [GG] GitGuardian, State of Secrets Sprawl 2025: https://blog.gitguardian.com/the-state-of-secrets-sprawl-2025/
 - [SN] Sonatype, State of the Software Supply Chain 2024: https://www.sonatype.com/state-of-the-software-supply-chain/introduction

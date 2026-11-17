@@ -1,0 +1,26 @@
+rds:DeleteDBInstance
+rds:DeleteDBCluster
+rds:DeleteDBSnapshot
+rds:DeleteDBClusterSnapshot
+s3:DeleteBucket
+dynamodb:DeleteTable
+kms:ScheduleKeyDeletion
+kms:DisableKey
+cloudtrail:StopLogging
+cloudtrail:DeleteTrail
+guardduty:DeleteDetector
+budgets:DeleteBudget
+config:StopConfigurationRecorder
+config:DeleteConfigurationRecorder
+iam:CreateUser
+iam:CreateAccessKey
+iam:CreateLoginProfile
+iam:AttachUserPolicy
+organizations:* organizations:LeaveOrganization
+account:* account:CloseAccount
+iam:PassRole
+sts:AssumeRole* sts:AssumeRole
+sts:AssumeRoot
+sso:* sso:CreatePermissionSet
+sso-directory:* sso-directory:CreateUser
+identitystore:* identitystore:CreateUser

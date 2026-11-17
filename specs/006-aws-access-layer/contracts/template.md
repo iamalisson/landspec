@@ -50,7 +50,7 @@ FR-004 (`denied-actions.txt`):
 `budgets:DeleteBudget`, `config:StopConfigurationRecorder`, `config:DeleteConfigurationRecorder`,
 `iam:CreateUser`, `iam:CreateAccessKey`, `iam:CreateLoginProfile`, `iam:AttachUserPolicy`,
 `organizations:*`, `account:*`, `iam:PassRole`, `sts:AssumeRole* sts:AssumeRole`, `sts:AssumeRoot`,
-`sso-admin:* sso-admin:CreatePermissionSet`,
+`sso:* sso:CreatePermissionSet`, `sso-directory:* sso-directory:CreateUser`,
 `identitystore:* identitystore:CreateUser`. (The `sts:AssumeRole` entries refuse the agent assuming
 another role; how the human assumes the agent role is unaffected.)
 

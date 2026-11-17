@@ -439,4 +439,90 @@ check "then it keeps the project private and checks duplicates first" \
   'grep -qF "Keep the project private" <<<"$rp" && grep -qF "gh issue list -R <repo> --state all" <<<"$rp"'
 check "then README and help list it" 'grep -qF "/landspec:report" README.md && grep -qF "\`report\`" skills/help/SKILL.md'
 
+# The AWS agent role (contracts/template.md). Read with awk, so the bash 3.2 job (no python3) runs it too.
+role=extension/aws/agent-role.yaml
+if python3 -c "import yaml" 2>/dev/null; then
+  check "when agent-role.yaml is parsed, then it is plain YAML with the five parameters and their defaults" \
+    'python3 -c "import sys, yaml; p = yaml.safe_load(open(sys.argv[1]))[\"Parameters\"]; sys.exit(0 if {k: v.get(\"Default\") for k, v in p.items()} == {\"RoleName\": \"landspec-agent\", \"Access\": \"read\", \"TrustMode\": \"sso\", \"PermissionSetName\": \"\", \"LoginUserNames\": \"\"} else 1)" '"$role"
+else
+  check "when agent-role.yaml is read, then no value starts with a ! tag (python3 with PyYAML not available here)" \
+    '! grep -qE "(:|^ *-) +!" '"$role"
+fi
+check "then Access allows read and build, and TrustMode sso and login" \
+  'p="$(awk "/^Parameters:/{f=1;next} /^[A-Z]/{f=0} f" '"$role"')"; for v in read build sso login; do grep -qx "      - $v" <<<"$p"; done'
+# "<Sid> <Effect> <action>" per action, "<Sid> <Effect> @<resource>" per resource; "(no-Sid)" when a statement has none.
+statements() {
+  awk '/^ *- Sid: /{s=$NF; a=0; r=0; next} /^ *- Effect: /{s="(no-Sid)"; e=$NF; next} /^ *Effect: /{e=$NF; next}
+       /^ *(- )?(NotAction|NotResource|NotPrincipal):/{print s, e, "NOT"; next}
+       /^ *Action:/{a=1; if (NF > 1) print s, e, $2; next}
+       /^ *Resource:/{a=0; r=1; if (NF > 1) { print s, e, "@" $2; r=0 }; next}
+       r && /Fn::Sub:/{print s, e, "@" $2; r=0; next}
+       a && /^ *- [A-Za-z0-9-]+:[A-Za-z*]+$/{print s, e, $2; next} {a=0}' "$1"
+}
+# role_problems <template> <denied-actions.txt> <denied-read-actions.txt>: one line per broken rule, none when all hold.
+role_problems() {
+  local t="$1" st f d own='@arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${RoleName}'
+  st="$(statements "$t")"
+  for f in "$2:DenyListed" "$3:DenyReadData"; do
+    # comm, not diff: busybox diff prints unified output by default, with no </> lines
+    d="$(comm -3 <(awk -v s="${f#*:}" '$1 == s && $2 == "Deny" && $3 !~ /^@/ {print $3}' <<<"$st" | sort) <(cut -d" " -f1 "${f%:*}" | sort) | awk -F'\t' '{printf "%s ", ($1 == "" ? "> " $2 : "< " $1)}')"
+    [[ -z "$d" ]] || echo "the ${f#*:} deny differs from ${f%:*}: $d"
+    awk '$1 ~ /\*/ && ($2 == "" || $2 ~ /\*/) || NF > 2 {print "no concrete action to simulate for " $1 " in " FILENAME}' "${f%:*}"
+  done
+  awk '$2 == "Allow" && $3 !~ /^@/ && ($1 ~ /^Trust/ ? $3 != "sts:AssumeRole" : $3 != "iam:GetRole" && $3 != "iam:SimulatePrincipalPolicy") {print "an allow grants " $3 " (" $1 ")"}' <<<"$st"
+  grep -qx "ReadIam Allow iam:GetRole" <<<"$st" || echo "ReadIam does not allow iam:GetRole"
+  for f in "ReadIam Allow" "DenySelfEdit Deny"; do [[ "$(awk -v s="${f% *}" '$1 == s && $3 ~ /^@/' <<<"$st")" == "$f $own" ]] || echo "${f% *} is not on the role's own ARN alone"; done
+  for f in iam:PassRole "sts:AssumeRole*" sts:AssumeRoot "sso:*" "sso-directory:*" "identitystore:*"; do grep -qxF "DenyListed Deny $f" <<<"$st" || echo "the deny lacks $f"; done
+  # sso-admin is the SDK client's name; IAM Identity Center's action prefix is sso, so sso-admin:* matches nothing.
+  ! grep -qE "(^| )sso-admin:" "$2" <(cut -d" " -f3 <<<"$st") || echo "an entry uses sso-admin: (the IAM prefix is sso:)"
+  grep -qxF '    AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"' <<<"$(awk '/^  PermissionSetName:/{f=1;next} /^  [A-Za-z]/{f=0} f' "$t")" || echo "PermissionSetName does not refuse * and ?"
+  for f in UpdateStack DeleteStack CreateChangeSet ExecuteChangeSet SetStackPolicy; do grep -qxF "DenyOwnStack Deny cloudformation:$f" <<<"$st" || echo "the stack deny lacks cloudformation:$f"; done
+  grep -qxF 'DenyOwnStack Deny @arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*' <<<"$st" || echo "the stack deny is not on \${AWS::StackName}"
+  grep -qF 'sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_*' "$t" || echo "the trust does not match /*AWSReservedSSO_<PermissionSetName>_*"
+  ! grep -qF 'sso.amazonaws.com/*/AWSReservedSSO_' "$t" || echo "the trust uses sso.amazonaws.com/*/AWSReservedSSO_ (misses us-east-1)"
+  grep -qF '"Null":' "$t" && grep -qF 'aws:SignInSessionArn: "false"' "$t" || echo "the login trust does not require aws:SignInSessionArn"
+  grep -qx "      MaxSessionDuration: 3600" "$t" || echo "MaxSessionDuration is not 3600"
+  grep -qx "        - Key: landspec:access" "$t" || echo "no landspec:access tag"
+  grep -oE "iam::aws:policy/[A-Za-z]+" "$t" | grep -vxE "iam::aws:policy/(ReadOnlyAccess|PowerUserAccess)" | sed "s/^/a managed policy other than ReadOnlyAccess or PowerUserAccess: /" || true
+  for f in AWS::IAM::User AWS::IAM::AccessKey AWS::IAM::ManagedPolicy AWS::IAM::Policy "PermissionsBoundary:"; do ! grep -qF "$f" "$t" || echo "the template has $f"; done
+}
+aws_lists="extension/aws/denied-actions.txt extension/aws/denied-read-actions.txt"
+problems="$(role_problems "$role" $aws_lists | tr "\n" ";")"
+check "when agent-role.yaml is checked against contracts/template.md, then nothing is wrong${problems:+ — $problems}" '[[ -z "$problems" ]]'
+check "then its Deny holds the 26 actions of denied-actions.txt and its read deny the 20 of denied-read-actions.txt" \
+  '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 26 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 20 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 26 ]]'
+check "then the read deny exists only when Access=read" \
+  'grep -B2 -- "- Sid: DenyReadData" '"$role"' | grep -q -- "- IsRead"'
+# The failure paths: a broken copy is named.
+broken() { # broken <expected problem> <awk program applied to the template> [<awk program applied to denied-actions.txt>]
+  mkdir -p "$TMP/role"; awk "$2" "$role" > "$TMP/role/t.yaml"; awk "${3:-1}" extension/aws/denied-actions.txt > "$TMP/role/d.txt"
+  role_problems "$TMP/role/t.yaml" "$TMP/role/d.txt" extension/aws/denied-read-actions.txt | grep -qF -- "$1"
+}
+check "when an allow also grants iam:CreateRole, then the check names it" \
+  'broken "an allow grants iam:CreateRole (ReadIam)" "{print} /- iam:SimulatePrincipalPolicy/{print \"                  - iam:CreateRole\"}"'
+check "when an allow statement has no Sid, then its actions are still read" \
+  'broken "an allow grants iam:CreateRole ((no-Sid))" "{print} /^ *Statement:/ && !x {x=1; print \"              - Effect: Allow\"; print \"                Action:\"; print \"                  - iam:CreateRole\"}"'
+check "when sts:AssumeRole* is dropped from the template and the list, then the check names it" \
+  'broken "the deny lacks sts:AssumeRole*" "!/- sts:AssumeRole\\*$/" "!/^sts:AssumeRole\\*/"'
+check "when the template and denied-actions.txt differ, then the check names the action" \
+  'broken "the DenyListed deny differs from $TMP/role/d.txt: < kms:DisableKey" "1" "!/^kms:DisableKey$/"'
+check "when a wildcard entry has no concrete action, then the check names it" \
+  'broken "no concrete action to simulate for sts:AssumeRole*" "1" "{sub(/^sts:AssumeRole\\* sts:AssumeRole$/, \"sts:AssumeRole*\")} 1"'
+check "when ReadIam drops iam:GetRole, then the check names it" \
+  'broken "ReadIam does not allow iam:GetRole" "!/- iam:GetRole$/"'
+check "when the stack deny names a fixed stack, then the check names it" \
+  'broken "the stack deny is not on \${AWS::StackName}" "{sub(/stack\\/\\\$\\{AWS::StackName\\}/, \"stack/landspec-agent\")} 1"'
+check "when the trust uses sso.amazonaws.com/*/AWSReservedSSO_, then the check names it" \
+  'broken "the trust uses sso.amazonaws.com/*/AWSReservedSSO_" "{sub(/sso.amazonaws.com\\/\\*AWSReservedSSO_/, \"sso.amazonaws.com/*/AWSReservedSSO_\")} 1"'
+check "when sso-admin:* is put back in the template and the list, then the check names it" \
+  'broken "an entry uses sso-admin:" "{sub(/- sso:\\*$/, \"- sso-admin:*\")} 1" "{sub(/^sso:\\* sso:/, \"sso-admin:* sso-admin:\")} 1"'
+check "when PermissionSetName loses its AllowedPattern, then the check names it" \
+  'broken "PermissionSetName does not refuse * and ?" "!/AllowedPattern: \"\\^\\[A-Za-z0-9/"'
+check "then the PermissionSetName pattern takes a name and empty, and refuses * and ?" \
+  'for v in Dev_Admin ""; do [[ "$v" =~ ^[A-Za-z0-9+=,.@_-]*$ ]]; done; for v in "*" "Dev?" "a*b"; do ! [[ "$v" =~ ^[A-Za-z0-9+=,.@_-]*$ ]]; done'
+check "when the template adds an access key, then the check names it (SC-003)" \
+  'broken "the template has AWS::IAM::AccessKey" "{print} /^Resources:/{print \"  Key:\"; print \"    Type: AWS::IAM::AccessKey\"}"'
+check "when the template adds a permissions boundary, then the check names it" \
+  'broken "the template has PermissionsBoundary:" "{print} /^      MaxSessionDuration:/{print \"      PermissionsBoundary: x\"}"'
+
 exit "$FAIL"
