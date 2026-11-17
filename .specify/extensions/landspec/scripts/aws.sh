@@ -50,10 +50,10 @@ if [[ "${1:-}" == check ]]; then
     "assumed-role/$role/"*)
       verdict=agent; name="$role"
       # The tag's Value follows its Key in AWS's output; anything but read or build is unknown.
-      a="$(aws iam get-role --role-name "$role" --output json 2>/dev/null \
+      tag="$(aws iam get-role --role-name "$role" --output json 2>/dev/null \
            | grep -oE '"(Key|Value)"[[:space:]]*:[[:space:]]*"[^"]*"' \
            | awk -F'"' '$2 == "Key" { k = $4; next } k == "landspec:access" { print $4; exit }' || true)"
-      case "$a" in read | build) access="$a" ;; esac ;;
+      case "$tag" in read | build) access="$tag" ;; esac ;;
     user/*) verdict=user; name="${res##*/}" ;;
     *) verdict=other-role; name="${res#assumed-role/}"; name="${name%%/*}" ;;
   esac
