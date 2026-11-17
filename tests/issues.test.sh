@@ -18,6 +18,10 @@ commit_tasks '# Tasks
 - [ ] T003 [US1] Show prices in src/view.tsx and src/list.tsx, with tests in tests/view.test.ts'
 
 check "when the plan was not reviewed, then no issue is created" 'fails_with "no independent review" "$i" && ! grep -qs "^issue create" "$GH_LOG"'
+plan_reviewed; areas="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo.areas"; echo "due tasks" > "$areas"
+check "when a ready plan has a Simplify question open, then no issue is created" \
+  'fails_with "a Simplify question is open for tasks" "$i" && ! grep -qs "^issue create" "$GH_LOG"'
+rm "$areas"
 CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 plan_reviewed 2>/dev/null
 out="$("$i" 2>"$TMP/issues.err")"
 check "when the plan record has a model warning, then issues.sh prints it as it creates the issues" \

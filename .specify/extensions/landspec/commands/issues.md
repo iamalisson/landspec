@@ -49,7 +49,12 @@ or one with another summary never matches.
    `ready`. Every round is read cold: pass the next one only the facts review.md lists for a plan
    review (the feature folder, the last round's report and the output of `review.sh diff
    --plan`), never your replies to its findings; it checks each earlier finding in its own
-   table. The issue bodies are the task lines, so they must be right
+   table. When `record --plan` prints `SIMPLIFY=<area>` (an area with 3 findings across rounds),
+   pass `simplify: <area>` (every such area, `simplify: <a>, <b>`) to the next round; once its
+   report is recorded, show the developer each `## Simplify: <area>` section and record their
+   answer, in their words: `review.sh answer --plan <area> '<answer>'`. The round after, and
+   `check --plan` (so `issues.sh` and `pr.sh spec`), are refused until every asked area is
+   answered. The issue bodies are the task lines, so they must be right
    before any issue exists: `issues.sh` refuses to run without a recorded `ready` plan review for
    the current `tasks.md`.
 3. Then create the issues: run `bash .specify/extensions/landspec/scripts/issues.sh` from the repository root.

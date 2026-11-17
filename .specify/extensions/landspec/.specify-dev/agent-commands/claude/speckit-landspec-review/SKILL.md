@@ -75,7 +75,8 @@ Facts the author passes:
   and the output of `bash .specify/extensions/landspec/scripts/review.sh diff --plan`, and nothing
   the author wrote about the findings. When the last record predates the kept copies (a 2.7.0
   record: `diff --plan` dies "no plan review recorded yet"), the folder and that round's report,
-  with no diff: the round reads the whole folder.
+  with no diff: the round reads the whole folder. When the last `record --plan` printed
+  `SIMPLIFY=<area>` lines, `simplify: <a>, <b>` naming every one of them.
 
 **A delta** reads `git diff <sha>..HEAD` only: it checks that each previous finding is fixed and
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
@@ -269,6 +270,13 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   `[area: area-log]`; reuse the earlier report's names for the same part. `record --plan` refuses
   a report whose tagged findings do not number its `Findings:` total, a tag that is not one word,
   a report with no `Findings:` line, and a total below its failing rows.
+- **A Simplify section** opens a plan report given `simplify: <area>`: one section headed exactly
+  `## Simplify: <area>` for each area the facts name, before the pass tables. An area that drew
+  3 findings across rounds keeps breaking under patches: write the simplest design that removes
+  what keeps breaking (fewer rules, one state instead of several), or moving that part to a later
+  spec, with the lines of the plan it replaces. It is a recommendation the developer answers,
+  never a finding: the rounds go on, the passes run as usual. `record --plan` refuses the report
+  without a section for each named area, whatever its verdict.
 - Before the last line, each on its own line: `Copy: <git rev-parse --show-toplevel>` (your copy,
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and

@@ -9,6 +9,8 @@
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
+#   review.sh answer --plan <area> <text>   record the developer's answer to a Simplify section, resetting the
+#                                           area's count (plan-<feature>.areas)
 #   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
 #   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
@@ -41,6 +43,7 @@ if $plan && $delta; then die "a plan review is always full: review.sh record --p
 if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review has none"; fi
 if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
 if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
+if [[ "$action" == answer ]] && ! $plan; then die "usage: review.sh answer --plan <area> <text>"; fi
 # A fix round may change this many lines outside the previous findings' files (tests aside);
 # more means the fix is new work, which gets a full review.
 DELTA_LINES=20
@@ -90,6 +93,17 @@ tip="$(branch_tip ${bopt:+"$bopt"})"
 # db: diff_base of the branch this call is about.
 db() { diff_base ${bopt:+"$bopt"}; }
 record="$dir/${name:-}"
+# The plan's area log: "<round> <area>" per finding, and "due|asked|reset <area>" (data-model "Area log").
+areas="$record.areas"
+
+# areas_state: one "<area> <findings since its last reset> <due|asked|->" line per area of the log.
+areas_state() {
+  [[ -f "$areas" ]] || return 0
+  awk '$1 ~ /^[0-9]+$/ { if (!($2 in n)) o[++k] = $2; n[$2]++; next }
+    $1 == "due" || $1 == "asked" || $1 == "reset" { if (!($2 in n)) { o[++k] = $2; n[$2] = 0 }
+      s[$2] = $1; if ($1 == "reset") { n[$2] = 0; s[$2] = "-" } }
+    END { for (i = 1; i <= k; i++) print o[i], n[o[i]], (o[i] in s ? s[o[i]] : "-") }' "$areas"
+}
 
 # hdr <key> [file]: the record's header values for <key>. The header ends at the first blank line,
 # so nothing in the report below it can add or override a field.
@@ -340,6 +354,15 @@ case "$action" in
       [[ "$(field 'plan state')" =~ ^[0-9a-f]{64}$ ]] || die "the report has no Plan state line: run the review again (this landspec version records it)"
       [[ "${BASH_REMATCH[0]}" == "$st" ]] || die "the plan changed since this review: run the review again"
       pass_tables
+      # An open Simplify question: a due area needs its section in this report, an asked one the answer first.
+      opn="$(areas_state)"; due="$(awk '$3 == "due" { print $1 }' <<<"$opn")"
+      for a in $(awk '$3 == "asked" { print $1 }' <<<"$opn"); do
+        die "a Simplify question is open for $a: record the developer's answer first: review.sh answer --plan $a '<text>'"
+      done
+      for a in $due; do
+        grep -qE "^## Simplify: ${a}[[:space:]]*\$" "$report" \
+          || die "the report has no ## Simplify: $a section: the round is given simplify: $(paste -sd, - <<<"$due" | sed 's/,/, /g') and opens with one section per area; run the plan review again"
+      done
     else
       head="$(git rev-parse "$tip")"; df="$(field 'delta from')"
       rf=""; rh=""; rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
@@ -392,9 +415,19 @@ case "$action" in
       if $delta; then [[ -z "$carried" ]] || sed 's/^/map-full: /' <<<"$carried"; [[ -z "$map" ]] || sed 's/^/map-fix: /' <<<"$map"
       elif [[ -n "$map" ]]; then sed 's/^/map-full: /' <<<"$map"; fi
       echo; cat "$report"
-    } > "$record.tmp" && mv "$record.tmp" "$record"
+    } > "$record.tmp" || die "cannot write the review record"
     # The text this round read (its state matched): the next round is given its diff (review.sh diff --plan).
-    if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"; fi
+    if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"
+      # Every finding is logged (table rows aside: a failing row is listed again among the findings).
+      # shortcut: the round number is the log's last one plus 1, so a round with no finding takes none; nothing reads it yet.
+      n="$(awk '$1 ~ /^[0-9]+$/ && $1 + 0 > m { m = $1 + 0 } END { print m + 1 }' "$areas" 2>/dev/null || echo 1)"
+      { for a in $due; do echo "asked $a"; done
+        grep -v '^|' "$report" | grep -oE '\[area: *[a-z0-9-]+\]' | sed -E "s/^\[area: *([a-z0-9-]+)\]$/$n \1/" || true; } >> "$areas"
+      simplify="$(areas_state | awk '$2 >= 3 && $3 == "-" { print $1 }')"
+      for a in $simplify; do echo "due $a" >> "$areas"; done
+    fi
+    # The record goes last: a run stopped before it leaves the old record, so the same report is recorded again.
+    mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
     if $plan; then event review round=plan verdict="${verdict// /-}"
     else
@@ -402,7 +435,15 @@ case "$action" in
       hm="$(grep -iE '^findings: *[0-9]+ high, *[0-9]+ medium' "$report" | tail -1 | awk '{ gsub(/[^0-9 ]/, ""); print $1 + $2 }' || true)"
       event review round="$($delta && echo delta || echo full)" verdict="${verdict// /-}" ${hm:+hm=$hm} branch="$branch"; echo "REVIEWED=$head"
     fi
-    echo "REVIEW=$verdict" ;;
+    echo "REVIEW=$verdict"
+    for a in ${simplify:-}; do echo "SIMPLIFY=$a"; done ;;
+  answer)
+    a="${1:-}"; text="${*:2}" # an unquoted answer is still the whole answer
+    [[ "$a" =~ ^[a-z0-9-]+$ && -n "${text//[[:space:]]/}" ]] || die "usage: review.sh answer --plan <area> <text>"
+    [[ "$(areas_state | awk -v a="$a" '$1 == a { print $3 }')" == asked ]] \
+      || die "nothing is asked for $a: an area is answered once the report with its ## Simplify: $a section is recorded"
+    echo "reset $a $(tr '\n' ' ' <<<"$text" | sed 's/ *$//')" >> "$areas"
+    echo "ANSWERED=$a" ;;
   check|report)
     st="$(state)"
     [[ -f "$record" ]] || die "no independent review recorded for $what; run /speckit-landspec-review and record its report: review.sh record$($plan && echo ' --plan') <report-file>"
@@ -410,6 +451,13 @@ case "$action" in
       || die "$what changed since the last review; run /speckit-landspec-review again and record it"
     [[ "$(hdr assessment)" == ready ]] \
       || die "the last review said 'changes needed'; fix the findings, then review again and record it"
+    # No issue or spec PR while a Simplify question is open (data-model "Invariant").
+    if $plan; then
+      while read -r a _ s; do
+        if [[ "$s" == due ]]; then die "a Simplify question is open for $a: run the next plan review with simplify: $a"; fi
+        if [[ "$s" == asked ]]; then die "a Simplify question is open for $a: record the developer's answer: review.sh answer --plan $a '<text>'"; fi
+      done < <(areas_state)
+    fi
     if [[ "$action" == check ]]; then echo "REVIEW=ready"; exit 0; fi
     # Only facts checked or stored by record: no reviewer prose can be filtered for findings reliably (F3.1/F4.3).
     echo "Independent review recorded for this diff (patch id $(hdr state | cut -c1-12))"
@@ -421,5 +469,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh answer --plan <area> <text> | review.sh risk [<from>]" ;;
 esac

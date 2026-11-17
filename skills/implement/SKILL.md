@@ -114,7 +114,8 @@ check runs on the base itself, once per base commit, and only from "The release"
      `— #N` (only its `(depends on …)` suffix).
    - A plan review of those lines, as `issues.md` step 2 says (`review.sh record --plan`; every
      round is read cold: the next one gets the last report and `review.sh diff --plan`, never
-     replies to its findings), then
+     replies to its findings; on `SIMPLIFY=<area>`, the next round gets `simplify: <area>` and the
+     developer answers its Simplify section with `review.sh answer --plan`), then
      `issues.sh` for their issues, then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
    - `git switch --detach` there, last.
 

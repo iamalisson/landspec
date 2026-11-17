@@ -406,6 +406,10 @@ printf '## Specification Analysis Report\n\nCoverage Summary Table\n' > "$TMP/an
 check "when the analysis changed tasks.md after the plan review, then pr.sh spec stops, pushes nothing and stays on the branch" \
   'fails_with "changed since the last review" "$p" spec && ! grep -q "^pr create" "$GH_LOG" && [[ "$(git branch --show-current)" == main ]] && ! git ls-remote --exit-code origin spec/001-demo'
 git checkout --quiet -- specs/001-demo/tasks.md
+areas="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo.areas"; echo "due tasks" > "$areas"
+check "when the ready plan has a Simplify question open, then pr.sh spec stops and opens nothing" \
+  'fails_with "a Simplify question is open for tasks" "$p" spec && ! grep -q "^pr create" "$GH_LOG" && ! git ls-remote --exit-code origin spec/001-demo'
+rm "$areas"
 
 # ── FR-022: the review gate and the refusals, found by their messages, on a scan recorded for the diff ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
