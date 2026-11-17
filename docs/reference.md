@@ -68,6 +68,17 @@ CI; one whose `pull_request` filter leaves out the base branch is named
 line to make one yours. Repos that run hooks through the pre-commit framework or husky get landspec's
 two checks added there.
 
+`/landspec:adopt` also runs `formatters.sh`: each hook of `.pre-commit-config.yaml` (the working
+tree's, committed or not) runs with `pre-commit run --all-files <id>` in a throwaway worktree at
+`HEAD`, reset before each hook, so your files are never touched. A hook that changes more than half
+of the tracked files sharing the changed files' extensions prints `REWRITES=<hook> <changed>/<covered>`,
+and adopt offers the two ways out: format the code once in its own PR, or remove or scope the hook.
+A hook that could not run prints `UNCHECKED=<hook> <pre-commit's first error line>`; then
+`FORMATTERS=checked <n> hooks`, or `FORMATTERS=skipped <why>` without a config, without `pre-commit`
+or without a commit. It always exits 0. Such a hook would otherwise refuse every task's commit: an
+implementer returns `Failed: formatter <hook> rewrote <n> files outside the task's change`, since
+`SKIP=` is refused by the guard.
+
 ## Several features at once
 
 Every feature is its own folder (`specs/001-login/`, `specs/002-reports/`), and everything landspec
