@@ -5,6 +5,11 @@
 #        core.hooksPath or SKIP=, no `git add -A/--all/.`, no commit on a protected branch, no push
 #        to a protected branch (counting every branch a switch/checkout earlier in the chain may
 #        have moved to), no `gh pr create` outside pr.sh except a promotion between long-lived branches.
+# AWS rules, only when `aws: on` in the repository the command runs in: no terraform/tofu destroy
+#        (or apply -destroy), no apply in an aws_prod_paths directory or under a prod AWS_PROFILE=,
+#        no aws write verb under a prod --profile/AWS_PROFILE=, no secret reads (secretsmanager,
+#        ssm --with-decryption), no printing a .env or Terraform state file. Prod is only what
+#        aws_prod_profiles/aws_prod_paths declare; IAM is the real boundary.
 # Each git command is checked against the repository it runs in: the hook's directory, moved by a
 # `cd`/`pushd` earlier in the chain or by `git -C`, or the one --git-dir/GIT_DIR= names. A
 # repository without landspec is not checked.
@@ -134,7 +139,7 @@ words() {
           if (c == "\"") subs(part)
           w = w part; inw = 1; i += j; continue
         }
-        if (c == "#" && !inw) { while (i < n && substr(text, i + 1, 1) != "\n") i++; continue }
+        if (c == "#" && !inw) { j = index(substr(text, i + 1), "\n"); i = j ? i + j - 1 : n; continue }
         if (c == "`" || c == "$" && substr(text, i + 1, 1) == "(") { i = keep(text, i); w = w "_"; inw = 1; continue }
         # ( and ) open and close a subshell ("|(" and "|)").
         if (c == "(" || c == ")") {
@@ -157,7 +162,13 @@ words() {
           if (c != " " && c != "\t") { print s; flush() }
           continue
         }
-        w = w c; inw = 1
+        # The whole run of ordinary characters at once, like a quoted run: one substr() per
+        # character is O(n) per call in busybox and BSD awk, so a long unquoted word was quadratic.
+        # The slice is bounded so many short words do not copy the rest of the text each time;
+        # a longer run just matches again on the next pass.
+        if (match(substr(text, i, 256),/^[^ \t\n;|&<>()"\047`$]+/)) { w = w substr(text, i, RLENGTH); i += RLENGTH - 1 }
+        else w = w c
+        inw = 1
       }
       if (inw) print w
       flush()
@@ -330,9 +341,115 @@ check_gh() {
   block "a PR opens after the independent review, through pr.sh: pr.sh task Tnnn \"<title>\" <body-file> for a task, pr.sh fix \"<title>\" <body-file> for anything else (/speckit-landspec-review first)"
 }
 
+# aws_on: the AWS layer is on in the repository the command runs in. Its aws, aws_prod_profiles and
+# aws_prod_paths are read once per repository top (one git call per new directory); outside any
+# repository the rules are off.
+adir="-" atop="-" aon=false aprofiles="" aprod=()
+aws_on() {
+  local d="${dir:-$start}" top p cf
+  if [[ "$d" != "$adir" ]]; then
+    adir="$d"
+    top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null)" || top=""
+    if [[ "$top" != "$atop" ]]; then
+      atop="$top" aon=false aprofiles="" aprod=()
+      cf="$top/$LANDSPEC_CONFIG"
+      if [[ -n "$top" && "$(LANDSPEC_CONFIG="$cf" cfg aws off)" == on ]]; then
+        aon=true
+        aprofiles=" $(LANDSPEC_CONFIG="$cf" cfg aws_prod_profiles "" | tr ', ' '  ') "
+        local IFS=,
+        for p in $(LANDSPEC_CONFIG="$cf" cfg aws_prod_paths ""); do
+          p="${p#"${p%%[! ]*}"}"; p="${p%"${p##*[! ]}"}"
+          [[ -z "$p" ]] || { p="$(resolve "$top" "$p")"; [[ -z "$p" ]] || aprod+=("$p"); }
+        done
+      fi
+    fi
+  fi
+  $aon
+}
+prod_profile() { [[ -n "$1" && "$aprofiles" == *" $1 "* ]]; }
+prod_dir() {
+  local p
+  for p in ${aprod[@]+"${aprod[@]}"}; do [[ "$1" == "$p" || "$1" == "$p"/* ]] && return 0; done
+  return 1
+}
+no_destroy() { block "$1 is refused: destroys go through a reviewed PR and a human"; }
+no_prod() { block "$1 aims at prod ($2): prod changes go through a PR; the pipeline applies them"; }
+no_secret() { block "$1 is refused: secret values stay out of the conversation"; }
+
+# check_tf <terraform|tofu> <args...>: destroys always; apply in a prod directory or profile;
+# reading the state (state pull, show of a state file or of the current state).
+check_tf() {
+  local tool="$1" sub="" w tfdir="${dir:-$start}" file=""; shift
+  while (($#)); do
+    case "$1" in
+      -chdir=*) tfdir="$(resolve "$tfdir" "${1#*=}")"; shift ;;
+      -*) shift ;;
+      *) sub="$1"; shift; break ;;
+    esac
+  done
+  case "$sub" in
+    destroy) no_destroy "$tool destroy" ;;
+    apply)
+      for w in "$@"; do
+        case "$w" in -destroy|--destroy|-destroy=*|--destroy=*)
+          # Go's flag parsing takes -destroy=<bool>; only a false value keeps it off.
+          case "${w#*=}" in 0|f|F|false|FALSE|False) ;; *) no_destroy "$tool apply -destroy" ;; esac ;;
+        esac
+      done
+      if prod_profile "$aws_profile"; then no_prod "$tool apply" "AWS_PROFILE=$aws_profile"; fi
+      if [[ -n "$tfdir" ]] && prod_dir "$tfdir"; then no_prod "$tool apply" "${tfdir#"$atop"/}"; fi ;;
+    state) [[ "${1:-}" != pull ]] || no_secret "$tool state pull" ;;
+    show)
+      for w in "$@"; do [[ "$w" == -* ]] || file="$w"; done
+      # Without a file, show prints the current state.
+      [[ -n "$file" && "$file" != *.tfstate* ]] || no_secret "$tool show of the state" ;;
+  esac
+}
+
+# check_aws <args...>: the words after `aws`. Secret reads always; write verbs under a prod profile.
+check_aws() {
+  local profile="$aws_profile" svc="" verb="" dec=false
+  while (($#)); do
+    case "$1" in
+      --profile) profile="${2:-}"; shift 2 || shift ;;
+      --profile=*) profile="${1#*=}"; shift ;;
+      --with-decryption) dec=true; shift ;;
+      # Global options that take a value.
+      --region|--output|--endpoint-url|--query|--color|--ca-bundle|--cli-read-timeout|--cli-connect-timeout|--cli-binary-format) shift 2 || shift ;;
+      -*) shift ;;
+      *) if [[ -z "$svc" ]]; then svc="$1"; elif [[ -z "$verb" ]]; then verb="$1"; fi; shift ;;
+    esac
+  done
+  case "$svc:$verb" in
+    secretsmanager:get-secret-value|secretsmanager:batch-get-secret-value) no_secret "aws $svc $verb" ;;
+    ssm:get-parameter|ssm:get-parameters|ssm:get-parameters-by-path|ssm:get-parameter-history)
+      if $dec; then no_secret "aws ssm $verb --with-decryption"; fi ;;
+  esac
+  prod_profile "$profile" || return 0
+  case "$svc:$verb" in
+    s3:rm|s3:mv|s3:cp|s3:sync|s3:rb|*:create-*|*:delete-*|*:put-*|*:update-*|*:modify-*|*:terminate-*|*:run-*|*:start-*|*:stop-*|*:attach-*|*:detach-*|*:associate-*|*:disassociate-*|*:register-*|*:deregister-*|*:reboot-*|*:restore-*)
+      no_prod "aws $svc $verb" "profile $profile" ;;
+  esac
+}
+
+# check_read <reader> <args...>: a .env or Terraform state file among its words.
+check_read() {
+  local tool="$1" w f; shift
+  for w in "$@"; do
+    # Only the last 256 characters (a file name is shorter): ## over a whole long word is quadratic.
+    f="${w: -256}"; [[ ${#w} -gt 256 ]] || f="$w"
+    f="${f##*[<>=]}"; f="${f##*/}" # a glued redirection or --file=, then the file name
+    case "$f" in
+      .env.example|.env.sample|.env.template|.env.dist) ;;
+      .[eE][nN][vV]|.[eE][nN][vV].*|*.tfstate|*.tfstate.*) no_secret "$tool $f" ;;
+    esac
+  done
+}
+
 check_words() {
-  # GIT_DIR=/GIT_WORK_TREE= belong to this command, and reach the commands inside its sh -c.
-  local w git_dir="${git_dir-}" work_tree="${work_tree-}"
+  # GIT_DIR=/GIT_WORK_TREE= belong to this command, and reach the commands inside its sh -c, as
+  # does AWS_PROFILE=.
+  local w git_dir="${git_dir-}" work_tree="${work_tree-}" aws_profile="${aws_profile-}"
   # Git reads config from the environment too (GIT_CONFIG_PARAMETERS, GIT_CONFIG_KEY_n).
   for w in "$@"; do
     if [[ "$w" == GIT_CONFIG_*=* ]] && hookspath "$w"; then no_hooks; fi
@@ -346,6 +463,7 @@ check_words() {
       SKIP=*|PRE_COMMIT_ALLOW_NO_CONFIG=*) skip_env=true; shift ;;
       GIT_DIR=*) git_dir="${1#*=}"; shift ;;
       GIT_WORK_TREE=*) work_tree="${1#*=}"; shift ;;
+      AWS_PROFILE=*) aws_profile="${1#*=}"; shift ;;
       *=*|env|command|exec|time|nohup|'{'|'}'|'!'|if|then|else|elif|fi|do|done|while|until) shift ;;
       timeout|nice|xargs|stdbuf|sudo|doas)
         p="$1"; shift
@@ -366,6 +484,10 @@ check_words() {
       dir="$(resolve "${dir:-$start}" "${1:-~}")" ;;
     git|*/git) shift; check_git "$@" ;;
     gh|*/gh) shift; check_gh "$@" ;;
+    terraform|tofu|*/terraform|*/tofu) if aws_on; then check_tf "${1##*/}" "${@:2}"; fi ;;
+    aws|*/aws) if aws_on; then shift; check_aws "$@"; fi ;;
+    cat|less|more|head|tail|bat|grep|sed|awk|strings|xxd|*/cat|*/less|*/more|*/head|*/tail|*/bat|*/grep|*/sed|*/awk|*/strings|*/xxd)
+      if aws_on; then check_read "${1##*/}" "${@:2}"; fi ;;
     sh|bash|zsh|*/sh|*/bash|*/zsh)
       shift
       while (($#)); do

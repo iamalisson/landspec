@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook (Bash). Hands git commands to landspec's guard.
-# Does nothing outside landspec projects or for commands that don't involve git.
+# Does nothing outside landspec projects or for commands that don't involve git, gh, aws,
+# terraform/tofu, .env or .tfstate.
 # Exit 2 blocks the command; the guard's stderr tells Claude why.
 # The guard that runs is this plugin's own copy, never a script from the opened repository: the
 # project only provides its config (level, base branch), so a stale or tampered copy there changes
@@ -15,7 +16,8 @@ field() { # field <name>: a string field from the hook's JSON input
   fi
 }
 cmd="$(field command)"
-[[ "$cmd" == *git* || "$cmd" == *gh* ]] || exit 0 # gh: a PR opens only through pr.sh
+# gh: a PR opens only through pr.sh; the rest: the AWS rules (off unless `aws: on`).
+[[ "$cmd" =~ git|gh|aws|terraform|tofu|\.env|\.tfstate ]] || exit 0
 cwd="$(field cwd)"
 cd "${cwd:-.}" 2>/dev/null || exit 0
 # Fast path: no cd/pushd/-C/--git-dir/GIT_DIR=, so every git command runs here; nothing to check
