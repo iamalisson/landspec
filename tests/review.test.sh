@@ -254,6 +254,17 @@ check "when every Earlier findings row is resolved, then the ready is recorded" 
 check "after a round with Findings: 0 high, 0 medium, 0 low, when the next report has no Earlier findings table, then it is recorded" \
   'fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 fx_extra="$five_f" fx_findings="Findings: 0 high, 2 medium, 3 low" fx "changes needed"; "$r" record --plan "$TMP/fx.md" >/dev/null
+ev="$(git rev-parse --git-common-dir)/landspec-events"
+check "when a plan round is recorded, then its event names the feature and the high, medium and low counts of its Findings: line" \
+  '[[ "$(grep " review round=plan " "$ev" | tail -1 | cut -d" " -f4-)" == "review round=plan verdict=changes-needed feature=002-plan-review h=0 m=2 l=3" ]]'
+check "when outside --plan 2 runs, then it prints OUTSIDE=2 and logs the feature's outside event" \
+  '[[ "$("$r" outside --plan 2)" == OUTSIDE=2 ]] && [[ "$(tail -1 "$ev" | cut -d" " -f4-)" == "outside feature=002-plan-review n=2" ]]'
+check "when outside --plan 0 runs, then the zero is a whole number too" '[[ "$("$r" outside --plan 0)" == OUTSIDE=0 ]]'
+for bad in two -1 1.5 "" "1 2"; do
+  check "when outside --plan '$bad' runs, then it is refused and logs nothing" \
+    'cp "$ev" "$TMP/ev0"; fails_with "usage: review.sh outside --plan <n>, <n> the whole number" "$r" outside --plan $bad && cmp -s "$ev" "$TMP/ev0"'
+done
+check "when outside runs without --plan, then it fails with its usage" 'fails_with "usage: review.sh outside --plan <n>" "$r" outside 2'
 check "after a round with Findings: 0 high, 2 medium, 3 low, when the next report has no Earlier findings table, then it is refused" \
   'refused "the report needs an ### Earlier findings table"'
 check "then an Earlier findings table whose row is none: is refused" \

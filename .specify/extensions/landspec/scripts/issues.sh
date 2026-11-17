@@ -46,7 +46,7 @@ link() {
     "$tasks" > "$tasks.tmp" && mv "$tasks.tmp" "$tasks"
 }
 
-created=0; skipped=0; updated=0
+created=0; skipped=0; updated=0; reused=0
 while IFS= read -r line; do
   id="$(sed -E 's/^- \[.\] (T[0-9]{3,}) .*/\1/' <<<"$line")"
   linked="$(task_issue "$line")"
@@ -82,7 +82,7 @@ while IFS= read -r line; do
   n="$(T="$title" awk '{ n = $1; sub(/^[^ ]+ /, ""); if ($0 == ENVIRON["T"]) { print n; exit } }' <<<"$existing")"
   if [[ -n "$n" ]]; then
     link "$line" "$n"; add_meta issue "$n"
-    echo "$id → #$n (existing)"; skipped=$((skipped + 1)); continue
+    echo "$id → #$n (existing)"; skipped=$((skipped + 1)); reused=$((reused + 1)); continue
   fi
   url="$(gh issue create --title "$title" --body "$body" ${label_args[@]+"${label_args[@]}"})"
   n="${url##*/}"
@@ -92,4 +92,6 @@ while IFS= read -r line; do
   created=$((created + 1))
 done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$tasks")
 
+# stats.sh times the plan phase to the first run that created or linked an issue (a reused one was created by an earlier run).
+if ! $dry && ((created + reused > 0)); then event issues feature="$feature" created="$((created + reused))"; fi
 echo "CREATED=$created SKIPPED=$skipped UPDATED=$updated"

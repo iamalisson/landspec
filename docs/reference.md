@@ -272,7 +272,10 @@ of the same commit is not caught.
 
 The scripts append one line per step to `.git/landspec-events`, shared by every worktree of the
 clone: `<epoch> <UTC time> <branch> <event> key=value...`. The events are `start` (`branch.sh`
-made the branch), `review` (`review.sh record`, `round=full|delta|plan|feature` and the verdict),
+made the branch), `review` (`review.sh record`, `round=full|delta|plan|feature` and the verdict;
+a plan round also names its `feature=` and its `h=`, `m=` and `l=` counts), `issues` (`issues.sh`, a run
+that created or linked issues, `created=<n>`), `outside` (`review.sh outside --plan <n>`, the real
+findings of the spec PR's outside reviewers),
 `mark` and `fail` (`implement.sh`, with `branch=` named, since the run's copy is detached),
 `tests` (`pr.sh`, the seconds the test command took, `ok=1` or `ok=0`; a reused green run logs
 `secs=0`) and `pr` (the PR it opened or found). A write that fails is silent and never stops a
@@ -282,6 +285,10 @@ Nothing rotates it (about 10 lines per PR).
 `bash .specify/extensions/landspec/scripts/stats.sh` prints one row per branch that opened a task
 or fix PR (minutes from start to its first `pr` event, so a later `pr.sh` run that finds the open
 PR does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
+then one `PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> … | first->issues <m>m | outside <n>`
+line per feature with plan events (the counts of each plan round, `?` when its report had none;
+the minutes from its first plan round to its first `issues` event, `?` before one; plan events
+written by 2.7.0 name no feature and are grouped under `?`),
 then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
 the first review. Spec PRs are left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used
 twice adds both PRs into one row.

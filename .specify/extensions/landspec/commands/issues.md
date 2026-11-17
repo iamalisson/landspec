@@ -56,7 +56,9 @@ or one with another summary never matches.
    `check --plan` (so `issues.sh` and `pr.sh spec`), are refused until every asked area is
    answered. The issue bodies are the task lines, so they must be right
    before any issue exists: `issues.sh` refuses to run without a recorded `ready` plan review for
-   the current `tasks.md`.
+   the current `tasks.md`. Once the spec PR (step 5) has its outside reviewers' comments, count
+   the real findings among them (a comment that changes nothing in the plan is not one) and record
+   that number, 0 included: `review.sh outside --plan <n>`; fix them here, as for any round.
 3. Then create the issues: run `bash .specify/extensions/landspec/scripts/issues.sh` from the repository root.
    - If it fails (no `gh`, not logged in, no remote), show its message and stop. Do not create
      issues any other way.
