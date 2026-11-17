@@ -163,8 +163,9 @@ one log line, who is refused), and no task is a bare "error handling", "logging"
 layer: a task that breaks this makes the rows it proves `MISSING`.
 
 **Pass `rules`**: one row per rule stated in more than one document of the folder (a field, a
-filter, a response shape, who may do something, a default, a link between entities), one column
-per document: `SAME`, or `DIFFERENT: <what>` naming both documents.
+filter, a response shape, who may do something, a default, a link between entities), with the
+documents compared in one cell and one status cell, last: `| <rule> | <documents compared> | SAME |`,
+or `DIFFERENT: <what>` naming both documents.
 
 **Pass `claims`**: one row per claim the plan makes about code that exists ("as today",
 "existing", "callers unchanged", a `file:line`), with the evidence you read: `TRUE` or `FALSE`.

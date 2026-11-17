@@ -187,9 +187,15 @@ pass_tables() {
       split("BREAKS: MISSING DIFFERENT: FALSE MISSING MISSING BREAKS: BREAKS:", bad, " ")
       for (i = 1; i <= np; i++) { g[pass[i]] = good[i]; b[pass[i]] = bad[i] } }
     function say(m) { if (!e) print m; e = 1 }
-    $2 == "" && $3 == "" && $4 == "" { seen[$1] = 1; next }
+    # failcell: a cell between the item and the status starts with a failing status (a status written early).
+    function failcell(r,  c, k, n, x) { sub(/[ \t]+$/, "", r); if (r !~ /\|$/) r = r "|"; n = split(r, c, "|")
+      for (k = 3; k < n - 1; k++) { x = c[k]; gsub(/^[ \t`*]+/, "", x); if (x ~ /^(DIFFERENT:|MISSING|FALSE|BREAKS:)/) return 1 }
+      return 0 }
+    $2 == "" && $3 == "" && $4 == "" { seen[$1] = 1
+      if (!($1 in g)) say("the report has a ### Pass: " $1 " table, but " $1 " is not a pass of the plan review: name it one of " ENVIRON["P"]); next }
     { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") " or none: <why>" }
     s ~ /^none: *[^ ]/ { none[$1] = $4; next }
+    ENVIRON["V"] == "ready" && failcell($4) { say("the " $1 " pass has a failing row, so the plan is not ready: " $4); next }
     s == g[$1] { next }
     bd ~ /:$/ ? index(s, bd " ") == 1 && length(s) > length(bd) + 1 : s == bd {
       if (ENVIRON["V"] == "ready") say("the " $1 " pass has a failing row, so the plan is not ready: " $4); next }

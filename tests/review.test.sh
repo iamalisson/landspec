@@ -217,6 +217,16 @@ check "when a pass's only row is none: no task writes data, then the ready is re
   'fx ready "s/^\| a write \| safe \|$/| none: no task writes data |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "when a row has no closing pipe and its cells are in backticks or bold, then it is read as the same row" \
   'fx ready "s/^\| a guard \| handled \|$/| \`a guard\` | **handled**/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a rules row compares two documents as DIFFERENT: data-model vs api in a middle cell and ends SAME, then a ready is refused naming the row" \
+  'refused "the rules pass has a failing row, so the plan is not ready: | title limit | DIFFERENT: data-model vs api | SAME |" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/"'
+check "when a middle cell starts with MISSING, FALSE or BREAKS: (or a bold DIFFERENT:), then a ready is refused" \
+  'for s in MISSING FALSE "BREAKS: x" "**DIFFERENT: x**"; do refused "the claims pass has a failing row" "s/^\| a claim \| TRUE \|$/| a claim | $s | TRUE |/" || exit 1; done'
+check "when a rules row names its documents in a middle cell and ends SAME, or its item cell starts with FALSE, then the ready is recorded" \
+  'fx ready "s/^\| a rule \| SAME \|$/| a rule | spec vs data-model | SAME |/; s/^\| a claim \| TRUE \|$/| FALSE start of an item | TRUE |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a changes needed report holds a middle DIFFERENT: cell, then it is recorded" \
+  'fx "changes needed" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+check "when a pass is headed ### Pass: rule (not a pass name), then it is refused saying the pass name is unknown" \
+  'refused "the report has a ### Pass: rule table, but rule is not a pass of the plan review: name it one of size requirements rules" "s/^### Pass: rules$/### Pass: rule/"'
 check "when a changes needed report holds a MISSING row, then it is recorded" \
   'fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
 check "when a changes needed report has no rollout pass, then it is refused" \
