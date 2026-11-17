@@ -59,7 +59,9 @@ Each pass:
      has no record of them (the implementer ran both; a restack changes the diff): `bash -c 'source
      .specify/extensions/landspec/scripts/lib.sh; cat "$(diff_record "$0")"' landspec-security`, and
      the same for `landspec-mutants`. A `survivors` record goes in *Evidence* with the implementer's
-     survivor lines. Then `pr.sh task` exactly as `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
+     survivor lines, and its `Skills:` line goes in *Evidence* as it returned it; an implementer that
+     returned none, or a run resumed after the line was lost, gives `Skills: not reported`, never
+     `none matched`. Then `pr.sh task` exactly as `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
      targets the base (its `landspec-parent` setting is gone), run `gh pr ready <pr>` after
      `pr.sh task`; never while `landspec-parent` is set. Then `I mark <task> pr` and `git switch
      --detach` in that copy.

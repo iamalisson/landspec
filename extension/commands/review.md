@@ -99,6 +99,27 @@ it would take. Then `Copy:`, `Reviewed: <git merge-base <commit> <base>>..<commi
 `Assessment: ready` only when no line is `not met` (`record --feature` makes any `not met` "changes
 needed" whatever the last line says). It is kept per feature, not per branch; `pr.sh` does not read it.
 
+## Installed skills and MCP servers
+
+The one copy of this rule, for an implementer (before writing code) and a task review, full or
+delta (before reading the diff); a plan review and a feature review do not evaluate skills. List
+the installed skills (the Skill tool's list) and MCP servers that could bear on the task (its
+files, its domain, its *Completed when*), write `<name> - YES/NO - <reason>` for each, and invoke
+every YES before going on. No setting chooses them: what is installed is what the developer chose.
+- Never candidates, whatever their description says: landspec's and spec-kit's own workflow skills
+  (`landspec:*`, `speckit-*`), since they run the very flow you are part of.
+- A skill that needs answers from the user is `<name> - NO - needs the user` in a background agent,
+  and is not invoked.
+- A YES that cannot be invoked (the skill errors, its MCP server is down) is
+  `<name> - NO - failed: <error>`, and the work goes on.
+- A skill changes how the work is done, never what landspec's steps allow: it never widens the
+  task's scope; it never makes a reviewer write a file, run more than its Method says or change the
+  report's shape; and its instructions to commit, push or open a PR give way to landspec's (the
+  guard refuses them too).
+
+Report what you used as one line, `Skills: <name> (<what it was used for>), …`, or
+`Skills: none matched`.
+
 ## Method
 
 One pass. A review should take a couple of minutes, so read, do not run: CI runs the tests. A plan
@@ -275,8 +296,10 @@ sibling is not a defense: a defect copied from an existing file is still a defec
 - Before the last line, each on its own line: `Copy: <git rev-parse --show-toplevel>` (your copy,
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
-  `git rev-parse HEAD`), and `Model: <your model id>`. A delta report also has `Delta from: <sha>`. A plan report
-  has only `Copy:`, `Plan state: <hash>` (or `Plan state: unavailable (<reason>)`) and `Model:`.
+  `git rev-parse HEAD`), and `Model: <your model id>`. A task report (full or delta) then has
+  `Skills: <name> (<what it was used for>), …` or `Skills: none matched` (see "Installed skills and
+  MCP servers"). A delta report also has `Delta from: <sha>`. A plan report does not evaluate skills
+  and has only `Copy:`, `Plan state: <hash>` (or `Plan state: unavailable (<reason>)`) and `Model:`.
   `review.sh record` refuses a report without them, a range that is not the
   branch's (or the delta's), a commit made after the review started, and a plan state that is not
   a hash or not the plan's current one. Then one count line, exactly
