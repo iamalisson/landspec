@@ -41,6 +41,12 @@ check "then with the scaffold's .claude/settings.json every client entry is name
 "$a" setup --prod-paths infra/prod >/dev/null
 check "when setup --prod-paths runs after that, then aws_prod_profiles is still prod" \
   'grep -qx "aws_prod_profiles: prod" "$cfgf" && grep -qx "aws_prod_paths: infra/prod" "$cfgf"'
+cp "$cfgf" "$TMP/cfg.before"
+out="$("$a" setup --scp)"
+check "when setup --scp runs, then it names scp-agent.json and how to attach it, and aws_prod_profiles is still prod (the config byte-for-byte)" \
+  '[[ "$out" == "scp: .specify/extensions/landspec/aws/scp-agent.json"$'"'"'\n'"'"'"attach it in AWS Organizations"* ]] && [[ -f "$ROOT/extension/aws/scp-agent.json" ]] && grep -qx "aws_prod_profiles: prod" "$cfgf" && cmp -s "$cfgf" "$TMP/cfg.before"'
+check "when --scp comes with another flag, before or after, then it refuses with the usage and changes nothing" \
+  'fails_with "usage: aws.sh setup" "$a" setup --scp --prod-profiles x && fails_with "usage: aws.sh setup" "$a" setup --prod-paths x --scp && cmp -s "$cfgf" "$TMP/cfg.before"'
 out="$("$a" setup --prod-profiles '')"
 check "after --prod-profiles '' it is empty, the paths are kept, and no prod deploy line is printed" \
   'grep -qx "aws_prod_profiles: \"\"" "$cfgf" && grep -qx "aws_prod_paths: infra/prod" "$cfgf" && ! grep -qF "Access=read" <<<"$out" && grep -qxF "$deploy_dev" <<<"$out"'

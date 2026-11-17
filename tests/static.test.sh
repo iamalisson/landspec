@@ -531,4 +531,52 @@ check "when the template adds an access key, then the check names it (SC-003)" \
 check "when the template adds a permissions boundary, then the check names it" \
   'broken "the template has PermissionsBoundary:" "{print} /^      MaxSessionDuration:/{print \"      PermissionsBoundary: x\"}"'
 
+# The organization policy (contracts/template.md "scp-agent.json"). The action lists are read with awk, so every job runs them.
+scp=extension/aws/scp-agent.json
+if command -v python3 >/dev/null; then check "when scp-agent.json is parsed, then it is valid JSON (python3)" 'python3 -m json.tool '"$scp"' >/dev/null'
+elif command -v jq >/dev/null; then check "when scp-agent.json is parsed, then it is valid JSON (jq)" 'jq . '"$scp"' >/dev/null'
+else echo "skip - scp-agent.json JSON validity (neither python3 nor jq here)"; fi
+# scp_problems <scp> <denied-actions.txt>: one line per broken rule, none when all hold. Reads one string per line, as the file is written.
+scp_problems() {
+  local p="$1" st s d pa='"aws:PrincipalArn": "arn:aws:iam::*:role/landspec-agent*"'
+  st="$(awk '/"Sid":/{s=$2; gsub(/[",]/, "", s)} /"Effect":/{e=$2; gsub(/[",]/, "", e)} /"Action": \[/{a=1; next} a && /\]/{a=0} a {gsub(/[ ",]/, ""); print s, e, $0}' "$1")"
+  [[ "$(grep -c '"Sid":' "$p")" == 3 && "$(grep -c '"Effect": "Deny",' "$p")" == 3 ]] || echo "not three Deny statements"
+  ! grep -q '"Effect": "Allow"' "$p" || echo "an Allow statement"
+  for s in DenyListedForAgent DenyListedViaMcp; do
+    d="$(comm -3 <(awk -v s="$s" '$1 == s && $2 == "Deny" {print $3}' <<<"$st" | sort) <(cut -d" " -f1 "$2" | sort) | awk -F'\t' '{printf "%s ", ($1 == "" ? "> " $2 : "< " $1)}')"
+    [[ -z "$d" ]] || echo "the $s deny differs from $2: $d"
+  done
+  d="$(comm -3 <(awk '$1 == "DenySelfEdit" && $2 == "Deny" {print $3}' <<<"$st" | sort) <(statements "$role" | awk '$1 == "DenySelfEdit" && $3 !~ /^@/ {print $3}' | sort) | tr '\t\n' '  ')"
+  [[ -z "${d// /}" ]] || echo "the DenySelfEdit deny differs from the template's: $d"
+  [[ "$(grep -cF "\"Condition\": { \"ArnLike\": { $pa } }" "$p")" == 2 ]] || echo "DenyListedForAgent and DenySelfEdit are not both on aws:PrincipalArn role/landspec-agent*"
+  grep -qF '"Condition": { "Bool": { "aws:ViaAWSMCPService": "true" } }' "$p" || echo "no statement on aws:ViaAWSMCPService"
+  grep -qF '"Resource": "arn:aws:iam::*:role/landspec-agent*",' "$p" || echo "DenySelfEdit is not on role/landspec-agent*"
+  (($(wc -c < "$p") <= 5120)) || echo "longer than the 5120 characters an SCP may hold"
+}
+problems="$(scp_problems "$scp" extension/aws/denied-actions.txt | tr "\n" ";")"
+check "when scp-agent.json is checked against contracts/template.md, then nothing is wrong${problems:+ — $problems}" '[[ -z "$problems" ]]'
+check "then its two listed denies hold the 26 actions each, and the MCP one is the second" \
+  '[[ "$(grep -c "^        \"" '"$scp"')" == 64 ]] && grep -A33 "\"Sid\": \"DenyListedViaMcp\"" '"$scp"' | grep -q "aws:ViaAWSMCPService"'
+scp_broken() { # scp_broken <expected problem> <awk program applied to the SCP> [<awk program applied to denied-actions.txt>]
+  mkdir -p "$TMP/scp"; awk "$2" "$scp" > "$TMP/scp/p.json"; awk "${3:-1}" extension/aws/denied-actions.txt > "$TMP/scp/d.txt"
+  [[ "$(scp_problems "$TMP/scp/p.json" "$TMP/scp/d.txt")" == *"$1"* ]] # not | grep -q: a match before the last line is a SIGPIPE under pipefail
+}
+check "when denied-actions.txt gains an action the SCP lacks, then the check names it in both denies" \
+  'scp_broken "the DenyListedForAgent deny differs from $TMP/scp/d.txt: > ec2:DeleteVpc" 1 "1; END {print \"ec2:DeleteVpc\"}" && scp_broken "the DenyListedViaMcp deny differs from $TMP/scp/d.txt: > ec2:DeleteVpc" 1 "1; END {print \"ec2:DeleteVpc\"}"'
+check "when the MCP deny drops an action, then the check names it" \
+  'scp_broken "the DenyListedViaMcp deny differs from $TMP/scp/d.txt: > kms:DisableKey" "/DenyListedViaMcp/{m=1} !(m && /\"kms:DisableKey\"/)"'
+check "when the self-edit deny drops iam:DeleteRole, then the check names it" \
+  'scp_broken "the DenySelfEdit deny differs from the template" "!/\"iam:DeleteRole\"/"'
+check "when the MCP condition is dropped, then the check names it" \
+  'scp_broken "no statement on aws:ViaAWSMCPService" "!/aws:ViaAWSMCPService/"'
+check "when the principal pattern names another role, then the check names it" \
+  'scp_broken "not both on aws:PrincipalArn" "{sub(/role\\/landspec-agent\\*\" } }/, \"role/other\\\" } }\")} 1"'
+check "when a statement turns into an Allow, then the check names it" \
+  'scp_broken "not three Deny statements" "{sub(/\"Effect\": \"Deny\"/, \"\\\"Effect\\\": \\\"Allow\\\"\")} 1" && scp_broken "an Allow statement" "{sub(/\"Effect\": \"Deny\"/, \"\\\"Effect\\\": \\\"Allow\\\"\")} 1"'
+check "when the self-edit deny is on another resource, then the check names it" \
+  'scp_broken "DenySelfEdit is not on role/landspec-agent*" "{sub(/\"Resource\": \"arn:aws:iam::\\*:role\\/landspec-agent\\*\"/, \"\\\"Resource\\\": \\\"*\\\"\")} 1"'
+pad() { echo "1; END {for (i = 0; i < $(($1 - $(wc -c < "$scp"))); i++) printf \" \"}"; } # pad <size>: the SCP grown to exactly <size> characters
+check "when the policy holds 5121 characters, then the check names it, and at exactly 5120 it does not" \
+  'scp_broken "longer than the 5120 characters" "$(pad 5121)" && ! scp_broken "longer than the 5120 characters" "$(pad 5120)" && [[ "$(wc -c < "$TMP/scp/p.json")" -eq 5120 ]]'
+
 exit "$FAIL"

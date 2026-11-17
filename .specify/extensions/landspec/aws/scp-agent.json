@@ -1,0 +1,93 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyListedForAgent",
+      "Effect": "Deny",
+      "Action": [
+        "rds:DeleteDBInstance",
+        "rds:DeleteDBCluster",
+        "rds:DeleteDBSnapshot",
+        "rds:DeleteDBClusterSnapshot",
+        "s3:DeleteBucket",
+        "dynamodb:DeleteTable",
+        "kms:ScheduleKeyDeletion",
+        "kms:DisableKey",
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "guardduty:DeleteDetector",
+        "budgets:DeleteBudget",
+        "config:StopConfigurationRecorder",
+        "config:DeleteConfigurationRecorder",
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:CreateLoginProfile",
+        "iam:AttachUserPolicy",
+        "organizations:*",
+        "account:*",
+        "iam:PassRole",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sso:*",
+        "sso-directory:*",
+        "identitystore:*"
+      ],
+      "Resource": "*",
+      "Condition": { "ArnLike": { "aws:PrincipalArn": "arn:aws:iam::*:role/landspec-agent*" } }
+    },
+    {
+      "Sid": "DenyListedViaMcp",
+      "Effect": "Deny",
+      "Action": [
+        "rds:DeleteDBInstance",
+        "rds:DeleteDBCluster",
+        "rds:DeleteDBSnapshot",
+        "rds:DeleteDBClusterSnapshot",
+        "s3:DeleteBucket",
+        "dynamodb:DeleteTable",
+        "kms:ScheduleKeyDeletion",
+        "kms:DisableKey",
+        "cloudtrail:StopLogging",
+        "cloudtrail:DeleteTrail",
+        "guardduty:DeleteDetector",
+        "budgets:DeleteBudget",
+        "config:StopConfigurationRecorder",
+        "config:DeleteConfigurationRecorder",
+        "iam:CreateUser",
+        "iam:CreateAccessKey",
+        "iam:CreateLoginProfile",
+        "iam:AttachUserPolicy",
+        "organizations:*",
+        "account:*",
+        "iam:PassRole",
+        "sts:AssumeRole*",
+        "sts:AssumeRoot",
+        "sso:*",
+        "sso-directory:*",
+        "identitystore:*"
+      ],
+      "Resource": "*",
+      "Condition": { "Bool": { "aws:ViaAWSMCPService": "true" } }
+    },
+    {
+      "Sid": "DenySelfEdit",
+      "Effect": "Deny",
+      "Action": [
+        "iam:UpdateAssumeRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:DeleteRole"
+      ],
+      "Resource": "arn:aws:iam::*:role/landspec-agent*",
+      "Condition": { "ArnLike": { "aws:PrincipalArn": "arn:aws:iam::*:role/landspec-agent*" } }
+    }
+  ]
+}

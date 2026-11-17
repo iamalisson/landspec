@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The AWS access layer: configure the project and print what the human deploys. Never calls aws.
 #   aws.sh setup [--prod-profiles a,b] [--prod-paths p,q]
+#   aws.sh setup --scp   prints the organization policy's path and how to attach it; changes nothing
 # Sets aws: on, aws_agent_role (kept when set), the prod lists (only for a flag that is given: an
 # omitted flag keeps the current value, an empty one empties it) and infra_dir (only when unset).
 # Re-runs level.sh at the current level (.mcp.json, the "Cloud access" constitution text), then
@@ -13,7 +14,7 @@ source "$(dirname "$0")/lib.sh"
 # shellcheck source=pins.sh
 source "$LANDSPEC_EXT_DIR/scripts/pins.sh"
 
-usage="usage: aws.sh setup [--prod-profiles a,b] [--prod-paths p,q]"
+usage="usage: aws.sh setup [--prod-profiles a,b] [--prod-paths p,q] | setup --scp"
 [[ "${1:-}" == setup ]] || die "$usage"; shift
 set_profiles=false; set_paths=false
 # Checked before anything is written. A quote, | or & in a name would break the config line
@@ -23,12 +24,18 @@ while (($#)); do
   case "$1" in
     --prod-profiles) (($# >= 2)) || die "$usage"; names aws_prod_profiles "$2"; set_profiles=true; profiles="$2"; shift 2 ;;
     --prod-paths) (($# >= 2)) || die "$usage"; names aws_prod_paths "$2"; set_paths=true; paths="$2"; shift 2 ;;
+    --scp) (($# == 1)) && [[ -z "${profiles+x}${paths+x}" ]] || die "$usage"; scp=true; shift ;;
     *) die "$usage" ;;
   esac
 done
 
 landspec_cd_root
 [[ -f "$LANDSPEC_CONFIG" ]] || die "not a landspec project (no $LANDSPEC_CONFIG); run /landspec:init first"
+if [[ -n "${scp:-}" ]]; then
+  echo "scp: .specify/extensions/landspec/aws/scp-agent.json"
+  echo "attach it in AWS Organizations (Policies, Service control policies) to the accounts the agent uses; landspec never attaches it"
+  exit 0
+fi
 
 cfg_set aws on
 cfg_set aws_agent_role "$(cfg aws_agent_role landspec-agent)"
