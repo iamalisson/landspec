@@ -146,9 +146,12 @@ case "${1:-}" in
       [[ -n "$p" ]] || continue
       ! grep -qxF "[$p]" "$rec" || continue
       # A root the diff deletes still needs its plan: roots_using lists it even without *.tf files.
+      # Read in full first: a die mid-loop would leave roots_using writing to a closed pipe, and
+      # where SIGPIPE is ignored (CI runners) bash adds a "Broken pipe" line to the refusal.
+      uses="$(roots_using "$p")"
       while IFS= read -r d; do
         if grep -qxF "$d" <<<"$tdirs"; then die "$need $p, $run"; fi
-      done < <(roots_using "$p")
+      done <<<"$uses"
     done
     echo "## Terraform plan"
     awk '

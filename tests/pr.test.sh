@@ -519,7 +519,8 @@ check "when pr.sh spec runs on a stacked task branch, then the spec branch start
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
 fake_terraform
 printf '{"format_version": "1.2", "planned_values": {}, "resource_changes": [{"address": "aws_s3_bucket.logs", "type": "aws_s3_bucket", "change": {"actions": ["delete"]}}, {"address": "aws_vpc.main", "type": "aws_vpc", "change": {"actions": ["create"]}}]}\n' > "$TMP/plan.json"
-export TF_PLAN_JSON="$TMP/plan.json"
+printf '  # aws_s3_bucket.logs will be destroyed\n\n  # aws_vpc.main will be created\n\nPlan: 1 to add, 0 to change, 1 to destroy.\n' > "$TMP/plan.txt" # the same plan, where python3 is missing
+export TF_PLAN_JSON="$TMP/plan.json" TF_PLAN_TEXT="$TMP/plan.txt"
 later() { local s=$(($(date +%s) + 2)); touch -d "@$s" "$1" 2>/dev/null || touch -t "$(date -r "$s" +%Y%m%d%H%M.%S)" "$1"; }
 new_repo standard
 echo tfplan >> .gitignore

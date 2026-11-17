@@ -75,13 +75,17 @@ check "when a JSON plan has a create, an update, a replace and a destroy, then i
   '[[ "$out" == "$want" ]]'
 check "then the record holds the root's section with the addresses only" \
   '[[ "$(cat "$(rec)")" == "$(printf "[infra/envs/dev]\ncreate 2\nchange 1\ndestroy 2\nreplace aws_db_instance.main\ndestroy aws_s3_bucket.logs")" ]]'
-check "then it read the JSON form, in the root's folder" 'grep -qx "show -json $TMP/repo/infra/envs/dev/tfplan" "$TF_LOG"'
+here="$(pwd -P)" # macOS: $TMP is under a symlink (/var -> /private/var), and the script logs the physical path
+# python3 is optional (the busybox image has none): the checks of the JSON reader alone run where it is.
+if command -v python3 >/dev/null; then
+  check "then it read the JSON form, in the root's folder" 'grep -qx "show -json $here/infra/envs/dev/tfplan" "$TF_LOG"'
+fi
 check "then the sensitive value is in neither the record nor the output" '! grep -rq hunter2hunter2 "$(dirname "$(rec)")" && [[ "$out" != *hunter2* ]]'
 : > "$TF_LOG"
 out="$(PATH="$NOPY" record infra/envs/dev)"
 check "when python3 is missing, then the text form gives the same lines, a value deeper in never passing for a header" '[[ "$out" == "$want" ]]'
 check "then it read the text form, and the record is the same, with the sensitive value nowhere" \
-  'grep -qx "show -no-color $TMP/repo/infra/envs/dev/tfplan" "$TF_LOG" && ! grep -q -- -json "$TF_LOG" && [[ "$(grep -c . "$(rec)")" == 6 ]] && ! grep -rq hunter2hunter2 "$(dirname "$(rec)")"'
+  'grep -qx "show -no-color $here/infra/envs/dev/tfplan" "$TF_LOG" && ! grep -q -- -json "$TF_LOG" && [[ "$(grep -c . "$(rec)")" == 6 ]] && ! grep -rq hunter2hunter2 "$(dirname "$(rec)")"'
 
 record infra/envs/prod >/dev/null
 record infra/envs/dev >/dev/null
@@ -90,9 +94,11 @@ check "when a second root is recorded, then it adds a section; recording the fir
 record infra/envs/dev --chdir ../prod >/dev/null
 check "when --chdir names the root, then that root's section is the one written" '[[ "$(grep -c "^\[" "$(rec)")" == 2 && "$(grep -c "^\[infra/envs/prod\]$" "$(rec)")" == 1 ]]'
 
+if command -v python3 >/dev/null; then
 printf '{"format_version": "1.2", "planned_values": {}, "resource_changes": [{"address": "aws_instance.tmp", "type": "aws_instance", "change": {"actions": ["delete"]}}, {"address": "aws_iam_role.r", "type": "aws_iam_role", "change": {"actions": ["create", "delete"]}}]}\n' > "$TMP/plain.json"
 out="$(TF_PLAN_JSON="$TMP/plain.json" record infra/envs/dev)"
 check "when only stateless resources are destroyed or replaced, then no STATEFUL line, and create-then-delete counts as a replace" '[[ "$out" == "PLAN=create 1 change 0 destroy 2" ]]'
+fi
 printf 'No changes. Your infrastructure matches the configuration.\n' > "$TMP/none.txt"
 out="$(PATH="$NOPY" TF_PLAN_TEXT="$TMP/none.txt" record infra/envs/dev)"
 check "when the text plan says No changes., then it records the root with no counts" \
@@ -104,10 +110,12 @@ check "when the Plan: line also has import and forget counts, then only add, cha
 rm -f "$(rec)"
 check "when the text output has neither a Plan: line nor No changes., then it refuses and writes no record" \
   'echo "Error: nothing" > "$TMP/bad.txt"; ! PATH="$NOPY" TF_PLAN_TEXT="$TMP/bad.txt" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
+if command -v python3 >/dev/null; then
 check "when the JSON is not a plan, then it refuses and writes no record" \
   'echo "{}" > "$TMP/bad.json"; ! TF_PLAN_JSON="$TMP/bad.json" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
 check "when the JSON is a state file (format_version, no planned_values), then it refuses and writes no record" \
   'echo "{\"format_version\": \"1.0\", \"values\": {}}" > "$TMP/state.json"; ! TF_PLAN_JSON="$TMP/state.json" record infra/envs/dev && [[ ! -f "$(rec)" ]]'
+fi
 printf '  # aws_rds_cluster.main is tainted, so must be replaced\n  # aws_kms_key.k will be replaced, as requested\n\nPlan: 2 to add, 0 to change, 2 to destroy.\n' > "$TMP/taint.txt"
 check "when the text plan has a tainted and a requested replace, then both are STATEFUL=replace lines with the bare address" \
   '[[ "$(PATH="$NOPY" TF_PLAN_TEXT="$TMP/taint.txt" record infra/envs/dev)" == "$(printf "PLAN=create 2 change 0 destroy 2\nSTATEFUL=replace aws_rds_cluster.main\nSTATEFUL=replace aws_kms_key.k")" ]]'
