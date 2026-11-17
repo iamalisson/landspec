@@ -92,10 +92,21 @@ EOF
   export PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh.log" GH_N="$TMP/gh.n" GH_PR="$TMP/gh.pr" GH_CLOSED="$TMP/gh.closed" GH_OPEN="$TMP/gh.open" GH_ALL="$TMP/gh.all" GH_REL="$TMP/gh.rel" GH_RELEASES="$TMP/gh.releases"
 }
 
-# Fake AWS CLI: every call is recorded to $TMP/aws.calls, and answers nothing.
+# Fake AWS CLI: every call is logged to $TMP/aws.calls; AWS_FAIL=1 fails every call as with no
+# credentials, AWS_FAIL=<operation> (e.g. simulate-principal-policy) only that one; `sts get-caller-identity` prints $AWS_IDENTITY_JSON, `iam get-role` $AWS_ROLE_JSON,
+# `iam simulate-principal-policy` $AWS_SIM_JSON.
 fake_aws() {
   mkdir -p "$TMP/bin"
-  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$TMP/aws.calls" > "$TMP/bin/aws"
+  { printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$TMP/aws.calls"
+    cat <<'EOF'
+if [[ -n "${AWS_FAIL:-}" && ("$AWS_FAIL" == 1 || "$AWS_FAIL" == "${2:-}") ]]; then echo "Unable to locate credentials. You can configure credentials by running \"aws configure\"." >&2; exit 255; fi
+case "$1 $2" in
+  "sts get-caller-identity") printf '%s\n' "${AWS_IDENTITY_JSON:-}" ;;
+  "iam get-role") printf '%s\n' "${AWS_ROLE_JSON:-}" ;;
+  "iam simulate-principal-policy") printf '%s\n' "${AWS_SIM_JSON:-}" ;;
+esac
+EOF
+  } > "$TMP/bin/aws"
   chmod +x "$TMP/bin/aws"
   export PATH="$TMP/bin:$PATH"
 }

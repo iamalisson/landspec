@@ -325,6 +325,24 @@ landspec makes no AWS call.
 `aws/scp-agent.json`, and to attach it in AWS Organizations to the accounts the agent uses; it
 changes no config key. You attach it; landspec never does.
 
+`aws.sh check [--simulate]` (the command's later runs) says which identity Claude's AWS calls run
+as, from `aws sts get-caller-identity` and, for the agent role, its `landspec:access` tag (`aws iam
+get-role`). It prints `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=` (`read`, `build` or `unknown`) and
+a `missing: <file>: <entry>` line per absent `aws-mcp` server or client entry. The verdicts:
+
+| `IDENTITY=` | When | Exit |
+|---|---|---|
+| `agent` | the caller is `assumed-role/<aws_agent_role>/…` | 0 |
+| `user` | the caller is an IAM user (an access key or `aws login`); a refusal names the `landspec-agent-dev` profile, and a second line says `it is a long-lived access key` when `AWS_ACCESS_KEY_ID` is set without `AWS_SESSION_TOKEN` (the key itself is never printed) | 1 |
+| `other-role` | any other role, e.g. an Identity Center admin permission set | 1 |
+| `no-cli` / `no-credentials` | `aws` is not installed / the call fails | 1 |
+
+`--simulate`, for the agent role only, runs `aws iam simulate-principal-policy` with the concrete
+action of each line of `aws/denied-actions.txt` (and `denied-read-actions.txt` when `ACCESS=read`)
+and prints `denied <action>` or `ALLOWED <action>` (`unknown <action>` when the answer has no
+decision for it); any line but `denied` exits 1. It only evaluates the role's policies, its
+boundary and SCPs: nothing is called or changed.
+
 ### The reviewer's copy
 
 Every review runs in its own copy of the repository: the author passes `isolation: "worktree"`
