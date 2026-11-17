@@ -60,13 +60,15 @@ git switch --quiet main; echo x > other.txt; git add other.txt; git commit --qui
 git fetch --quiet origin; git merge --quiet --no-edit origin/develop >/dev/null
 check "when the base is merged in without touching the change, then the review still holds" '"$r" check'
 
-# Plan review: tied to tasks.md, ignoring the issue numbers issues.sh appends.
+# Plan review: tied to the feature folder, ignoring the issue numbers issues.sh appends.
 git switch --quiet main
+# sedi <sed args> <file>: edit in place, leaving no .bak behind (the plan state hashes every file of the folder).
+sedi() { local f="${*: -1}"; sed -i.bak "$@" && rm -f "$f.bak"; }
 check "when no plan review was recorded, then check --plan refuses" 'fails_with "no independent review" "$r" check --plan'
 check "then the plan hint keeps --plan" 'fails_with "record its report: review.sh record --plan <report-file>" "$r" check --plan'
 plan_report
 check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/plan.md" >/dev/null && "$r" check --plan'
-sed -i.bak 's/ — #5$/ — #9/' specs/001-demo/tasks.md
+sedi 's/ — #5$/ — #9/' specs/001-demo/tasks.md
 check "when only the issue numbers changed, then the plan review still holds" '"$r" check --plan'
 echo '# Plan: data model changed' > specs/001-demo/plan.md
 check "when plan.md changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
@@ -79,11 +81,11 @@ printf '%s\n' '  - What: the first version' >> specs/001-demo/tasks.md
 plan_report
 check "when a ready plan report carries the current Plan state:, then record --plan prints REVIEW=ready" \
   '[[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
-sed -i.bak 's/the first version/an edited version/' specs/001-demo/tasks.md
+sedi 's/the first version/an edited version/' specs/001-demo/tasks.md
 check "when a sub-bullet in tasks.md is edited and the same report is recorded again, then it fails and check --plan fails" \
   'fails_with "the plan changed since this review: run the review again" "$r" record --plan "$TMP/plan.md" && fails_with "changed since" "$r" check --plan'
 plan_report
-sed -i.bak -E '/ — #[0-9]+$/!s/^(- \[ \] T00[0-9].*)$/\1 — #42/' specs/001-demo/tasks.md
+sedi -E '/ — #[0-9]+$/!s/^(- \[ \] T00[0-9].*)$/\1 — #42/' specs/001-demo/tasks.md
 check "when only — #N is appended to the task lines, then the same report still records ready" \
   'grep -q "T002 New task in \`b\` — #42$" specs/001-demo/tasks.md && [[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
 st="$("$r" state --plan)"
@@ -109,7 +111,10 @@ check "when state --plan runs in a clone with no .git/landspec-review, then it p
   '[[ ! -e "$TMP/fresh/.git/landspec-review" && "$(cd "$TMP/fresh" && "$r" state --plan)" == "$st" && ! -e "$TMP/fresh/.git/landspec-review" ]]'
 check "when state runs without --plan, then it fails with its usage and writes nothing" \
   '(cd "$TMP/fresh" && fails_with "usage: review.sh state --plan" "$r" state) && [[ ! -e "$TMP/fresh/.git/landspec-review" ]]'
-rm -rf "$TMP/fresh/.specify"; snap="$TMP/fresh/snap"; mkdir -p "$snap" "$TMP/fresh/sub"; cp specs/001-demo/plan.md specs/001-demo/tasks.md "$snap/"
+check "when no plan review was recorded, then diff --plan dies no plan review recorded yet and writes nothing" \
+  '(cd "$TMP/fresh" && fails_with "no plan review recorded yet for 001-demo" "$r" diff --plan) && [[ ! -e "$TMP/fresh/.git/landspec-review" ]]'
+check "when diff runs without --plan, then it fails with its usage" '(cd "$TMP/fresh" && fails_with "usage: review.sh diff --plan" "$r" diff)'
+rm -rf "$TMP/fresh/.specify"; snap="$TMP/fresh/snap"; mkdir -p "$snap" "$TMP/fresh/sub"; cp -R specs/001-demo/. "$snap/"
 check "when state --plan <dir> runs in a clone with no .specify/feature.json, then it prints the same state as the active feature" \
   '[[ "$(cd "$TMP/fresh" && "$r" state --plan "$snap")" == "$st" ]]'
 check "when <dir> is relative, then it is read from where state was called, not the repository root" \
@@ -125,6 +130,54 @@ check "when a plan report has no Model: line, then record --plan refuses" \
 printf 'Plan read.\n\nPlan state: %s\nModel: ghp_abc123\n\nAssessment: ready\n' "$st" > "$TMP/plan.md"
 check "when a plan report's Model: is ghp_abc123, then the plan record stores unknown" \
   '"$r" record --plan "$TMP/plan.md" >/dev/null 2>&1; grep -qx "model: unknown" "$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"'
+
+# FR-009 (#206): the plan state is every file of the feature folder, and record keeps the folder it recorded.
+d=specs/001-demo; kept="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo.reviewed"
+printf '# Data model\n\n- entity: search\n' > $d/data-model.md; printf '%s\n' '- [ ] T003 Third task' >> $d/tasks.md
+plan_review >/dev/null; st="$("$r" state --plan)"
+sedi 's/entity: search/entity: query/' $d/data-model.md
+check "when one line of data-model.md is edited, then the state changes and check --plan refuses changed since" \
+  '[[ "$("$r" state --plan)" != "$st" ]] && fails_with "changed since" "$r" check --plan'
+sedi 's/entity: query/entity: search/' $d/data-model.md
+sedi 's/^\(- \[ \] T003 Third task\)$/\1 — #42/' $d/tasks.md
+check "when — #42 is added to a task line, then the state is the same and check --plan passes" \
+  'grep -q "T003 Third task — #42$" $d/tasks.md && [[ "$("$r" state --plan)" == "$st" ]] && "$r" check --plan'
+mkdir -p $d/contracts; echo 'GET /search' > $d/contracts/api.md
+check "when a file is added under contracts/, then the state changes" '[[ "$("$r" state --plan)" != "$st" ]]'
+rm -r $d/contracts
+for f in tasks.md.tmp .DS_Store tasks.md.swp plan.md~; do
+  echo leftover > "$d/$f"
+  check "when a leftover $f is in the folder, then the state is the same" '[[ "$("$r" state --plan)" == "$st" ]]'
+  rm "$d/$f"
+done
+for f in tasks.tmp.md swp.md notes.txt; do
+  echo leftover > "$d/$f"
+  check "when $f (not a temp or editor name) is in the folder, then the state changes" '[[ "$("$r" state --plan)" != "$st" ]]'
+  rm "$d/$f"
+done
+mkdir -p "$TMP/h1" "$TMP/h2" "$TMP/h3"; for h in h1 h2 h3; do cp $d/plan.md $d/tasks.md "$TMP/$h/"; done
+printf X > "$TMP/h1/a"; printf Y > "$TMP/h1/b"; printf 'Xb\nY' > "$TMP/h2/a"; printf 'Xb\0\nY' > "$TMP/h3/a"
+check "when one folder has a=X, b=Y and another a=Xb<newline>Y (or Xb<NUL><newline>Y), then they hash differently" \
+  'h1="$("$r" state --plan "$TMP/h1")" && [[ "$h1" != "$("$r" state --plan "$TMP/h2")" && "$h1" != "$("$r" state --plan "$TMP/h3")" ]]'
+rm -rf "$TMP/h1" "$TMP/h2" "$TMP/h3"
+check "when a plan review is recorded, then the kept copy holds the folder, tasks.md without its issue numbers" \
+  '[[ -f "$kept/data-model.md" ]] && grep -qx -- "- \[ \] T003 Third task" "$kept/tasks.md" && ! grep -q " — #" "$kept/tasks.md"'
+cp -R "$kept" "$TMP/kept0"; plan_report; sedi 's/entity: search/entity: refused/' $d/data-model.md
+check "when record --plan is refused (the plan changed since), then the kept copy is as it was" \
+  'fails_with "the plan changed since" "$r" record --plan "$TMP/plan.md" && diff -r "$TMP/kept0" "$kept"'
+sedi 's/entity: refused/entity: search/' $d/data-model.md; rm -rf "$TMP/kept0"
+printf 'Plan read.\n\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' "$("$r" state --plan)" > "$TMP/plan.md"
+"$r" record --plan "$TMP/plan.md" >/dev/null
+sedi 's/entity: search/entity: lookup/' $d/data-model.md; sedi 's/ — #42$/ — #43/' $d/tasks.md
+check "after a recorded changes needed, then diff --plan shows exactly the edited line (issue numbers stripped on both sides)" \
+  '[[ "$("$r" diff --plan | grep -E "^[-+]" | grep -vE "^(---|\+\+\+) ")" == "-- entity: search"$'"'"'\n'"'"'"+- entity: lookup" ]]'
+check "when nothing changed since the recorded round, then diff --plan prints nothing" \
+  'plan_review >/dev/null && [[ -z "$("$r" diff --plan)" ]]'
+# Upgrade: a record written by 2.7.0 holds the hash of plan.md and tasks.md only.
+old="$({ cat $d/plan.md; sed -E 's/ — #[0-9]+[[:space:]]*$//' $d/tasks.md; } | if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi | cut -d' ' -f1)"
+rec="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"; sedi "s/^state: .*/state: $old/" "$rec"
+check "when the record holds a 2.7.0 state, then check --plan refuses once, and passes after the review is recorded again" \
+  'fails_with "changed since" "$r" check --plan && plan_review >/dev/null && "$r" check --plan'
 
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"

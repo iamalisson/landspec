@@ -2,11 +2,13 @@
 # Record and check the independent review (/speckit-landspec-review), so nothing opens without one.
 #   review.sh record <report-file>          task review: tied to the branch's exact diff against the base
 #   review.sh record --delta <report-file>  fix round: reviews <last reviewed>..HEAD, after any recorded round
-#   review.sh record --plan <report-file>   plan review: tied to the feature's plan.md and tasks.md (issue numbers aside)
+#   review.sh record --plan <report-file>   plan review: tied to every file of the feature folder (issue numbers aside);
+#                                           keeps the folder it recorded as plan-<feature>.reviewed
 #   review.sh record --feature <report-file>  feature review: the whole feature's check copy against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
-#   review.sh state --plan [<dir>]          print the plan state (of <dir>/plan.md and tasks.md, or the feature's),
+#   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
+#   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
 #   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
 #   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
@@ -38,6 +40,7 @@ if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, no
 if $plan && $delta; then die "a plan review is always full: review.sh record --plan <report-file>"; fi
 if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review has none"; fi
 if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
+if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
 # A fix round may change this many lines outside the previous findings' files (tests aside);
 # more means the fix is new work, which gets a full review.
 DELTA_LINES=20
@@ -49,13 +52,29 @@ if $plan; then
     fdir="$1"; [[ "$fdir" == /* ]] || fdir="$start/$fdir"
     for f in plan.md tasks.md; do [[ -f "$fdir/$f" ]] || die "no $f in $1"; done
   else fdir="$(feature_dir)"; fi
-  name="plan-$(basename "$fdir")"; what="the plan ($fdir/plan.md and tasks.md)"
-  state() { # plan.md and tasks.md, without the issue numbers issues.sh appends
-    # A feature may have no plan.md yet; `|| true` keeps that the same under set -e (state) and without it ($(state)).
-    { cat "$fdir/plan.md" 2>/dev/null || true; sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/tasks.md"; } | sha256
+  name="plan-$(basename "$fdir")"; what="the plan ($fdir)"
+  # plan_files: the folder's files, relative and sorted; editor and temp files (issues.sh writes tasks.md.tmp) left out.
+  # shortcut: a name list stands in for `git ls-files`, since the reviewer hashes a copy outside any repository.
+  plan_files() { (cd "$fdir" && find . -type f ! -name '.*' ! -name '*~' ! -name '*.swp' ! -name '*.tmp') | sed 's|^\./||' | LC_ALL=C sort; }
+  # plan_text <file>: its content, tasks.md without the issue numbers issues.sh appends.
+  plan_text() { if [[ "$1" == tasks.md ]]; then sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/$1"; else cat "$fdir/$1"; fi; }
+  # Each file as path, NUL, byte length, newline, content: no two folders hash alike by moving bytes between files.
+  state() {
+    local f; plan_files | while IFS= read -r f; do
+      printf '%s\0%s\n' "$f" "$(plan_text "$f" | wc -c | tr -d ' ')"; plan_text "$f"
+    done | sha256
   }
+  # snapshot <dest>: the files state hashes, as it hashes them, under <dest>.
+  snapshot() { local f; mkdir -p "$1"; plan_files | while IFS= read -r f; do mkdir -p "$1/$(dirname "$f")"; plan_text "$f" > "$1/$f"; done; }
   # Read-only and before any write: the reviewer runs it in its own copy.
   if [[ "$action" == state ]]; then state; exit 0; fi
+  if [[ "$action" == diff ]]; then
+    kept="$dir/$name.reviewed"; [[ -d "$kept" ]] || die "no plan review recorded yet for $(basename "$fdir")"
+    t="$(mktemp -d)"; trap 'rm -rf "$t"' EXIT
+    cp -R "$kept" "$t/reviewed"; snapshot "$t/current"
+    rc=0; (cd "$t" && git diff --no-index -- reviewed current) || rc=$?
+    ((rc <= 1)) || die "git diff --no-index failed ($rc)"; exit 0
+  fi
 elif [[ "$action" != risk ]] && ! $feat; then # risk reads only the diff, and a feature review no branch, so neither needs one
   branch="${bopt:-$(git branch --show-current)}"; [[ -n "$branch" ]] || die "not on a branch (detached HEAD); switch to the task's branch first"
   # --branch <b> reads <b> by name, from any HEAD: its tip, not this checkout, is what is reviewed.
@@ -286,6 +305,8 @@ case "$action" in
       elif [[ -n "$map" ]]; then sed 's/^/map-full: /' <<<"$map"; fi
       echo; cat "$report"
     } > "$record.tmp" && mv "$record.tmp" "$record"
+    # The text this round read (its state matched): the next round is given its diff (review.sh diff --plan).
+    if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"; fi
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
     if $plan; then event review round=plan verdict="${verdict// /-}"
     else
@@ -312,5 +333,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh risk [<from>]" ;;
 esac
