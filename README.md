@@ -97,6 +97,7 @@ branches start there. What `new` asks and sets up: [docs/reference.md](docs/refe
 | **Then, once per feature** | `/landspec:implement` | every startable task at once, each in its own copy: **its branch → code → checks (tests, mutants) → review → PR**; a task that depends on another is stacked on its PR. Then all of them checked together against the suite and the spec, and any gap filed as a new task |
 | | merge the PRs, in the order it prints | the issues close; run it again for what is left |
 | *(or, once per task)* | `/landspec:next` | progress, then the next open task, the same way, one at a time; it offers `/landspec:implement` when two or more can start. Several features? `next 002` |
+| *(optional, once per project)* | `/landspec:aws` | the AWS access layer on: `.mcp.json`, the "Cloud access" rules, and the deploy command for the read-only or build agent role, for you to run; landspec itself makes no AWS call |
 | **When every task is merged** | `/landspec:implement` | the full security audit, unattended, then the release PR, the tag and the release, one step per run; a confirmed critical or high holds the release |
 
 **Small fixes don't need the feature loop.** A typo, a one-line bug fix or a dependency bump

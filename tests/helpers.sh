@@ -92,6 +92,14 @@ EOF
   export PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh.log" GH_N="$TMP/gh.n" GH_PR="$TMP/gh.pr" GH_CLOSED="$TMP/gh.closed" GH_OPEN="$TMP/gh.open" GH_ALL="$TMP/gh.all" GH_REL="$TMP/gh.rel" GH_RELEASES="$TMP/gh.releases"
 }
 
+# Fake AWS CLI: every call is recorded to $TMP/aws.calls, and answers nothing.
+fake_aws() {
+  mkdir -p "$TMP/bin"
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s"\n' "$TMP/aws.calls" > "$TMP/bin/aws"
+  chmod +x "$TMP/bin/aws"
+  export PATH="$TMP/bin:$PATH"
+}
+
 # Fake terraform: `show -json <planfile>` prints the file $TF_PLAN_JSON names, `show -no-color
 # <planfile>` the file $TF_PLAN_TEXT names; a planfile that is missing or says "corrupt" fails as
 # Terraform does. Every call is logged to $TF_LOG.

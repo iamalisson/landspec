@@ -303,6 +303,23 @@ twice adds both PRs into one row.
 | `release_notes` | *(empty)* | the folder for each release's notes, `<folder>/X.Y.Z.md`; they are also the published release's body; without it, the notes are the release PR's body, up to its `## Evidence` or `## Review` |
 | `parallel_tasks` | `4` | how many implementers `/landspec:implement` runs at once (`implement.sh status` puts at most this many, minus the running ones, in `START=`); reviewers take no slot: a number from `1` to `16`, any other value is refused |
 | `aws` | `off` | `on` turns on the AWS access layer. `/landspec:level` then writes `.mcp.json` when it does not exist (the `aws-mcp` server: `uvx mcp-proxy-for-aws==<MCP_PROXY_VERSION>`, run as the `landspec-agent-dev` profile; an existing one is kept as it is, and `remove.sh` deletes it only while unchanged) and adds a "Cloud access" section per level to the constitution. `MCP_PROXY_VERSION` in `extension/scripts/pins.sh` is a PyPI release: `bin/check-tools.sh` reads GitHub releases only, so it is bumped by hand, to a release a few weeks old. `off`: nothing of this is written |
+| `aws_prod_profiles` | *(empty)* | comma-separated AWS CLI profiles that reach a prod account, matched exactly; set by `/landspec:aws` (empty: one account only) |
+| `aws_prod_paths` | *(empty)* | comma-separated folders whose Terraform targets prod (e.g. `infra/envs/prod`); set by `/landspec:aws` |
+| `aws_agent_role` | `landspec-agent` | the agent role's name; `/landspec:aws` sets it when unset |
+| `infra_dir` | `infra` | the folder holding the Terraform code, named in the plan gate's refusal; `/landspec:aws` sets it when unset, to the folder with the most `*.tf` files |
+
+### `/landspec:aws`
+
+`aws.sh setup [--prod-profiles a,b] [--prod-paths p,q]` sets `aws: on` and the keys above (a flag
+left out keeps its value, `''` empties it), then reruns `level.sh` at the current level, which
+writes `.mcp.json` and the "Cloud access" text. It never rewrites an existing `.mcp.json` or
+`.claude/settings.json`: it prints the `aws-mcp` entry, or a `pin:` line when the file pins another
+`mcp-proxy-for-aws` release, and each missing client entry (allow the AWS documentation tools, ask
+for `run_script` and `get_presigned_url`, deny `Read(./.env*)` and `Read(**/*.tfstate*)`) as
+`add to <file>: <entry>`. Then one `deploy:` line per account kind, the `aws cloudformation deploy`
+of `aws/agent-role.yaml` with `Access=build` for dev (`read` on lite) and `Access=read` for prod
+(printed only with prod profiles), and the `~/.aws/config` profile lines. You run the deploy;
+landspec makes no AWS call.
 
 ### The reviewer's copy
 
