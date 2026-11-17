@@ -169,23 +169,34 @@ pass_rows() {
     function cell(s) { gsub(/^[ \t`*]+|[ \t`*]+$/, "", s); return s }
     function flush(  r, n, c) { if (row == "") return; r = row; sub(/[ \t]+$/, "", r); if (r !~ /\|$/) r = r "|"
       n = split(r, c, "|"); print sec "\t" cell(c[2]) "\t" cell(c[n - 1]) "\t" row; row = "" }
-    /^#/ { flush(); sec = ""; if ($0 ~ /^### Pass: *[a-z]+ *$/) { sec = $0; sub(/^### Pass: */, "", sec); sub(/ *$/, "", sec); print sec "\t\t\t" }; next }
+    /^#/ { flush(); sec = ""; if ($0 ~ /^### Pass: *[a-z]+ *$/) { sec = $0; sub(/^### Pass: */, "", sec); sub(/ *$/, "", sec) }
+      else if ($0 ~ /^### Earlier findings *$/) sec = "earlier"
+      if (sec != "") print sec "\t\t\t"; next }
     sec == "" { next }
     /^\|[ \t:|-]*$/ { row = ""; next }
     /^\|/ { flush(); row = $0 }
     END { flush() }' "$report"
 }
 
+# findings_total <file>: high + medium + low of its last "Findings: <n> high, <n> medium, <n> low" line, or nothing.
+findings_total() {
+  grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$1" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + $2 + $3 }' || true
+}
+
 # pass_tables: dies, naming the pass and the row, unless every pass has a table of rows whose statuses are its
-# own; for a "ready", unless every row passes and every defined FR/SC id of spec.md and task id of tasks.md has its row.
+# own, the Earlier findings table is there when the last round had findings, and the findings are counted and
+# tagged; for a "ready", unless every row passes and every defined FR/SC id of spec.md and task id of tasks.md has its row.
 pass_tables() {
-  local rows err id
+  local rows err id total last=0 tags bad nt nf
   rows="$(pass_rows)"
-  err="$(P="$PASSES" V="$verdict" awk -F'\t' '
+  # A record with no Findings: line (2.7.0) counts as 0.
+  if [[ -f "$record" ]]; then last="$(findings_total "$record")"; fi
+  err="$(P="$PASSES" V="$verdict" E="$((${last:-0} > 0))" awk -F'\t' '
     BEGIN { np = split(ENVIRON["P"], pass, " ")
       split("holds proven SAME TRUE provided handled safe holds", good, " ")
       split("BREAKS: MISSING DIFFERENT: FALSE MISSING MISSING BREAKS: BREAKS:", bad, " ")
-      for (i = 1; i <= np; i++) { g[pass[i]] = good[i]; b[pass[i]] = bad[i] } }
+      for (i = 1; i <= np; i++) { g[pass[i]] = good[i]; b[pass[i]] = bad[i]; t[pass[i]] = "the " pass[i] " pass" }
+      g["earlier"] = "resolved"; b["earlier"] = "open"; t["earlier"] = "the Earlier findings table" }
     function say(m) { if (!e) print m; e = 1 }
     # failcell: a cell between the item and the status starts with a failing status (a status written early).
     function failcell(r,  c, k, n, x) { sub(/[ \t]+$/, "", r); if (r !~ /\|$/) r = r "|"; n = split(r, c, "|")
@@ -193,18 +204,31 @@ pass_tables() {
       return 0 }
     $2 == "" && $3 == "" && $4 == "" { seen[$1] = 1
       if (!($1 in g)) say("the report has a ### Pass: " $1 " table, but " $1 " is not a pass of the plan review: name it one of " ENVIRON["P"]); next }
-    { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") " or none: <why>" }
+    { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") ($1 == "earlier" ? "" : " or none: <why>") }
+    s ~ /^none: *[^ ]/ && $1 == "earlier" { say("the Earlier findings table has the row " $4 ": it holds one row per earlier finding, resolved or open, never none: <why>"); next }
     s ~ /^none: *[^ ]/ { none[$1] = $4; next }
-    ENVIRON["V"] == "ready" && failcell($4) { say("the " $1 " pass has a failing row, so the plan is not ready: " $4); next }
+    ENVIRON["V"] == "ready" && failcell($4) { say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
     s == g[$1] { next }
     bd ~ /:$/ ? index(s, bd " ") == 1 && length(s) > length(bd) + 1 : s == bd {
-      if (ENVIRON["V"] == "ready") say("the " $1 " pass has a failing row, so the plan is not ready: " $4); next }
-    { say("the " $1 " pass has the row " $4 " whose status \"" s "\" is not one of " list) }
+      nf++; if (ENVIRON["V"] == "ready") say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
+    { say(t[$1] " has the row " $4 " whose status \"" s "\" is not one of " list) }
     END { for (i = 1; i <= np; i++) { p = pass[i]
         if (!seen[p]) say("the report has no ### Pass: " p " table: run every pass of the plan review")
         else if (!n[p]) say("the " p " pass has no row: write one row per item, or the one row none: <why>")
-        else if (p in none && n[p] > 1) say("the " p " pass has the row " none[p] " beside other rows: none: <why> is a pass'"'"'s only row") } }' <<<"$rows")"
+        else if (p in none && n[p] > 1) say("the " p " pass has the row " none[p] " beside other rows: none: <why> is a pass'"'"'s only row") }
+      if (ENVIRON["E"] == 1 && !n["earlier"]) say("the last recorded round had findings, so the report needs an ### Earlier findings table: one row per earlier finding, resolved (with the line that resolves it) or open")
+      print "failing=" nf + 0 }' <<<"$rows")"
+  nf="$(tail -1 <<<"$err")"; nf="${nf#failing=}"; err="$(sed '$d' <<<"$err")"
   [[ -z "$err" ]] || die "$err"
+  total="$(findings_total "$report")"
+  [[ -n "$total" ]] || die "the report has no line 'Findings: <n> high, <n> medium, <n> low': run the review again"
+  # Tags in table rows are not counted: a failing row is listed again, tagged, among the findings.
+  tags="$(grep -v '^|' "$report" | grep -oE '\[area:[^]]*\]' || true)"
+  bad="$(grep -vE '^\[area: *[a-z0-9-]+\]$' <<<"$tags" | grep . | head -1 || true)"
+  [[ -z "$bad" ]] || die "the finding tag $bad does not name its area as one word of [a-z0-9-] (such as [area: area-log])"
+  ((total >= nf)) || die "the report has $nf failing rows but counts $total findings: each failing row (and each open earlier finding) is also a finding, listed and tagged [area: <name>]"
+  nt="$(grep -c . <<<"$tags" || true)"
+  ((nt == total)) || die "the report counts $total findings on its Findings: line but tags $nt with [area: <name>]: start each finding's scenario with its [area: <name>]"
   [[ "$verdict" == ready ]] || return 0
   { [[ -f "$fdir/spec.md" ]] && grep -qE '^- \*\*FR-[0-9]+\*\*' "$fdir/spec.md"; } || die "spec.md has no functional requirement: the requirements pass cannot pass"
   for id in $(sed -nE 's/^- \*\*((FR|SC)-[0-9]+)\*\*.*/\1/p' "$fdir/spec.md"); do

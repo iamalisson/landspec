@@ -247,13 +247,18 @@ sh_passes="$(sed -n 's/^PASSES="\(.*\)"$/\1/p' extension/scripts/review.sh)"
 check "when review.md's **Pass \`<name>\`** paragraphs and review.sh's PASSES are read, then they name the same eight passes in the same order, as the Report's plan report does" \
   '[[ "$md_passes" == "$sh_passes " && "$(wc -w <<<"$sh_passes")" -eq 8 ]] \
    && [[ "$(sed -n "/^- \*\*A plan report\*\*/,/^- Before/p" extension/commands/review.md | grep -oE "\`[a-z]+\`" | tr -d "\`" | tr "\n" " ")" == "$sh_passes " ]]'
-# Issue #108: the plan review reads spec-folder code and orderings, and a repeated class ends the patching.
-check "when the plan review and issues step 2 are read, then spec-folder code gets the bug list, each state machine's orderings meet one invariant, and a repeated class gets the invariant and a full round" \
+# Issue #108: the plan review reads spec-folder code and orderings; #221: every round is read cold.
+check "when the plan review and issues step 2 are read, then spec-folder code gets the bug list, each state machine's orderings meet one invariant, and every round is read cold with an Earlier findings table" \
   'r="$(tr "\n" " " < extension/commands/review.md)"; i="$(tr "\n" " " < extension/commands/issues.md)"
    [[ "$r" == *"**Spec-folder code:** every file under \`specs/NNN-*/\` that is not markdown is code"* && "$r" == *"script that hides an error"* \
    && "$r" == *"**Orderings:** for each state machine in"* && "$r" == *"out of order, delivered twice, the original event replayed, opposite actions both pending"* \
-   && "$r" == *"never narrows the review"* && "$r" == *"resolved (by the stated invariant or a changed text) or keeps its severity"* \
-   && "$i" == *"same class as an earlier round (for example"* && "$i" == *"replace the case rules with it, and run the next round full"* && "$i" == *"once per class"* ]]'
+   && "$r" == *"never narrows the review"* && "$r" == *"under a heading exactly \`### Earlier findings\`"* \
+   && "$i" == *"Every round is read cold"* && "$i" != *"same class"* && "$i" != *"once per class"* \
+   && "$(tr "\n" " " < skills/implement/SKILL.md | tr -s " ")" == *"every round is read cold"* ]]'
+# FR-004 (#221): the plan review's facts never carry the author's answers to the findings.
+plan_facts="$(awk '/^- for a plan review:/ { on = 1; print; next } on && /^(- |$)/ { exit } on' extension/commands/review.md)"
+check "when review.md's plan-review facts are read, then they pass review.sh diff --plan and never mention an answer" \
+  '[[ "$plan_facts" == *"review.sh diff --plan"* && "$(tr A-Z a-z <<<"$plan_facts")" != *answer* ]]'
 # The section is read into a variable: a pipe into grep -q can fail under pipefail (SIGPIPE on sed).
 sec_readme="$(sed -n "/^## Security, built in/,/^## Levels/p" README.md)"
 check "when the README's Security, built in table is read, then it names the reviewer's model" \
