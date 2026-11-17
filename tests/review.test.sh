@@ -92,7 +92,7 @@ st="$("$r" state --plan)"
 printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when the plan report has no Plan state: line, then record --plan refuses it" \
   'fails_with "the report has no Plan state line: run the review again (this landspec version records it)" "$r" record --plan "$TMP/plan.md"'
-printf 'Plan read.\n\n**Plan state:** %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$st" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\n**Plan state:** %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
 check "when the line is written **Plan state:** <hash>, then it is read" '[[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
 printf 'Plan read.\n\nPlan state: unavailable (refused)\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' > "$TMP/plan.md"
 check "when the line is Plan state: unavailable (refused), then record refuses it as missing" \
@@ -127,7 +127,7 @@ rm -rf "$snap" "$TMP/fresh"
 printf 'Plan read.\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when a plan report has no Model: line, then record --plan refuses" \
   'fails_with "the report must state Model: <id> for the plan: run the review again" "$r" record --plan "$TMP/plan.md"'
-printf 'Plan read.\n\nPlan state: %s\nModel: ghp_abc123\n\nAssessment: ready\n' "$st" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\nPlan state: %s\nModel: ghp_abc123\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
 check "when a plan report's Model: is ghp_abc123, then the plan record stores unknown" \
   '"$r" record --plan "$TMP/plan.md" >/dev/null 2>&1; grep -qx "model: unknown" "$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"'
 
@@ -166,7 +166,7 @@ cp -R "$kept" "$TMP/kept0"; plan_report; sedi 's/entity: search/entity: refused/
 check "when record --plan is refused (the plan changed since), then the kept copy is as it was" \
   'fails_with "the plan changed since" "$r" record --plan "$TMP/plan.md" && diff -r "$TMP/kept0" "$kept"'
 sedi 's/entity: refused/entity: search/' $d/data-model.md; rm -rf "$TMP/kept0"
-printf 'Plan read.\n\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' "$("$r" state --plan)" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' "$(plan_tables)" "$("$r" state --plan)" > "$TMP/plan.md"
 "$r" record --plan "$TMP/plan.md" >/dev/null
 sedi 's/entity: search/entity: lookup/' $d/data-model.md; sedi 's/ — #42$/ — #43/' $d/tasks.md
 check "after a recorded changes needed, then diff --plan shows exactly the edited line (issue numbers stripped on both sides)" \
@@ -178,6 +178,68 @@ old="$({ cat $d/plan.md; sed -E 's/ — #[0-9]+[[:space:]]*$//' $d/tasks.md; } |
 rec="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"; sedi "s/^state: .*/state: $old/" "$rec"
 check "when the record holds a 2.7.0 state, then check --plan refuses once, and passes after the review is recorded again" \
   'fails_with "changed since" "$r" check --plan && plan_review >/dev/null && "$r" check --plan'
+
+# FR-001/FR-003 (#187, #188): record --plan reads the eight pass tables, on the fixture with one defect planted per pass.
+fd=specs/002-plan-review; cp -R "$ROOT/tests/fixtures/plan-review" $fd; echo '{ "feature_directory": "specs/002-plan-review" }' > .specify/feature.json
+# fx <assessment> [<sed -E script>]: a report on the fixture, every pass passing, its tables edited by the script.
+fx() { { echo 'Plan read.'; plan_tables $fd | sed -E "${2:-}"; echo; echo "Plan state: $("$r" state --plan)"; echo 'Model: claude-sonnet-4-7'; echo; echo "Assessment: $1"; } > "$TMP/fx.md"; }
+fx ready
+check "when every pass of a ready plan report has its table and every row passes, then record --plan prints REVIEW=ready" \
+  '[[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]] && "$r" check --plan'
+check "then the fixture's README names one planted defect for each pass review.sh checks" \
+  'for p in $(sed -n "s/^PASSES=\"\(.*\)\"$/\1/p" "$r"); do grep -qE "^\| $p \| [^|]+ \| [^|]+ \|$" $fd/README.md || exit 1; done'
+# refused <text> [<sed -E script>] [<assessment>]: that report is refused, the message naming <text>, and nothing is recorded.
+refused() { fx "${3:-ready}" "${2:-}"; local rec; rec="$(cat "$(git rev-parse --git-common-dir)/landspec-review/plan-002-plan-review")"
+  fails_with "$1" "$r" record --plan "$TMP/fx.md" && [[ "$(cat "$(git rev-parse --git-common-dir)/landspec-review/plan-002-plan-review")" == "$rec" ]]; }
+check "when one requirements row says MISSING, then a ready is refused naming the pass and the row" \
+  'refused "the requirements pass has a failing row, so the plan is not ready: | FR-002 | MISSING |" "s/^\| FR-002 \| proven \|$/| FR-002 | MISSING |/"'
+check "when one claims row says FALSE, then a ready is refused naming the pass and the row" \
+  'refused "the claims pass has a failing row, so the plan is not ready: | a claim | FALSE |" "s/\| TRUE \|$/| FALSE |/"'
+check "when one rules row says DIFFERENT: 200 vs 100, then a ready is refused naming the pass and the row" \
+  'refused "the rules pass has a failing row, so the plan is not ready: | a rule | DIFFERENT: 200 vs 100 |" "s/\| SAME \|$/| DIFFERENT: 200 vs 100 |/"'
+check "when the rules pass has a header and no row, then it is refused: the rules pass has no row" \
+  'refused "the rules pass has no row" "/^\| a rule /d"'
+check "when the guards pass is left out, then it is refused: the report has no ### Pass: guards table" \
+  'refused "the report has no ### Pass: guards table" "/^### Pass: guards$/,/^\| a guard /d"'
+check "when a row's status is ok (not in its pass's list), then it is refused naming the pass, the row and the statuses it may have" \
+  'refused "the inputs pass has the row | an input | ok | whose status \"ok\" is not one of provided, MISSING or none: <why>" "s/\| provided \|$/| ok |/"'
+check "when a size row says BREAKS: with no reason, then it is refused as a status outside the list" \
+  'refused "whose status \"BREAKS:\" is not one of holds, BREAKS: <why> or none: <why>" "s/^\| T001 \| holds \|$/| T001 | BREAKS: |/"'
+check "when the requirements table has no row for SC-002, then a ready is refused naming SC-002" \
+  'refused "the requirements pass has no row for SC-002" "/^\| SC-002 /d"'
+check "when a size row says BREAKS: about 600 lines, then a ready is refused naming the row" \
+  'refused "the size pass has a failing row, so the plan is not ready: | T003 | BREAKS: about 600 lines |" "s/^\| T003 \| holds \|$/| T003 | BREAKS: about 600 lines |/"'
+check "when the size table has no row for T002, then a ready is refused naming T002" \
+  'refused "the size pass has no row for T002" "/^\| T002 /d"'
+check "when a pass's none: row sits beside other rows, then it is refused" \
+  'refused "the orderings pass has the row | none: nothing | beside other rows" "s/^(\| an ordering \| holds \|)$/\1\n| none: nothing |/"'
+check "when a pass's only row is none: no task writes data, then the ready is recorded" \
+  'fx ready "s/^\| a write \| safe \|$/| none: no task writes data |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a row has no closing pipe and its cells are in backticks or bold, then it is read as the same row" \
+  'fx ready "s/^\| a guard \| handled \|$/| \`a guard\` | **handled**/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a rules row compares two documents as DIFFERENT: data-model vs api in a middle cell and ends SAME, then a ready is refused naming the row" \
+  'refused "the rules pass has a failing row, so the plan is not ready: | title limit | DIFFERENT: data-model vs api | SAME |" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/"'
+check "when a middle cell starts with MISSING, FALSE or BREAKS: (or a bold DIFFERENT:), then a ready is refused" \
+  'for s in MISSING FALSE "BREAKS: x" "**DIFFERENT: x**"; do refused "the claims pass has a failing row" "s/^\| a claim \| TRUE \|$/| a claim | $s | TRUE |/" || exit 1; done'
+check "when a rules row names its documents in a middle cell and ends SAME, or its item cell starts with FALSE, then the ready is recorded" \
+  'fx ready "s/^\| a rule \| SAME \|$/| a rule | spec vs data-model | SAME |/; s/^\| a claim \| TRUE \|$/| FALSE start of an item | TRUE |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a changes needed report holds a middle DIFFERENT: cell, then it is recorded" \
+  'fx "changes needed" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+check "when a pass is headed ### Pass: rule (not a pass name), then it is refused saying the pass name is unknown" \
+  'refused "the report has a ### Pass: rule table, but rule is not a pass of the plan review: name it one of size requirements rules" "s/^### Pass: rules$/### Pass: rule/"'
+check "when a changes needed report holds a MISSING row, then it is recorded" \
+  'fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+check "when a changes needed report has no rollout pass, then it is refused" \
+  'refused "the report has no ### Pass: rollout table" "/^### Pass: rollout$/,/^\| a write /d" "changes needed"'
+check "when the pass tables come after another heading, then a row under that heading belongs to no pass" \
+  'refused "the rollout pass has no row" "s/^### Pass: rollout$/&\n\n## Notes/"'
+cp $fd/spec.md "$TMP/spec0"; sedi -E 's/^- \*\*(FR|SC)-([0-9]+)\*\*/- \1-\2 (only in prose)/' $fd/spec.md
+check "when spec.md names FR- ids only in prose, then a ready is refused: spec.md has no functional requirement" \
+  'refused "spec.md has no functional requirement: the requirements pass cannot pass"'
+rm $fd/spec.md
+check "when the feature folder has no spec.md, then a ready is refused the same way" \
+  'refused "spec.md has no functional requirement: the requirements pass cannot pass"'
+cp "$TMP/spec0" $fd/spec.md; rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
@@ -460,7 +522,7 @@ copy() {
 }
 # copy_report <Copy: value> [plan]: a ready report naming that copy.
 copy_report() {
-  if [[ "${2:-}" == plan ]]; then printf 'Copy: %s\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" "$("$r" state --plan)" > "$TMP/report.md"
+  if [[ "${2:-}" == plan ]]; then printf '%s\n\nCopy: %s\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(plan_tables)" "$1" "$("$r" state --plan)" > "$TMP/report.md"
   else printf 'What changed: x\n\nCopy: %s\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" "$(range)" > "$TMP/report.md"; fi
 }
 before="$(author)"

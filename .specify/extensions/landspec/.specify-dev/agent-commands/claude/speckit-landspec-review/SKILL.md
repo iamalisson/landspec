@@ -142,38 +142,81 @@ step 2 allows.
 **Plan review** (before the issues are created): review the copy of the feature folder
 hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text
 you read; apply step 1 and read every task in `tasks.md`,
-asking what happens where state already exists. *Impact* names every reference the task touches and every caller of a function whose behaviour it changes (search each symbol), and the newest
-sibling of each file it adds; *Completed when* is a command that proves the real path, not only a
-fresh state, at the level the behavior demands (logic: unit; through the interface: integration
-against the real database or in-memory HTTP; a user-visible flow: one end-to-end); a step that writes data names its target and refuses production; every task names its failure
-path (what the caller gets, the one log line, who is refused), and no task is a bare "error
-handling", "logging" or "hardening" layer; no task deletes what another task still uses. **Shape:** a task is a vertical slice with an observable result. A
-task that is one layer of a behavior another task completes (a model here, its migration there,
-the endpoint in a third) is a finding: name the tasks to merge. So is a task whose diff would
-clearly pass about 400 lines with its tests: name the behaviors to split it by (generated files,
-lockfiles, and markup or data copied as is from an existing file do not count). **Inputs:** every
-file, data set, URL or credential a task reads exists on `origin/<base>` (`git cat-file -e
+asking what happens where state already exists. Then run the eight passes below, in this order,
+on the whole folder. Each pass enumerates its items, never a sample, and fills its own table
+under a heading exactly `### Pass: <name>`: a header row, its `|---|` line, then one row per item,
+whose last cell is the row's status, one of that pass's statuses. A pass with nothing to check
+writes one row, its only row, `none: <why>` (`| none: no task writes data |`). Each failing row is
+also a finding. `review.sh record --plan` reads the tables: it refuses any report with a pass
+missing, a pass with no row, or a status outside its pass's list, and refuses a `ready` with a
+failing row (`MISSING`, `DIFFERENT: <what>`, `FALSE`, `BREAKS: <how>`), with a defined `FR-NNN` or
+`SC-NNN` of `spec.md` (a line starting `- **FR-NNN**` or `- **SC-NNN**`) that has no requirements
+row, with a task of `tasks.md` that has no size row, or with a `spec.md` that defines no `FR-NNN`.
+
+**Pass `size`**: one row per task of `tasks.md`, its id alone in the first cell, then its
+estimated diff with its tests and whether it is one vertical slice with an observable result:
+`holds`, or `BREAKS: <why>` when the diff would clearly pass about 400 lines (name the behaviors
+to split it by; generated files, lockfiles, and markup or data copied as is from an existing file
+do not count) or when it is not one slice.
+
+**Pass `requirements`**: one row per `FR-NNN` and `SC-NNN` that `spec.md` defines and per
+acceptance scenario (`US2-4`: story 2, scenario 4), the id alone in the first cell, then the task
+whose *Completed when* proves it: `proven`, or `MISSING`. *Completed when* proves it only as a
+command that proves the real path, not only a fresh state, at the level the behavior demands
+(logic: unit; through the interface: integration against the real database or in-memory HTTP; a
+user-visible flow: one end-to-end). Every task names its failure path (what the caller gets, the
+one log line, who is refused), and no task is a bare "error handling", "logging" or "hardening"
+layer: a task that breaks this makes the rows it proves `MISSING`.
+
+**Pass `rules`**: one row per rule stated in more than one document of the folder (a field, a
+filter, a response shape, who may do something, a default, a link between entities), with the
+documents compared in one cell and one status cell, last: `| <rule> | <documents compared> | SAME |`,
+or `DIFFERENT: <what>` naming both documents.
+
+**Pass `claims`**: one row per claim the plan makes about code that exists ("as today",
+"existing", "callers unchanged", a `file:line`), with the evidence you read: `TRUE` or `FALSE`.
+*Impact* is a claim: it names every reference the task touches and every caller of a function whose behaviour it changes (search each symbol), and the newest sibling of each file it adds; one it
+misses is `FALSE`. **Reuse:** a task that adds a helper, component or package the repository or an
+installed dependency already provides is `FALSE`: name the existing one's `file:line`. A new
+dependency without the `plan.md` line the constitution asks for is `FALSE`.
+
+**Pass `inputs`**: one row per thing a task's tests need (a function, a table, a file, a fixture,
+a data set, a URL, a credential), with the earlier task, the base branch or the spec folder that
+provides it: `provided`, or `MISSING` when only a later task provides it, or no task does.
+**Inputs:** every file a task reads exists on `origin/<base>` (`git cat-file -e
 origin/<base>:<path>`), in the spec folder, or in the task text; one that exists only in the
-author's working tree (untracked, ignored) is a finding, since the next person starts from a
-clean clone. **Reuse:** a task that adds a helper, component or package the repository or an
-installed dependency already provides is a finding: name the existing one's `file:line`. A new
-dependency without the `plan.md` line the constitution asks for is a finding. **Spec-folder code:** every file under `specs/NNN-*/` that is not markdown is code:
+author's working tree (untracked, ignored) is `MISSING`, since the next person starts from a clean
+clone. No task deletes what another task still uses. **Commands** in *Completed when* run from any
+clone and directory: a `gh` call without `--repo`, or a path relative to somewhere other than the
+repository root, is `MISSING`. **Shape:** a task that is one layer of a behavior another task
+completes (a model here, its migration there, the endpoint in a third) is `MISSING`: name the tasks
+to merge. **Spec-folder code:** every file under `specs/NNN-*/` that is not markdown is code:
 apply the step 2 bug list to it, and a `research.md` claim resting on a script that hides an error
-(a failed call read as empty data) is a finding. **Orderings:** for each state machine in
+(a failed call read as empty data) is `MISSING`.
+
+**Pass `guards`**: one row per CI job and per check that covers the whole test suite (a static
+check over every file, a count, a coverage floor), against the files the tasks change: the task
+that handles it, `handled`, or `MISSING`.
+
+**Pass `rollout`**: one row per task that writes data, schedules a job or fixes a value that cannot
+change later: its first day, a start in the middle of a period, the switch from what it replaces,
+and the task running in production alone before the tasks after it: `safe`, or `BREAKS: <how>`. A
+step that writes data names its target and refuses production. **Ships dark:** each task is safe
+to reach production alone; a task that makes the feature visible to users before its last task (a
+tab, route or menu entry with no flag off by default), a feature with no last task that turns the
+flag on, or a migration the production code can't run against, is `BREAKS: <how>`.
+
+**Pass `orderings`**: **Orderings:** for each state machine in
 `data-model.md`, or in `plan.md` when there is none (opposite actions on one resource, events
-that arrive late, twice or replayed), state its one invariant and check it against each ordering:
-out of order, delivered twice, the original event replayed, opposite actions both pending; one
-that breaks it, or a plan that answers orderings case by case with no invariant, is a finding.
-**Commands** in *Completed when* run from any clone and directory: a `gh` call without `--repo`,
-or a path relative to somewhere other than the repository root, is a finding.
+that arrive late, twice or replayed), state its one invariant and give one row per ordering
+checked against it: out of order, delivered twice, the original event replayed, opposite actions both pending; `holds`, or
+`BREAKS: <how>` for one that breaks it, or for a plan that answers orderings case by case with no
+invariant.
+
 **Earlier round:** when the author passes the last round's report, a finding it raised keeps its
 severity unless the text it was about changed or you name a fact that round did not have; the
-report never narrows the review: read the whole plan again. In a full round, each earlier
-finding passed is resolved (by the stated invariant or a changed text) or keeps its severity. **Ships dark:**
-each task is safe to reach production alone; a task that makes the feature visible to users
-before its last task (a tab, route or menu entry with no flag off by default), a feature with no
-last task that turns the flag on, or a migration the production code can't run against, is a
-finding.
+report never narrows the review: read the whole plan again and run every pass. In a full round, each earlier
+finding passed is resolved (by the stated invariant or a changed text) or keeps its severity.
 
 ## Report
 
@@ -210,6 +253,10 @@ accessible-name failure is at least **Medium**, with the computed ratio as evide
 sibling is not a defense: a defect copied from an existing file is still a defect in this diff. A **security** finding is listed last, and the PR
   shows it as one line, `Security: reported privately (<id>)`: its detail goes to the author only,
   never into a public PR.
+- **A plan report** has no risk map and no claims. In their place, in this order: one section per
+  pass, exactly `### Pass: <name>` for `size`, `requirements`, `rules`, `claims`, `inputs`,
+  `guards`, `rollout`, `orderings`, each followed by its table; then the findings, each failing
+  row among them.
 - Before the last line, each on its own line: `Copy: <git rev-parse --show-toplevel>` (your copy,
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
