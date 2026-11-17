@@ -15,4 +15,5 @@ All local; CI runs the same (`linux`, `bash32` and macOS jobs). The fixtures liv
 | Q10 | `tests/formatters.test.sh` | a fixture repo with a local formatter hook rewriting 9 of 10 `.py` files: `REWRITES=<hook> 9/10`, and `git status` of the repo is clean after; 1 of 10: no `REWRITES=`; no config: `FORMATTERS=skipped …` |
 | Q11 | `tests/static.test.sh` | the three copies of `review.md` are identical; the eight pass names in `review.md` match the ones `review.sh` checks |
 | Q12 | A real plan review of this feature's own folder, after the change is merged (manual) | the report has the eight tables; `record --plan` accepts it only when they pass |
+| Q14 | `tests/static.test.sh` (installed skills) | the rule is in review.md once, with the YES/NO evaluation, the `landspec:*`/`speckit-*` exclusion and the reviewer's limits; the implementer, the reviewer and branch.md point to it; `Skills:` is in the report, the return and *Evidence*; removing any one fails the check (SC-010) |
 | Q13 | Each new check with its behavior disabled | it fails; the PR says so (constitution) |

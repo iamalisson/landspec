@@ -154,3 +154,30 @@ Each decision names the code it rests on, read at `origin/main` 1a02a82 (2.7.0).
 - The implementer's side is prompt only: `agents/implementer.md` returns
   `Failed: formatter <hook> rewrote <n> files outside the task's change: run /landspec:adopt` when a
   commit is refused that way.
+
+## R13. Installed skills and MCP servers that fit a task (#234)
+
+- **Decision**: a forced evaluation, written once as a section of `commands/review.md` that the
+  implementer (`agents/implementer.md`, and `commands/branch.md` for the single-task path) and a task
+  reviewer (`agents/reviewer.md`) follow first. They list the installed skills and MCP servers that could bear on the
+  task, write `<name> - YES/NO - <reason>` for each, and invoke every YES. Both return a `Skills:`
+  line, and the implementer's reaches the PR's Evidence (`skills/implement/SKILL.md` OPEN,
+  `commands/pr.md` step 5).
+- **Rationale**: a subagent with no `tools:` line inherits the Skill tool and the session's MCP
+  tools, and "can still invoke unlisted project, user, and plugin skills through the Skill tool"
+  (code.claude.com/docs/en/sub-agents), so access is already there; what is missing is the
+  decision. In sandboxed runs of Claude Code, skills fired on 50-55% of matching prompts from their
+  descriptions alone and the same with a plain instruction, and on 100% (simple set) and 75% (hard
+  set) with a forced YES/NO evaluation, with no false positive on prompts with no matching skill
+  (scottspence.com, "Measuring Claude Code Skill Activation With Sandboxed Evals", Feb 2026).
+- **Exclusions**: landspec's and spec-kit's workflow skills (`landspec:*`, `speckit-*`) are never
+  candidates, since they run the flow the agent is part of (an implementer must never open a PR); a
+  skill that asks the user questions cannot run in a background agent. A plan review reads documents
+  only and does not evaluate skills, so the plan report keeps its shape.
+- **Alternatives**: the agents' `skills:` field preloads named skills, but landspec cannot know the
+  user's skill names; a `UserPromptSubmit` hook (the source's own form) does not see a subagent's
+  prompt, which comes from the Agent tool; a mapping in `landspec-config.yml` adds a setting the
+  user would have to keep in step with what they installed.
+- **Limits**: the figures are one author's 22- and 24-prompt sets on Sonnet 4.5. Claude Code drops
+  skill descriptions past a listing budget of about 1% of the context (code.claude.com/docs/en/skills),
+  so a very large set of skills can hide the right one; the docs say to install what you need.
