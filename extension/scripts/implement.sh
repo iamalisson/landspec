@@ -235,8 +235,9 @@ case "$action" in
           # GitHub retargets a child onto the base when its parent's branch goes (so its review cannot
           # even be read against that parent): until restack moves it, it waits.
           st=waiting; why="restack pending"
-        elif [[ -n "$b" ]] && bash "$(dirname "$0")/review.sh" check --branch "$b" >/dev/null 2>&1; then st=reviewed
+        # a changes mark on this head beats a ready record: Copilot's comments come after the review
         elif [[ "$phase" == changes && "$fh" == "$head" && -n "$head" && "${round:-0}" -lt "$MAX_ROUNDS" ]]; then st=fix
+        elif [[ -n "$b" ]] && bash "$(dirname "$0")/review.sh" check --branch "$b" >/dev/null 2>&1; then st=reviewed
         elif [[ "$phase" == implemented && "$fh" == "$head" && -n "$head" ]]; then st=implemented
         elif [[ -n "$b" ]]; then st=resume
         fi

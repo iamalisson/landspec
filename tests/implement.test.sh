@@ -158,6 +158,13 @@ check "when that PR still has landspec-parent set (retargeted by GitHub), then i
 git config --unset "branch.$B1.landspec-parent"; "$I" mark T001 pr >/dev/null
 printf '12\t%s\t%s\tdevelop\tfalse\n' "$B1" "$(git rev-parse "refs/heads/$B1")" > "$GH_OPEN"; st
 check "when the PR is ready on the base and marked pr, then the task is pr" '[[ "$(state_of T001)" == pr ]]'
+echo "- a.ts:3 thread=PRRT_1 nit" > "$TMP/cop.md"; "$I" mark T001 changes "$TMP/cop.md" >/dev/null; st
+check "when that task (a ready record, its PR open) is marked changes with a Copilot report on the same head, then it is fix, in FIX" \
+  '[[ "$(state_of T001)" == fix ]] && grep -qx "FIX=T001" <<<"$out"'
+commit_on "$B1"; st
+check "when a later commit lands on it, then it is listed as before (resume)" '[[ "$(state_of T001)" == resume ]]'
+ready "$B1"; "$I" mark T001 pr >/dev/null
+printf '12\t%s\t%s\tdevelop\tfalse\n' "$B1" "$(git rev-parse "refs/heads/$B1")" > "$GH_OPEN"
 mk "$B3" "$B1"; git config "branch.$B3.landspec-parent" "$B1"; ready "$B3"; "$I" mark T003 pr >/dev/null
 printf '12\t%s\t%s\tdevelop\tfalse\n13\t%s\t%s\t%s\ttrue\n' "$B1" "$(git rev-parse "refs/heads/$B1")" "$B3" "$(git rev-parse "refs/heads/$B3")" "$B1" > "$GH_OPEN"; st
 check "when a stacked draft PR into its parent is marked pr, then the task is pr, not in OPEN" \

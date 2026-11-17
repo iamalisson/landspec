@@ -26,4 +26,15 @@ any code is touched.
    with **only that task**. Before writing code, follow the "Installed skills and MCP servers" section
    of `.specify/extensions/landspec/commands/review.md`, and put its `Skills:` line in the PR's
    *Evidence*. Follow the constitution's defaults while implementing.
+   - When the branch already has an open PR (a run again: `gh pr list --head <BRANCH> --state open
+     --json number -q '.[0].number'`), run `bash .specify/extensions/landspec/scripts/pr.sh state <pr>`
+     first. On `COPILOT=comments <n> REPORT=<file>` with n > 0, the report's `thread=` lines are a fix
+     round: verify each comment as a review finding (try to disprove it), fix the real ones, and keep
+     one answer per thread, `fixed in <sha>` or `not a defect: <reason>`; then run
+     `/speckit-landspec-pr` from step 2 (a full review, never a delta); then, for each thread, write
+     its answer to a `mktemp` file and run `pr.sh state <pr> --reply <thread id> <file>`. Each
+     `RESOLVE=` thread (already answered), whatever n: `pr.sh state <pr> --reply <thread id>` with no
+     file. Otherwise follow `pr.md` step 7's hand-over: `pr.sh state <pr>`, and the PR is ready to merge only on
+     `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`, else its reason; the CI state ("CI
+     passed", "CI still running", "CI failed: <jobs>") is shown beside it, never waited for.
 4. Do not tick the task's checkbox in `tasks.md`. The task is done when its issue closes.

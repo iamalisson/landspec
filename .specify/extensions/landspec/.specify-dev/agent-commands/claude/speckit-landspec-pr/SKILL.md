@@ -123,4 +123,12 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    On an open PR it replaces the body from `<body-file>`, so edits made on GitHub are gone.
    It pushes (the pre-push hook re-checks every commit for secrets), adds `Closes #<ISSUE>` and
    prints `PR=<url>`. The `Security` and `CI` workflows then run on the PR; they are the gate.
-7. End with the PR URL.
+7. End with the PR URL, then the hand-over: `bash .specify/extensions/landspec/scripts/pr.sh state <pr>`;
+   a PR is ready to merge only on `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable` (with
+   Copilot's reason: it could not review); otherwise say why not: "conflict with <base>"
+   (`CONFLICT=yes`), "GitHub is still computing whether it conflicts" (`CONFLICT=unknown`), "waiting
+   for Copilot's review" (`COPILOT=pending`) or "Copilot comments being answered"
+   (`COPILOT=comments`). CI never holds it back: show "CI passed" (`CI=pass`), "CI still running"
+   (`CI=pending`), "CI failed: <jobs>" (`CI=fail`) or "no CI" (`CI=none`) beside it, never wait for it.
+   On `COPILOT=pending` or `COPILOT=comments`, say to run `/speckit-implement <TASK_ID>` again before
+   merging: it answers Copilot's comments.

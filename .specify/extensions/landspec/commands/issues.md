@@ -59,6 +59,13 @@ or one with another summary never matches.
    the current `tasks.md`. Once the spec PR (step 5) has its outside reviewers' comments, count
    the real findings among them (a comment that changes nothing in the plan is not one) and record
    that number, 0 included: `review.sh outside --plan <n>`; fix them here, as for any round.
+   Copilot's comments on the spec PR are such findings: `bash
+   .specify/extensions/landspec/scripts/pr.sh state <spec PR>` prints `COPILOT=comments <n>
+   REPORT=<file>`, one `thread=` line per comment. Verify each, fix the plan, run the plan review
+   again, record `review.sh outside --plan <n>` with the real ones, run `issues.sh --sync` and
+   `pr.sh spec`, then answer each thread (fixed, or not a defect and why) in a `mktemp` file:
+   `pr.sh state <spec PR> --reply <thread id> <file>`, and `--reply <thread id>` with no file for
+   each `RESOLVE=` thread.
 3. Then create the issues: run `bash .specify/extensions/landspec/scripts/issues.sh` from the repository root.
    - If it fails (no `gh`, not logged in, no remote), show its message and stop. Do not create
      issues any other way.
@@ -81,4 +88,8 @@ or one with another summary never matches.
    - If `pr.sh spec` stops on a stale plan review, run the plan review again, record it, and run
      `pr.sh spec` once more.
 6. End with one line: the PR URL (if one was opened), and "merge it, then run `/landspec:implement`
-   for the whole feature (or `/speckit-implement T001` for one task)".
+   for the whole feature (or `/speckit-implement T001` for one task)" only when it is ready by the
+   hand-over rule of `pr.md` step 7: `pr.sh state <pr>` reads `CONFLICT=no` and `COPILOT=` `none`,
+   `clean` or `unavailable`; otherwise its reason instead (a conflict, GitHub still computing it,
+   waiting for Copilot's review, Copilot comments to answer as step 2 says). Its CI state ("CI
+   passed", "CI still running", "CI failed: <jobs>") is shown beside it, never waited for.
