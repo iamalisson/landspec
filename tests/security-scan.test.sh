@@ -55,6 +55,10 @@ killed="You are seeing this because the engine was killed."
 out="$(FAKE_SILENT=semgrep FAKE_JSON='{"results": [], "errors": [{"code": 2, "level": "error", "message": "'"$killed"'"}], "paths": {}}' PATH="$TMP/tools:$PATH" bash "$scan")"
 check "when semgrep fails with an empty log and an error in its JSON, then the failed line gives that message and names semgrep.json" \
   'dir="$(sed -n "s/^REPORT_DIR=//p" <<<"$out")"; grep -qxF "semgrep      failed    exit 2: $killed; see $dir/semgrep.json" <<<"$out"'
+# The shape semgrep 1.185 really writes: the reason is on the line after "Error while running rules:".
+out="$(semgrep_line '{"version":"1.185.0","results":[],"errors":[{"code":2,"level":"error","type":"SemgrepError","message":"Error while running rules: \n                    '"$killed"'\n\n                    The most common reason this happens is because it used too much memory.\n"}],"paths":{"scanned":[]}}')"
+check "when semgrep's first message line ends in a colon, then the next line with text is joined to it" \
+  'grep -qF "exit 2: Error while running rules: $killed; see " <<<"$out"'
 out="$(semgrep_line '')"
 check "when semgrep fails with both its log and its JSON empty, then the line says it wrote no error and names both" \
   'grep -qE "^semgrep +failed +exit 2: semgrep wrote no error \(.*/semgrep.log and .*/semgrep.json are empty\)$" <<<"$out"'

@@ -66,9 +66,12 @@ if command -v semgrep >/dev/null; then
   else
     # With --json --output semgrep puts its error in the JSON. Only the text after "errors" is read,
     # since each result before it has its own "message". grep and sed: busybox has no jq or python3.
+    # A first line ending in ':' ("Error while running rules: \n  You are seeing this...") is joined
+    # to the next line with text, or the reason would be empty.
     msg="$(tr -d '\n' < "$dir/semgrep.json" 2>/dev/null | sed -n 's/.*"errors"[[:space:]]*://p' \
       | grep -oE '"message"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' | head -n 1 \
-      | sed -e 's/^"message"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' -e 's/\\n.*//' -e 's/\\"/"/g')"
+      | sed -e 's/^"message"[[:space:]]*:[[:space:]]*"//' -e 's/"$//' \
+            -e 's/:[[:space:]]*\(\\n[[:space:]]*\)\{1,\}/: /' -e 's/\\n.*//' -e 's/\\"/"/g')"
     if [[ -n "$msg" ]]; then report semgrep failed "exit $rc: ${msg:0:200}; see $dir/semgrep.json"
     else report semgrep failed "exit $rc: semgrep wrote no error ($dir/semgrep.log and $dir/semgrep.json are empty)"; fi
   fi
