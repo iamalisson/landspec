@@ -7,6 +7,7 @@ i="$SCRIPTS/issues.sh"
 plan_reviewed() { plan_review claude-opus-4-7 >/dev/null; }
 
 new_repo standard
+EV="$(git rev-parse --git-common-dir)/landspec-events"
 commit_tasks '# Tasks
 
 - [ ] T001 Create the schema in `db/schema.sql`
@@ -31,6 +32,8 @@ check "then each issue number is written at the end of its task line" \
   'grep -qx -- "- \[ \] T001 Create the schema in \`db/schema.sql\` — #1" specs/001-demo/tasks.md && grep -q "T003 \[US1\] Show prices in src/view.tsx and src/list.tsx, with tests in tests/view.test.ts — #2$" specs/001-demo/tasks.md'
 check "then a task that already had an issue is left alone" 'grep -qx -- "- \[ \] T002 \[P\] \[US1\] Price \* filter \[beta\] & co in \`src/a.ts\` — #7" specs/001-demo/tasks.md'
 check "then it reports what it did" '[[ "$out" == *"CREATED=2 SKIPPED=1"* ]]'
+check "then it logs one issues event with the feature and the two it created" \
+  '[[ "$(grep -c " issues " "$EV")" -eq 1 ]] && grep -qE "^[0-9]+ [0-9T:-]+Z main issues feature=001-demo created=2$" "$EV"'
 check "then the title has the feature number and no file path, with or without backticks" \
   'grep -qF -- "--title [001] T001: Create the schema --body" "$GH_LOG" && grep -qF -- "--title [001] T003: Show prices --body" "$GH_LOG"'
 check "then the body carries Comes from, Impact (a wrapped line keeps its newline) and Completed when" \
@@ -41,8 +44,9 @@ check "when no milestone or project is configured, then none is set" '! grep -qE
 
 out="$("$i")"
 check "when run again, then no issue is created twice" '[[ "$out" == *"CREATED=0 SKIPPED=3"* && "$(grep -c "^issue create" "$GH_LOG")" == 2 ]]'
+check "then a run that created and linked nothing logs no issues event" '[[ "$(grep -c " issues " "$EV")" -eq 1 ]]'
 check "when --sync, then each open linked issue gets its body rewritten from tasks.md, and nothing is created" \
-  'out="$("$i" --sync)"; [[ "$out" == *"CREATED=0 SKIPPED=0 UPDATED=3"* && "$(grep -c "^issue edit [0-9]* --body \*\*Feature:\*\*" "$GH_LOG")" == 3 && "$(grep -c "^issue create" "$GH_LOG")" == 2 ]]'
+  'out="$("$i" --sync)"; [[ "$out" == *"CREATED=0 SKIPPED=0 UPDATED=3"* && "$(grep -c "^issue edit [0-9]* --body \*\*Feature:\*\*" "$GH_LOG")" == 3 && "$(grep -c "^issue create" "$GH_LOG")" == 2 ]] && [[ "$(grep -c " issues " "$EV")" -eq 1 ]]'
 check "when --sync and the issues are closed, then they are left alone" \
   'out="$(GH_VIEW_STATE=CLOSED "$i" --sync)"; [[ "$out" == *"SKIPPED=3 UPDATED=0"* && "$(grep -c "^issue edit [0-9]* --body" "$GH_LOG")" == 3 ]]'
 
@@ -50,7 +54,7 @@ printf '%s\n' '- [ ] T004 Dry task in `x`' >> specs/001-demo/tasks.md
 check "when a task was added since the plan review, then it refuses until the plan is reviewed again" 'fails_with "changed since" "$i"'
 plan_reviewed
 check "when --dry-run, then nothing is created or written" \
-  'out="$("$i" --dry-run)"; grep -q "would create" <<<"$out" && [[ "$(grep -c "^issue create" "$GH_LOG")" == 2 ]] && ! grep -q "T004.*#" specs/001-demo/tasks.md'
+  'out="$("$i" --dry-run)"; grep -q "would create" <<<"$out" && [[ "$(grep -c "^issue create" "$GH_LOG")" == 2 ]] && ! grep -q "T004.*#" specs/001-demo/tasks.md && [[ "$(grep -c " issues " "$EV")" -eq 1 ]]'
 
 set_cfg milestone '"Sprint #3"'; set_cfg project '"Road map" # the team board'
 printf '%s\n' '- [ ] T005 Meta task in `y`' >> specs/001-demo/tasks.md; plan_reviewed
@@ -73,6 +77,7 @@ GH_FAIL_CREATE_ONCE=1 "$i" >/dev/null 2>&1 || true
 lost="$(cat "$GH_N")"; creates="$(grep -c "^issue create" "$GH_LOG")"
 check "when the first gh issue create for a task reached GitHub but failed on the client, then a rerun makes no second create and writes the existing number back" \
   'out="$("$i")"; [[ "$(grep -c "^issue create" "$GH_LOG")" == "$creates" ]] && grep -q "T007 Retry task in \`r\` — #$lost$" specs/001-demo/tasks.md && grep -qx "T007 → #$lost (existing)" <<<"$out"'
+check "then the run that only linked the existing issue logs it as created=1" '[[ "$(grep " issues " "$EV" | tail -1)" == *" issues feature=001-demo created=1" ]]'
 check "then the lookup asks for open issues only (a closed one never matches), without --search or --label" \
   'grep -q "^issue list --state open --limit 1000 --json number,title" "$GH_LOG" && ! grep "^issue list" "$GH_LOG" | grep -qE -- "--search|--label"'
 printf '%s\n' '- [ ] T009 Lookup task in `l`' >> specs/001-demo/tasks.md; plan_reviewed

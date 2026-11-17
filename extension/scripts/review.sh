@@ -11,6 +11,7 @@
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
 #   review.sh answer --plan <area> <text>   record the developer's answer to a Simplify section, resetting the
 #                                           area's count (plan-<feature>.areas)
+#   review.sh outside --plan <n>            log the real findings the spec PR's outside reviewers found (OUTSIDE=<n>)
 #   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
 #   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
@@ -44,6 +45,7 @@ if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review h
 if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
 if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
 if [[ "$action" == answer ]] && ! $plan; then die "usage: review.sh answer --plan <area> <text>"; fi
+if [[ "$action" == outside ]] && ! $plan; then die "usage: review.sh outside --plan <n>"; fi
 # A fix round may change this many lines outside the previous findings' files (tests aside);
 # more means the fix is new work, which gets a full review.
 DELTA_LINES=20
@@ -429,7 +431,11 @@ case "$action" in
     # The record goes last: a run stopped before it leaves the old record, so the same report is recorded again.
     mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
-    if $plan; then event review round=plan verdict="${verdict// /-}"
+    if $plan; then
+      # h, m, l from the report's last Findings: line, left out when it has none
+      hml="$(grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$report" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print "h=" $1, "m=" $2, "l=" $3 }' || true)"
+      # shellcheck disable=SC2086 # hml is three key=value words, or nothing
+      event review round=plan verdict="${verdict// /-}" feature="$(basename "$fdir")" $hml
     else
       # hm: high + medium from the report's "Findings: <n> high, <n> medium, <n> low" line, when it has one
       hm="$(grep -iE '^findings: *[0-9]+ high, *[0-9]+ medium' "$report" | tail -1 | awk '{ gsub(/[^0-9 ]/, ""); print $1 + $2 }' || true)"
@@ -444,6 +450,9 @@ case "$action" in
       || die "nothing is asked for $a: an area is answered once the report with its ## Simplify: $a section is recorded"
     echo "reset $a $(tr '\n' ' ' <<<"$text" | sed 's/ *$//')" >> "$areas"
     echo "ANSWERED=$a" ;;
+  outside)
+    n="${1:-}"; [[ "$n" =~ ^[0-9]+$ && $# -eq 1 ]] || die "usage: review.sh outside --plan <n>, <n> the whole number of real findings the outside reviewers found"
+    event outside feature="$(basename "$fdir")" n="$n"; echo "OUTSIDE=$n" ;;
   check|report)
     st="$(state)"
     [[ -f "$record" ]] || die "no independent review recorded for $what; run /speckit-landspec-review and record its report: review.sh record$($plan && echo ' --plan') <report-file>"
@@ -469,5 +478,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh answer --plan <area> <text> | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh answer --plan <area> <text> | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
 esac
