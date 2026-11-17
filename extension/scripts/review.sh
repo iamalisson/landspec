@@ -415,7 +415,7 @@ case "$action" in
       if $delta; then [[ -z "$carried" ]] || sed 's/^/map-full: /' <<<"$carried"; [[ -z "$map" ]] || sed 's/^/map-fix: /' <<<"$map"
       elif [[ -n "$map" ]]; then sed 's/^/map-full: /' <<<"$map"; fi
       echo; cat "$report"
-    } > "$record.tmp" && mv "$record.tmp" "$record"
+    } > "$record.tmp" || die "cannot write the review record"
     # The text this round read (its state matched): the next round is given its diff (review.sh diff --plan).
     if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"
       # Every finding is logged (table rows aside: a failing row is listed again among the findings).
@@ -426,6 +426,8 @@ case "$action" in
       simplify="$(areas_state | awk '$2 >= 3 && $3 == "-" { print $1 }')"
       for a in $simplify; do echo "due $a" >> "$areas"; done
     fi
+    # The record goes last: a run stopped before it leaves the old record, so the same report is recorded again.
+    mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
     if $plan; then event review round=plan verdict="${verdict// /-}"
     else
@@ -436,7 +438,7 @@ case "$action" in
     echo "REVIEW=$verdict"
     for a in ${simplify:-}; do echo "SIMPLIFY=$a"; done ;;
   answer)
-    a="${1:-}"; text="${2:-}"
+    a="${1:-}"; text="${*:2}" # an unquoted answer is still the whole answer
     [[ "$a" =~ ^[a-z0-9-]+$ && -n "${text//[[:space:]]/}" ]] || die "usage: review.sh answer --plan <area> <text>"
     [[ "$(areas_state | awk -v a="$a" '$1 == a { print $3 }')" == asked ]] \
       || die "nothing is asked for $a: an area is answered once the report with its ## Simplify: $a section is recorded"

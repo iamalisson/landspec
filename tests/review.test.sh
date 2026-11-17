@@ -316,8 +316,8 @@ check "when it opens with ## Simplify: discards and has two more discards findin
 af ready
 check "then the round after is refused until the answer is recorded" \
   'fails_with "a Simplify question is open for discards: record the developer'"'"'s answer first: review.sh answer --plan discards" "$r" record --plan "$TMP/fx.md"'
-check "when answer --plan discards \"kept: …\" runs, then it prints ANSWERED=discards and writes reset discards" \
-  '[[ "$("$r" answer --plan discards "kept: the discard rule stays")" == ANSWERED=discards && "$(tail -1 "$L")" == "reset discards kept: the discard rule stays" ]]'
+check "when answer --plan discards kept: … runs (the answer unquoted), then it prints ANSWERED=discards and writes reset discards with the whole answer" \
+  '[[ "$("$r" answer --plan discards kept: the discard rule stays)" == ANSWERED=discards && "$(tail -1 "$L")" == "reset discards kept: the discard rule stays" ]]'
 check "then answering discards again is refused: nothing is asked for discards" 'fails_with "nothing is asked for discards" "$r" answer --plan discards x'
 af ready discards
 check "after the answer, when one more discards finding is recorded in a ready, then it prints nothing more and check --plan passes" \
