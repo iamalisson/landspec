@@ -92,7 +92,7 @@ st="$("$r" state --plan)"
 printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when the plan report has no Plan state: line, then record --plan refuses it" \
   'fails_with "the report has no Plan state line: run the review again (this landspec version records it)" "$r" record --plan "$TMP/plan.md"'
-printf 'Plan read.\n%s\n\n**Plan state:** %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\n**Plan state:** %s\nModel: claude-sonnet-4-7\nFindings: 0 high, 0 medium, 0 low\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
 check "when the line is written **Plan state:** <hash>, then it is read" '[[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
 printf 'Plan read.\n\nPlan state: unavailable (refused)\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' > "$TMP/plan.md"
 check "when the line is Plan state: unavailable (refused), then record refuses it as missing" \
@@ -127,7 +127,7 @@ rm -rf "$snap" "$TMP/fresh"
 printf 'Plan read.\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when a plan report has no Model: line, then record --plan refuses" \
   'fails_with "the report must state Model: <id> for the plan: run the review again" "$r" record --plan "$TMP/plan.md"'
-printf 'Plan read.\n%s\n\nPlan state: %s\nModel: ghp_abc123\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\nPlan state: %s\nModel: ghp_abc123\nFindings: 0 high, 0 medium, 0 low\n\nAssessment: ready\n' "$(plan_tables)" "$st" > "$TMP/plan.md"
 check "when a plan report's Model: is ghp_abc123, then the plan record stores unknown" \
   '"$r" record --plan "$TMP/plan.md" >/dev/null 2>&1; grep -qx "model: unknown" "$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"'
 
@@ -166,7 +166,7 @@ cp -R "$kept" "$TMP/kept0"; plan_report; sedi 's/entity: search/entity: refused/
 check "when record --plan is refused (the plan changed since), then the kept copy is as it was" \
   'fails_with "the plan changed since" "$r" record --plan "$TMP/plan.md" && diff -r "$TMP/kept0" "$kept"'
 sedi 's/entity: refused/entity: search/' $d/data-model.md; rm -rf "$TMP/kept0"
-printf 'Plan read.\n%s\n\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: changes needed\n' "$(plan_tables)" "$("$r" state --plan)" > "$TMP/plan.md"
+printf 'Plan read.\n%s\n\nPlan state: %s\nModel: claude-sonnet-4-7\nFindings: 0 high, 0 medium, 0 low\n\nAssessment: changes needed\n' "$(plan_tables)" "$("$r" state --plan)" > "$TMP/plan.md"
 "$r" record --plan "$TMP/plan.md" >/dev/null
 sedi 's/entity: search/entity: lookup/' $d/data-model.md; sedi 's/ — #42$/ — #43/' $d/tasks.md
 check "after a recorded changes needed, then diff --plan shows exactly the edited line (issue numbers stripped on both sides)" \
@@ -181,10 +181,12 @@ check "when the record holds a 2.7.0 state, then check --plan refuses once, and 
 
 # FR-001/FR-003 (#187, #188): record --plan reads the eight pass tables, on the fixture with one defect planted per pass.
 fd=specs/002-plan-review; cp -R "$ROOT/tests/fixtures/plan-review" $fd; echo '{ "feature_directory": "specs/002-plan-review" }' > .specify/feature.json
-# fx <assessment> [<sed -E script>]: a report on the fixture, every pass passing, its tables edited by the script.
-fx() { { echo 'Plan read.'; plan_tables $fd | sed -E "${2:-}"; echo; echo "Plan state: $("$r" state --plan)"; echo 'Model: claude-sonnet-4-7'; echo; echo "Assessment: $1"; } > "$TMP/fx.md"; }
+# fx <assessment> [<sed -E script>]: a report on the fixture, every pass passing, its tables edited by the script;
+# $fx_extra goes after the tables (an Earlier findings table, the findings), $fx_findings is its count line ("" for none).
+fx() { { echo 'Plan read.'; plan_tables $fd | sed -E "${2:-}"; printf '%s' "${fx_extra:-}"; echo; echo "Plan state: $("$r" state --plan)"; echo 'Model: claude-sonnet-4-7'
+  echo "${fx_findings-Findings: 0 high, 0 medium, 0 low}"; echo; echo "Assessment: $1"; } > "$TMP/fx.md"; }
 fx ready
-check "when every pass of a ready plan report has its table and every row passes, then record --plan prints REVIEW=ready" \
+check "when every pass of a ready plan report has its table and every row passes, in the feature's first round with no Earlier findings table, then record --plan prints REVIEW=ready" \
   '[[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]] && "$r" check --plan'
 check "then the fixture's README names one planted defect for each pass review.sh checks" \
   'for p in $(sed -n "s/^PASSES=\"\(.*\)\"$/\1/p" "$r"); do grep -qE "^\| $p \| [^|]+ \| [^|]+ \|$" $fd/README.md || exit 1; done'
@@ -227,12 +229,53 @@ check "when a changes needed report holds a middle DIFFERENT: cell, then it is r
   'fx "changes needed" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
 check "when a pass is headed ### Pass: rule (not a pass name), then it is refused saying the pass name is unknown" \
   'refused "the report has a ### Pass: rule table, but rule is not a pass of the plan review: name it one of size requirements rules" "s/^### Pass: rules$/### Pass: rule/"'
-check "when a changes needed report holds a MISSING row, then it is recorded" \
-  'fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+# Findings lists and Earlier findings tables for fx_extra (#221).
+one_f=$'\n- Medium: tasks.md:3 [area: tasks] FR-003 has no task\n'
+two_f=$'\n- Low: tasks.md:3 [area: tasks] FR-002 has no task\n- Low: tasks.md:4 [area: tasks] FR-003 has no task\n'
+five_f=$'\n- Medium: plan.md:1 [area: area-log] a\n- Medium: plan.md:2 [area: area-log] b\n- Low: tasks.md:1 [area: tasks] c\n- Low: tasks.md:2 [area: tasks] d\n- Low: tasks.md:3 [area: rollout] e\n'
+earlier() { printf '\n### Earlier findings\n\n| Finding | Resolved by | Status |\n|---|---|---|\n'; printf '| %s | tasks.md:1 | %s |\n' "$@"; }
+check "when a changes needed report holds a MISSING row, listed and tagged among its findings, then it is recorded" \
+  'fx_extra="$one_f" fx_findings="Findings: 0 high, 1 medium, 0 low" fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
 check "when a changes needed report has no rollout pass, then it is refused" \
   'refused "the report has no ### Pass: rollout table" "/^### Pass: rollout$/,/^\| a write /d" "changes needed"'
 check "when the pass tables come after another heading, then a row under that heading belongs to no pass" \
   'refused "the rollout pass has no row" "s/^### Pass: rollout$/&\n\n## Notes/"'
+
+# FR-004 (#221): a round after one with findings checks each in its own table; every finding is counted and tagged.
+check "after a recorded changes needed, when a ready report has an Earlier findings row open, then it is refused naming the row" \
+  'fx_extra="$(earlier "F1 FR-003 has no task" open)" refused "the Earlier findings table has a failing row, so the plan is not ready: | F1 FR-003 has no task | tasks.md:1 | open |"'
+check "after a recorded changes needed, when a ready report has no Earlier findings table, then it is refused" \
+  'refused "the last recorded round had findings, so the report needs an ### Earlier findings table"'
+check "after a recorded changes needed, when an open earlier finding is not counted among the findings, then a changes needed is refused" \
+  'fx_extra="$(earlier "F1" open)" refused "the report has 1 failing rows but counts 0 findings" "" "changes needed"'
+check "when every Earlier findings row is resolved, then the ready is recorded" \
+  'fx_extra="$(earlier "F1 FR-003 has no task" resolved)" fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "after a round with Findings: 0 high, 0 medium, 0 low, when the next report has no Earlier findings table, then it is recorded" \
+  'fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+fx_extra="$five_f" fx_findings="Findings: 0 high, 2 medium, 3 low" fx "changes needed"; "$r" record --plan "$TMP/fx.md" >/dev/null
+check "after a round with Findings: 0 high, 2 medium, 3 low, when the next report has no Earlier findings table, then it is refused" \
+  'refused "the report needs an ### Earlier findings table"'
+check "then an Earlier findings table whose row is none: is refused" \
+  'fx_extra="$(earlier x resolved | sed "s/^| x .*/| none: nothing was found |/")" refused "the Earlier findings table has the row | none: nothing was found |: it holds one row per earlier finding"'
+check "then a report whose earlier findings are all resolved is recorded" \
+  'fx_extra="$(earlier a resolved b resolved c resolved d resolved e resolved)" fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
+check "when a report counts 2 low findings and tags only one, then it is refused" \
+  'fx_extra=$'"'"'\n- Low: tasks.md:3 [area: tasks] one\n- Low: tasks.md:4 untagged\n'"'"' fx_findings="Findings: 0 high, 0 medium, 2 low" refused "the report counts 2 findings on its Findings: line but tags 1 with [area: <name>]"'
+check "when a report counts 2 low findings and tags both, then it is recorded" \
+  'fx_extra="$two_f" fx_findings="Findings: 0 high, 0 medium, 2 low" fx "changes needed" && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+check "when a finding is tagged [area: tasks T004], then it is refused naming the tag" \
+  'fx_extra="$(earlier a resolved b resolved)"$'"'"'\n- Low: tasks.md:3 [area: tasks T004] x\n'"'"' fx_findings="Findings: 0 high, 0 medium, 1 low" refused "the finding tag [area: tasks T004] does not name its area as one word of [a-z0-9-]" "" "changes needed"'
+check "when a report has no Findings: line, then it is refused" \
+  'fx_extra="$(earlier a resolved b resolved)" fx_findings="" refused "the report has no line '"'"'Findings: <n> high, <n> medium, <n> low'"'"'"'
+check "when a changes needed report has two MISSING rows and Findings: 0 high, 0 medium, 1 low, then it is refused" \
+  'fx_extra="$(earlier a resolved b resolved)$one_f" fx_findings="Findings: 0 high, 0 medium, 1 low" refused "the report has 2 failing rows but counts 1 findings" "s/^\| FR-00([23]) \| proven \|$/| FR-00\1 | MISSING |/" "changes needed"'
+check "when it has two MISSING rows and Findings: 0 high, 0 medium, 2 low, both tagged, then it is recorded" \
+  'fx_extra="$(earlier a resolved b resolved)$two_f" fx_findings="Findings: 0 high, 0 medium, 2 low" fx "changes needed" "s/^\| FR-00([23]) \| proven \|$/| FR-00\1 | MISSING |/" \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+sedi '/^Findings:/d' "$(git rev-parse --git-common-dir)/landspec-review/plan-002-plan-review"
+check "when the last record has findings but no Findings: line (2.7.0), then it counts as 0 and the next report needs no Earlier findings table" \
+  'fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 cp $fd/spec.md "$TMP/spec0"; sedi -E 's/^- \*\*(FR|SC)-([0-9]+)\*\*/- \1-\2 (only in prose)/' $fd/spec.md
 check "when spec.md names FR- ids only in prose, then a ready is refused: spec.md has no functional requirement" \
   'refused "spec.md has no functional requirement: the requirements pass cannot pass"'
@@ -522,7 +565,7 @@ copy() {
 }
 # copy_report <Copy: value> [plan]: a ready report naming that copy.
 copy_report() {
-  if [[ "${2:-}" == plan ]]; then printf '%s\n\nCopy: %s\nPlan state: %s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(plan_tables)" "$1" "$("$r" state --plan)" > "$TMP/report.md"
+  if [[ "${2:-}" == plan ]]; then printf '%s\n\nCopy: %s\nPlan state: %s\nModel: claude-sonnet-4-7\nFindings: 0 high, 0 medium, 0 low\n\nAssessment: ready\n' "$(plan_tables)" "$1" "$("$r" state --plan)" > "$TMP/report.md"
   else printf 'What changed: x\n\nCopy: %s\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$1" "$(range)" > "$TMP/report.md"; fi
 }
 before="$(author)"

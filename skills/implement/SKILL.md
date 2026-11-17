@@ -112,7 +112,9 @@ check runs on the base itself, once per base commit, and only from "The release"
      the format of the others (`- [ ] Tnnn <what> in <files>`, then the sub-bullets `Comes from:`
      the item, `What`, `Completed when`); never change the description of a line that already ends in
      `— #N` (only its `(depends on …)` suffix).
-   - A plan review of those lines, as `issues.md` step 2 says (`review.sh record --plan`), then
+   - A plan review of those lines, as `issues.md` step 2 says (`review.sh record --plan`; every
+     round is read cold: the next one gets the last report and `review.sh diff --plan`, never
+     replies to its findings), then
      `issues.sh` for their issues, then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
    - `git switch --detach` there, last.
 

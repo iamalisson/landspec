@@ -66,9 +66,11 @@ Facts the author passes:
 - the project's test command (the constitution's **Commands** line or its landspec block);
 - for a fix round (a **delta**): the `REVIEWED=<sha>` the last `record` printed and the path of
   that round's report;
-- for a plan review after a `changes needed` round: the path of that round's report and the
-  author's one-line answer to each of its findings; in a full round (`issues.md` step 2), the
-  earlier rounds' findings, with no answers.
+- for a plan review: the feature folder; after a recorded round, the path of that round's report
+  and the output of `bash .specify/extensions/landspec/scripts/review.sh diff --plan`, and nothing
+  the author wrote about the findings. When the last record predates the kept copies (a 2.7.0
+  record: `diff --plan` dies "no plan review recorded yet"), the folder and that round's report,
+  with no diff: the round reads the whole folder.
 
 **A delta** reads `git diff <sha>..HEAD` only: it checks that each previous finding is fixed and
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
@@ -209,8 +211,12 @@ invariant.
 
 **Earlier round:** when the author passes the last round's report, a finding it raised keeps its
 severity unless the text it was about changed or you name a fact that round did not have; the
-report never narrows the review: read the whole plan again and run every pass. In a full round, each earlier
-finding passed is resolved (by the stated invariant or a changed text) or keeps its severity.
+report never narrows the review: read the whole plan again and run every pass, on the paragraphs
+the diff changed first. Fill a table under a heading exactly `### Earlier findings`: one row per
+finding of that report, its last cell `resolved` (with the line that resolves it, an invariant or
+a changed text, in a cell before it) or `open`, never `none:`. An `open` row is also a finding.
+`review.sh record --plan` refuses a report without that table when the last recorded round had
+findings (its `Findings:` total above 0), and a `ready` with an `open` row.
 
 ## Report
 
@@ -249,8 +255,13 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   never into a public PR.
 - **A plan report** has no risk map and no claims. In their place, in this order: one section per
   pass, exactly `### Pass: <name>` for `size`, `requirements`, `rules`, `claims`, `inputs`,
-  `guards`, `rollout`, `orderings`, each followed by its table; then the findings, each failing
-  row among them.
+  `guards`, `rollout`, `orderings`, each followed by its table; then `### Earlier findings` in a
+  round given an earlier report; then the findings, each failing row and each open earlier
+  finding among them. Each finding's scenario starts `[area: <name>]`, the part of the plan it is
+  about (a data-model section or a group of tasks) as one word of `[a-z0-9-]`, such as
+  `[area: area-log]`; reuse the earlier report's names for the same part. `record --plan` refuses
+  a report whose tagged findings do not number its `Findings:` total, a tag that is not one word,
+  a report with no `Findings:` line, and a total below its failing rows.
 - Before the last line, each on its own line: `Copy: <git rev-parse --show-toplevel>` (your copy,
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
@@ -259,7 +270,7 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   `review.sh record` refuses a report without them, a range that is not the
   branch's (or the delta's), a commit made after the review started, and a plan state that is not
   a hash or not the plan's current one. Then one count line, exactly
-  `Findings: <n> high, <n> medium, <n> low` (security ones included; `record` does not read it).
+  `Findings: <n> high, <n> medium, <n> low` (security ones included; `record --plan` checks it against the tagged findings).
 - The last line, exactly: `Assessment: ready`, or `Assessment: changes needed` when there is a
   High or Medium in the lines this review covers (the branch's diff, or a delta's commits). `review.sh record` reads that line; without it the report cannot be recorded.
 
