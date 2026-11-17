@@ -91,4 +91,95 @@ check "when the only *.tf file is at the root, then infra_dir is ." 'grep -qx "i
 
 check "no aws command is run (fake_aws records none)" '[[ "$(command -v aws)" == "$TMP/bin/aws" && ! -e "$TMP/aws.calls" ]] && aws sts get-caller-identity && [[ -s "$TMP/aws.calls" ]]'
 
+# aws.sh check: the identity verdicts, then --simulate.
+ln -s "$ROOT/extension/aws" .specify/extensions/landspec/aws # as spec-kit installs it
+rm -f "$TMP/aws.calls"
+who() { # who <arn>: the caller-identity answer for <arn>, pretty as the CLI prints it
+  printf '{\n    "UserId": "AROAEXAMPLE:s",\n    "Account": "111122223333",\n    "Arn": "%s"\n}' "$1"
+}
+role_tag() { # role_tag <access>: the get-role answer, its landspec:access tag after another tag
+  printf '{\n    "Role": {\n        "RoleName": "landspec-agent",\n        "Tags": [\n            {\n                "Key": "env",\n                "Value": "x"\n            },\n            {\n                "Key": "landspec:access",\n                "Value": "%s"\n            }\n        ]\n    }\n}' "$1"
+}
+# sim <decision> [<action>=<decision>...]: a simulation answer giving each action of the last
+# --action-names <decision>, except those named; on one line, as JSON may also come.
+sim() {
+  local d="$1" a v o; shift
+  printf '{"EvaluationResults": ['
+  for a in $(sed -n 's/.*--action-names \(.*\) --output json$/\1/p' "$TMP/aws.calls" | tail -n 1); do
+    v="$d"; for o in "$@"; do if [[ "${o%%=*}" == "$a" ]]; then v="${o#*=}"; fi; done
+    printf '{"EvalActionName": "%s", "EvalResourceName": "*", "EvalDecision": "%s", "MatchedStatements": []},' "$a" "$v"
+  done
+  printf '{}]}'
+}
+simcall() { grep "^iam simulate-principal-policy " "$TMP/aws.calls" | tail -n 1; }
+export AWS_IDENTITY_JSON AWS_ROLE_JSON AWS_SIM_JSON
+AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/landspec-agent/s)"; AWS_ROLE_JSON="$(role_tag build)"
+r=0; out="$("$a" check 2>&1)" || r=$?
+check "when the caller is assumed-role/landspec-agent/s with tag landspec:access=build, then IDENTITY=agent, ACCESS=build, exit 0" \
+  '((r == 0)) && grep -qx "IDENTITY=agent" <<<"$out" && grep -qx "ACCOUNT=111122223333" <<<"$out" && grep -qx "ROLE=landspec-agent" <<<"$out" && grep -qx "ACCESS=build" <<<"$out"'
+check "then each absent client entry is a missing: line, and .mcp.json (written by setup) is not" \
+  'grep -qxF "missing: .claude/settings.json: permissions.deny \"Read(./.env*)\"" <<<"$out" && [[ "$(grep -c "^missing: " <<<"$out")" == 9 ]]'
+AWS_ROLE_JSON="$(role_tag admin)"
+check "when the role tag is neither read nor build, then ACCESS=unknown" 'o="$("$a" check)" && grep -qx "ACCESS=unknown" <<<"$o"'
+AWS_ROLE_JSON=""
+check "when get-role answers nothing, then ACCESS=unknown and still exit 0" 'o="$("$a" check)" && grep -qx "ACCESS=unknown" <<<"$o"'
+mv .mcp.json "$TMP/mcp.keep"
+printf '{"permissions": {"allow": ["mcp__aws-mcp__aws___search_documentation", "mcp__aws-mcp__aws___read_documentation", "mcp__aws-mcp__aws___retrieve_skill", "mcp__aws-mcp__aws___list_regions", "mcp__aws-mcp__aws___get_regional_availability"], "ask": ["mcp__aws-mcp__aws___run_script", "mcp__aws-mcp__aws___get_presigned_url"], "deny": ["Read(./.env*)", "Read(**/*.tfstate*)"]}}\n' > .claude/settings.json
+check "when every client entry is there but .mcp.json is not, then the only missing: line is the aws-mcp server" \
+  '[[ "$("$a" check | grep "^missing: ")" == "missing: .mcp.json: the aws-mcp server" ]]'
+mv "$TMP/mcp.keep" .mcp.json
+
+key="AKIA$(printf 'Q%.0s' 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)" # built here: no key-shaped literal in this file
+AWS_IDENTITY_JSON="$(who arn:aws:iam::111122223333:user/dev)"
+r=0; out="$(AWS_ACCESS_KEY_ID="$key" AWS_SESSION_TOKEN="" "$a" check 2>&1)" || r=$?
+check "when the caller is user/dev with a long-lived key, then IDENTITY=user, exit 1, the line names the agent profile and the long-lived key, and never the key" \
+  '((r == 1)) && grep -qx "IDENTITY=user" <<<"$out" && grep -qx "ROLE=" <<<"$out" && grep -qx "ACCESS=unknown" <<<"$out" && grep -qxF "landspec: this is your own IAM user dev, not landspec-agent; use the profile that assumes landspec-agent (aws sso login --profile landspec-agent-dev)" <<<"$out" && grep -qxF "landspec: it is a long-lived access key: remove it from the environment" <<<"$out" && [[ "$out" != *AKIA* ]]'
+check "when the user has a session token too, then there is no long-lived key line" \
+  'rc=0; o="$(AWS_ACCESS_KEY_ID="$key" AWS_SESSION_TOKEN=t "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=user" <<<"$o" && [[ "$o" != *long-lived* && "$o" != *AKIA* ]]'
+check "when the user has no key in the environment (aws login), then there is no long-lived key line" \
+  'rc=0; o="$(env -u AWS_ACCESS_KEY_ID "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=user" <<<"$o" && [[ "$o" != *long-lived* ]]'
+AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/AWSReservedSSO_Admin_x/me)"
+r=0; out="$("$a" check --simulate 2>&1)" || r=$?
+check "when the caller is assumed-role/AWSReservedSSO_Admin_x/me, then IDENTITY=other-role, exit 1, and no simulation runs" \
+  '((r == 1)) && grep -qx "IDENTITY=other-role" <<<"$out" && grep -qxF "landspec: this is role AWSReservedSSO_Admin_x, not landspec-agent; use the profile that assumes landspec-agent (AWS_PROFILE=landspec-agent-dev)" <<<"$out" && ! grep -q simulate "$TMP/aws.calls"'
+AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/landspec-agent-old/s)"
+check "when the role only starts with the agent role name, then it is other-role" \
+  'rc=0; o="$("$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=other-role" <<<"$o"'
+check "when check gets an unknown flag or an extra argument, then it refuses with its usage" \
+  'fails_with "usage: aws.sh check [--simulate]" "$a" check --x && fails_with "usage: aws.sh check" "$a" check --simulate x'
+
+no_scanners; rm -f "$TMP/none/aws" # a PATH with no aws, whatever this machine has installed
+git status --porcelain --ignored > "$TMP/before"
+check "when aws is missing from PATH, then IDENTITY=no-cli, exit 1, and nothing is written" \
+  'rc=0; o="$(PATH="$TMP/none" "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-cli" <<<"$o" && grep -q "install AWS CLI v2" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
+check "when the aws call fails, then IDENTITY=no-credentials, exit 1, and nothing is written" \
+  'rc=0; o="$(AWS_FAIL=1 "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-credentials" <<<"$o" && grep -q "aws sso login" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
+
+AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/landspec-agent/s)"; AWS_ROLE_JSON="$(role_tag build)"; AWS_SIM_JSON=""
+"$a" check --simulate >/dev/null 2>&1 || true
+check "with --simulate, the role ARN is the agent's and --action-names holds organizations:LeaveOrganization and no *" \
+  'c="$(simcall)"; [[ "$c" == *"--policy-source-arn arn:aws:iam::111122223333:role/landspec-agent --action-names "* && " $c " == *" organizations:LeaveOrganization "* && "$c" != *"*"* ]]'
+check "with ACCESS=build, --action-names holds no secretsmanager:GetSecretValue" '[[ -n "$(simcall)" && " $(simcall) " != *" secretsmanager:GetSecretValue "* ]]'
+check "when the simulation answers no decision for an action, then it says unknown and exits 1" \
+  'rc=0; o="$(AWS_SIM_JSON="{\"EvaluationResults\": []}" "$a" check --simulate)" || rc=$?; ((rc == 1)) && grep -qx "unknown s3:DeleteBucket: the simulation gave no decision" <<<"$o"'
+check "when simulate-principal-policy fails, then check exits 1 and names the permission it needs" \
+  'AWS_FAIL=simulate-principal-policy; export AWS_FAIL; fails_with "iam:SimulatePrincipalPolicy on itself" "$a" check --simulate'
+AWS_SIM_JSON="$(sim implicitDeny s3:DeleteBucket=allowed)"
+r=0; out="$("$a" check --simulate)" || r=$?
+check "when the simulation answers allowed for s3:DeleteBucket, then ALLOWED s3:DeleteBucket and exit 1" \
+  '((r == 1)) && grep -qx "ALLOWED s3:DeleteBucket" <<<"$out" && [[ "$(grep -c "^ALLOWED " <<<"$out")" == 1 ]] && grep -qx "denied rds:DeleteDBInstance" <<<"$out"'
+AWS_SIM_JSON="$(sim implicitDeny kms:Decrypt=explicitDeny s3:DeleteBucket=explicitDeny)"
+r=0; out="$("$a" check --simulate)" || r=$?
+check "when every action is implicitDeny or explicitDeny, then every line is denied, one per action, and exit 0" \
+  '((r == 0)) && [[ "$(grep -c "^denied " <<<"$out")" == "$(grep -c . "$ROOT/extension/aws/denied-actions.txt")" ]] && ! grep -qE "^(ALLOWED|unknown) " <<<"$out" && grep -qx "denied s3:DeleteBucket" <<<"$out"'
+AWS_ROLE_JSON="$(role_tag read)"
+"$a" check --simulate >/dev/null 2>&1 || true
+check "with ACCESS=read, --action-names holds secretsmanager:GetSecretValue and s3:GetObject (for s3:GetObject*), and no *" \
+  'c="$(simcall)"; [[ " $c " == *" secretsmanager:GetSecretValue "* && " $c " == *" s3:GetObject "* && " $c " == *" organizations:LeaveOrganization "* && "$c" != *"*"* ]]'
+AWS_SIM_JSON="$(sim explicitDeny)"
+check "with ACCESS=read and all denied, then one denied line per action of both lists, exit 0" \
+  'o="$("$a" check --simulate)" && [[ "$(grep -c "^denied " <<<"$o")" == "$(cat "$ROOT/extension/aws/denied-actions.txt" "$ROOT/extension/aws/denied-read-actions.txt" | grep -c .)" ]]'
+check "the fake records only read calls (sts get-caller-identity, iam get-role, iam simulate-principal-policy)" \
+  'grep -q "^iam get-role " "$TMP/aws.calls" && ! grep -vE "^(sts get-caller-identity|iam get-role|iam simulate-principal-policy) " "$TMP/aws.calls"'
+
 exit "$FAIL"
