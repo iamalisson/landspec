@@ -379,7 +379,8 @@ check "then the PR step switches to the branch first, runs gh pr ready after pr.
 check "then nothing in the skill or the implementer merges a PR" '! grep -qF "gh pr merge" skills/implement/SKILL.md agents/implementer.md'
 # Spec 007 T011: the hand-over rule (FR-025) and Copilot's comments (FR-024) in every hand-over step.
 handover_ok() {
-  local t re='pr\.sh state <pr>`.{0,400}`CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`'
+  # 250, not more: RE_DUP_MAX is 255 in musl, the libc of the busybox CI job, so a larger bound fails to compile.
+  local t re='pr\.sh state <pr>`.{0,250}`CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`'
   t="$(flat < "$1")"; [[ "$t" =~ $re && "$t" == *'"CI still running"'* ]]
 }
 for f in skills/implement/SKILL.md extension/commands/pr.md extension/commands/branch.md extension/commands/issues.md; do
