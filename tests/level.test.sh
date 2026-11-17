@@ -439,4 +439,36 @@ echo "# stale" >> .github/dependabot.yml
 check "when a generated file has the marker from before 2.0.0, then it is re-created under the new one" \
   'grep -q "^# jit-speckit: managed file" .github/dependabot.yml && "$l" standard --no-branches >/dev/null && grep -q "^# landspec: managed file" .github/dependabot.yml && ! grep -q "stale" .github/dependabot.yml'
 
+# The AWS layer (006): .mcp.json and the "Cloud access" text exist only with aws: on.
+cd "$TMP"; rm -rf "$TMP/repo" "$TMP/origin.git"; new_repo standard
+cfgf=.specify/extensions/landspec/landspec-config.yml
+"$l" standard --no-branches >/dev/null
+check "when aws is unset (off by default), then no .mcp.json and no Cloud access section (SC-005)" \
+  '[[ ! -e .mcp.json ]] && ! grep -q "Cloud access" .specify/memory/constitution.md && ! grep -q "mcp.json" .specify/landspec-files.sha256'
+echo "aws: off" >> "$cfgf"; "$l" full --no-branches >/dev/null
+check "when aws is off, then still no .mcp.json and no Cloud access section" \
+  '[[ ! -e .mcp.json ]] && ! grep -q "Cloud access" .specify/memory/constitution.md'
+set_cfg aws on
+out="$("$l" standard --no-branches)"
+check "when aws is on and there is no .mcp.json, then level.sh writes it with the pinned proxy, run as the dev agent profile" \
+  'grep -qxF "created: .mcp.json" <<<"$out" && grep -qF "\"mcp-proxy-for-aws==1.7.0\"" .mcp.json && grep -qF "\"https://aws-mcp.us-east-1.api.aws/mcp\"" .mcp.json && grep -qF "\"AWS_REGION=us-east-1\"" .mcp.json && grep -qF "\"AWS_PROFILE\": \"landspec-agent-dev\"" .mcp.json && grep -q " .mcp.json$" .specify/landspec-files.sha256'
+check "then .mcp.json is valid JSON naming the aws-mcp server" \
+  'if command -v python3 >/dev/null; then python3 -c "import json; json.load(open(\".mcp.json\"))[\"mcpServers\"][\"aws-mcp\"]"; else grep -q "\"aws-mcp\": {" .mcp.json; fi'
+check "then the constitution has the Cloud access text of lite and standard, inside the landspec block, and not full" \
+  'b="$(sed -n "/^<!-- landspec:start/,/^<!-- landspec:end/p" .specify/memory/constitution.md)"; grep -qx "### Cloud access" <<<"$b" && grep -qx "### Cloud access in dev" <<<"$b" && grep -qF "resources that take no role" <<<"$b" && ! grep -q "Cloud access in prod" <<<"$b"'
+"$l" lite --no-branches >/dev/null
+check "when aws is on at lite, then the agent only reads: no dev applies" \
+  'grep -qx "### Cloud access" .specify/memory/constitution.md && ! grep -q "Cloud access in dev" .specify/memory/constitution.md'
+"$l" full --no-branches >/dev/null
+check "when aws is on at full, then prod changes go only through the pipeline" \
+  'grep -qx "### Cloud access in prod" .specify/memory/constitution.md && grep -qx "### Cloud access in dev" .specify/memory/constitution.md'
+printf '{ "mcpServers": {} }\n' > .mcp.json; cp .mcp.json "$TMP/mcp.mine"
+out="$("$l" standard --no-branches)"
+check "when .mcp.json already exists, then it is kept byte for byte and named kept" \
+  'cmp -s .mcp.json "$TMP/mcp.mine" && grep -qE "^kept: +\.mcp\.json$" <<<"$out"'
+rm .mcp.json; "$l" standard --no-branches >/dev/null; cp .mcp.json "$TMP/mcp.ours"
+out="$("$l" standard --no-branches)"
+check "when level.sh runs again over its own .mcp.json (no marker), then it is kept as it is" \
+  'cmp -s .mcp.json "$TMP/mcp.ours" && grep -qE "^kept: +\.mcp\.json$" <<<"$out"'
+
 exit "$FAIL"

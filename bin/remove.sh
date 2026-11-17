@@ -74,7 +74,7 @@ ours() { # ours <file>: created by landspec and not taken over by the user
   return 1
 }
 { (cd "$here/extension/scaffold" && find lite standard full -type f | sed 's#^[a-z]*/##')
-  printf '%s\n' .github/workflows/ci.yml .github/workflows/security.yml .github/dependabot.yml .github/CODEOWNERS
+  printf '%s\n' .github/workflows/ci.yml .github/workflows/security.yml .github/dependabot.yml .github/CODEOWNERS .mcp.json
 } | sort -u | while IFS= read -r f; do
   if ours "$f"; then rm "$f"; gone "$f"; fi
 done

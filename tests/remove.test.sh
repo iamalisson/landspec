@@ -239,4 +239,26 @@ git init --quiet "$TMP/oldname"; mkdir -p "$TMP/oldname/.specify/extensions/jit"
 check "when the project still has the old jit folder, then remove refuses and names init, and deletes nothing" \
   'fails_with "run /landspec:init once" "$ROOT/bin/remove.sh" "$TMP/oldname" && [[ -d "$TMP/oldname/.specify/extensions/jit" ]]'
 
+# .mcp.json (aws: on) carries no marker: only its recorded SHA-256 says it is landspec's.
+mcp_repo() {
+  cd "$TMP"; rm -rf "$TMP/repo" "$TMP/origin.git"; new_repo lite
+  echo "aws: on" >> .specify/extensions/landspec/landspec-config.yml
+  "$SCRIPTS/level.sh" lite --no-branches >/dev/null
+}
+mcp_repo
+out="$(rm_out)"
+check "when the generated .mcp.json is unchanged, then remove.sh deletes it" \
+  '[[ ! -e .mcp.json ]] && grep -qxF "removed: .mcp.json" <<<"$out"'
+mcp_repo
+printf '{ "mcpServers": {} }\n' > .mcp.json
+out="$(rm_out)"
+check "when the generated .mcp.json was edited, then remove.sh keeps it" \
+  '[[ "$(cat .mcp.json)" == "{ \"mcpServers\": {} }" ]] && grep -qxF "kept (edited): .mcp.json" <<<"$out"'
+cd "$TMP"; rm -rf "$TMP/repo" "$TMP/origin.git"; new_repo lite
+printf '{ "mcpServers": {} }\n' > .mcp.json
+"$SCRIPTS/level.sh" lite --no-branches >/dev/null
+out="$(rm_out)"
+check "when a .mcp.json landspec never wrote is there (aws off), then remove.sh leaves it and says nothing of it" \
+  '[[ -f .mcp.json ]] && ! grep -qF ".mcp.json" <<<"$out"'
+
 exit "$FAIL"

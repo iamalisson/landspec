@@ -27,3 +27,6 @@ SEMGREP_DIGEST="2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
 # that have been out for a few weeks.
 TRIVY_VERSION="0.76.1"
 TRIVY_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0" # Linux-64bit tarball
+# The AWS MCP proxy (.mcp.json, aws: on), run by uvx from PyPI. bin/check-tools.sh reads GitHub
+# releases only, so bump this by hand, to a release that has been out a few weeks.
+MCP_PROXY_VERSION="1.7.0"
