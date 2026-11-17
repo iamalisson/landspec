@@ -181,6 +181,7 @@ shallow_repo() {
 
 # plan_tables [<dir>]: every pass of review.sh's PASSES as a passing table: one size row per task id of
 # <dir>/tasks.md, one requirements row per FR/SC id <dir>/spec.md defines (default: the active feature's folder).
+# shellcheck disable=SC2120 # fx in review.test.sh passes <dir>; ShellCheck reads this file alone
 plan_tables() {
   local d="${1:-$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json)}" p id
   for p in $(sed -n 's/^PASSES="\(.*\)"$/\1/p' "$SCRIPTS/review.sh"); do
