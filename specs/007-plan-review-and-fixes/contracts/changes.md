@@ -104,6 +104,25 @@ It works in a throwaway worktree at `HEAD`, removed on exit (also on an interrup
   `Skills: none matched`, after `Model:` in a report. A plan report is unchanged.
 - The PR's *Evidence* shows the implementer's line; `Skills: not reported` when it returned none.
 
+## `pr.sh state` (#244)
+
+- `pr.sh state <pr>` prints `CONFLICT=no|yes|unknown`, `CI=pass|pending|fail <job> (<conclusion>),…|none`
+  and `COPILOT=pending|comments <n> REPORT=<file> [RESOLVE=<id>,…]|unavailable <reason>|clean|none`
+  (FR-022 gives each case and their order: `pending` on an open request, then `comments`, then
+  `unavailable`, `clean`, `none`; no clock, no push record). CI is reported, never waited for. The
+  report: `## Findings`, then
+  `- <path>:<line> thread=<id> [(outdated)] <first line>` per unanswered Copilot thread, the full
+  comment indented below. It only reads; it never requests a review.
+- `pr.sh state <pr> --reply <thread id> [<file>]` posts the reply and resolves the thread, or only
+  resolves one already replied to; prints `REPLIED=<id>` or `RESOLVED=<id>`; a failed resolve exits 1
+  after `REPLIED=`. Refused, posting nothing: a thread not on the PR, not Copilot's, already
+  resolved, or unreplied with no or an empty file.
+- implement.sh status: a `changes` mark on the current head is `fix` even over a `ready` record.
+- Hand-over rule (implement End, pr.md step 7, branch.md on a run again, issues.md step 6): a PR is
+  listed as ready to merge only on `CONFLICT=no` and `COPILOT=none|clean|unavailable`; any other is
+  listed with its reason; CI is shown beside each PR (passed, still running, failed jobs) and never
+  holds it back; every PR is written `[#N](<url>)`.
+
 ## Docs
 
 `docs/reference.md`: the plan review (passes, tables, earlier findings, area tags, Simplify,
