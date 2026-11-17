@@ -270,6 +270,25 @@ check "when skills/adopt is read, then it names the mutmut command that exits no
 check "when docs/reference.md is read, then adding tests to an existing file needs no explanation, a deletion, an edit or an added skip does" \
   'grep -qF "adding tests to an existing file needs no explanation; a deletion, an edit or an added skip does" docs/reference.md'
 
+# Spec 007 T009 (FR-020, FR-021, SC-010): one rule weighs the installed skills, and its Skills: line reaches the PR.
+flat() { tr "\n" " " | tr -s " "; }
+sk_sec="$(sed -n "/^## Installed skills and MCP servers/,/^## Method/p" extension/commands/review.md | flat)"
+sk_rep="$(sed -n "/^## Report/,\$p" extension/commands/review.md | flat)"
+check "when review.md is read, then its Installed skills section has YES/NO - <reason>, invoke every YES, the landspec:*/speckit-* exclusion, NO - needs the user, NO - failed and the reviewer's limits" \
+  '[[ "$sk_sec" == *"\`<name> - YES/NO - <reason>\`"* && "$sk_sec" == *"invoke every YES"* && "$sk_sec" == *"(\`landspec:*\`, \`speckit-*\`)"* \
+   && "$sk_sec" == *"NO - needs the user"* && "$sk_sec" == *"NO - failed: <error>"* && "$sk_sec" == *"a plan review and a feature review do not evaluate skills"* \
+   && "$sk_sec" == *"never makes a reviewer write a file, run more than its Method says or change the report'"'"'s shape"* && "$sk_sec" == *"it never widens the task'"'"'s scope"* ]]'
+check "when review.md's Report and agents/implementer.md's return are read, then each has the Skills: line with none matched" \
+  '[[ "$sk_rep" == *"has \`Skills: <name> (<what it was used for>), …\` or \`Skills: none matched\`"* ]] \
+   && grep -qF "the \`Skills: <name> (<what it was used for>), …\` or \`Skills: none matched\` line" agents/implementer.md'
+check "when the implementer, the reviewer and the single-task path are read, then each points to the Installed skills and MCP servers section first" \
+  'grep -qF "3. Follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\` first, before writing code." agents/implementer.md \
+   && grep -qF "3. In a task review (full or delta), follow the \"Installed skills and MCP servers\" section of commands/review.md before reading the diff" agents/reviewer.md \
+   && [[ "$(flat < extension/commands/branch.md)" == *"Before writing code, follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\`"* ]]'
+check "when OPEN and pr.md step 5 are read, then the Skills: line goes in Evidence, with not reported when the implementer gave none" \
+  '[[ "$(flat < skills/implement/SKILL.md)" == *"its \`Skills:\` line goes in *Evidence* as it returned it; an implementer that returned none, or a run resumed after the line was lost, gives \`Skills: not reported\`, never \`none matched\`"* \
+   && "$(sed -n "/^5\. /,/^6\. /p" extension/commands/pr.md | flat)" == *"\`## Evidence\`: one visible line per result"*"showing the task'"'"'s *Completed when* is met, and the implementer'"'"'s \`Skills:\` line"*"\`Skills: not reported\` when it gave none"* ]]'
+
 # The installed copies (specify extension add --dev extension --force) are what this repo runs: they match the source.
 stale=""
 for f in extension/commands/*.md extension/scripts/*.sh; do

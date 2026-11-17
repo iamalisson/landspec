@@ -106,7 +106,9 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
      and any warning about it, and the risk map as paths only (`Risk map (round 1)` and, after a
      delta, `Risk map (fix round)`). It never copies the report's text;
    - `## Evidence`: one visible line per result (e.g. "tests 42/42 · lint clean · scanners: no
-     findings"), showing the task's *Completed when* is met. On **full** the script refuses a body
+     findings"), showing the task's *Completed when* is met, and the implementer's `Skills:` line
+     (`Skills: <name> (<what it was used for>), …`, `Skills: none matched`, or `Skills: not
+     reported` when it gave none). On **full** the script refuses a body
      without this section.
    - anything long (check output, scan details, false positives with their reason, screenshots)
      goes in a collapsible block, one per topic:

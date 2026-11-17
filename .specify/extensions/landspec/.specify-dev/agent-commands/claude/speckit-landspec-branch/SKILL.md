@@ -23,5 +23,7 @@ any code is touched.
      missing: the issue, the spec PR, the analysis, or a clean working tree. Never work around
      it: no stash, no reset, no checkout of other files.
 3. On success, print `On <BRANCH> for <TASK> (#<ISSUE>)` and continue `/speckit-implement`
-   with **only that task**. Follow the constitution's defaults while implementing.
+   with **only that task**. Before writing code, follow the "Installed skills and MCP servers" section
+   of `.specify/extensions/landspec/commands/review.md`, and put its `Skills:` line in the PR's
+   *Evidence*. Follow the constitution's defaults while implementing.
 4. Do not tick the task's checkbox in `tasks.md`. The task is done when its issue closes.
