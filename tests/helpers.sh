@@ -92,6 +92,26 @@ EOF
   export PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh.log" GH_N="$TMP/gh.n" GH_PR="$TMP/gh.pr" GH_CLOSED="$TMP/gh.closed" GH_OPEN="$TMP/gh.open" GH_ALL="$TMP/gh.all" GH_REL="$TMP/gh.rel" GH_RELEASES="$TMP/gh.releases"
 }
 
+# Fake terraform: `show -json <planfile>` prints the file $TF_PLAN_JSON names, `show -no-color
+# <planfile>` the file $TF_PLAN_TEXT names; a planfile that is missing or says "corrupt" fails as
+# Terraform does. Every call is logged to $TF_LOG.
+fake_terraform() {
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/terraform" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$TF_LOG"
+pf="${*: -1}"
+if [[ ! -f "$pf" ]] || grep -q corrupt "$pf"; then echo "Error: Failed to read the given file as a state or plan file" >&2; exit 1; fi
+case "$1 $2" in
+  "show -json") cat "$TF_PLAN_JSON" ;;
+  "show -no-color") cat "$TF_PLAN_TEXT" ;;
+  *) exit 1 ;;
+esac
+EOF
+  chmod +x "$TMP/bin/terraform"
+  export PATH="$TMP/bin:$PATH" TF_LOG="$TMP/tf.log"
+}
+
 # no_scanners: builds $TMP/none, a PATH with every system tool except the scanners (and the tools
 # that could fetch them), so a scan never depends on what this machine has installed, nor on the network.
 no_scanners() {

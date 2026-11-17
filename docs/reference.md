@@ -229,6 +229,33 @@ A harness that rewrites files in place also needs a lock: two runs at once would
 the source. landspec's reviewer runs in its own copy of the reviewed commit (`isolation:
 "worktree"`), so a run it makes there never touches the author's checkout.
 
+## Terraform plan
+
+Only with `aws: on`, at `standard` and `full`, and only for a diff that touches a `*.tf` file,
+`pr.sh task` and `pr.sh fix` need the plan recorded for this exact diff. In the root you changed:
+
+```bash
+terraform plan -out=tfplan   # git-ignore tfplan
+bash .specify/extensions/landspec/scripts/tfplan.sh record tfplan   # [--chdir <root>]
+```
+
+`tfplan.sh` reads `terraform show -json` with `python3`, or the text of `terraform show -no-color`
+without it (`tofu` when `terraform` is missing), and writes one section per root to
+`.git/landspec-tfplan/<diff id>`: the create, change and destroy counts as Terraform's `Plan:` line
+gives them (a replace is one create and one destroy), and the address of each stateful resource
+(databases, buckets, tables, KMS keys, volumes, secrets, user pools) it replaces or destroys.
+Addresses only: no attribute value is ever copied. Recording a root again replaces its section.
+It refuses a plan file Terraform cannot read, one older than the last commit, checkout or rebase,
+and one made while a `*.tf` file is uncommitted. Any later commit makes a new diff, which needs a
+new plan.
+
+The PR is refused without a record, or without a section for each root in `aws_prod_paths` whose
+`*.tf` files, or the local modules (`source = "./…"` or `"../…"`, followed recursively) they use,
+the diff touches; the refusal names `infra_dir` as the folder to plan in. With the record, the
+body gets a `## Terraform plan` section, one block per root, the stateful resources first. The
+check binds the plan to the diff, not to the tree it came from: a plan made in another checkout
+of the same commit is not caught.
+
 ## Measurements
 
 The scripts append one line per step to `.git/landspec-events`, shared by every worktree of the

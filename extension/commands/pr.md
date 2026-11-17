@@ -46,6 +46,14 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
      scanner (a `failed` one names its log). The script in step 6 refuses a PR without a scan for
      this diff; findings and `missing` or `failed` scanners do not refuse, and the script itself
      adds a "Scanners not run" line naming each one to the body.
+   - **The Terraform plan**, only when the config has `aws: on`, the level is not `lite` and the
+     diff touches a `*.tf` file. In each root the diff touches (its `*.tf` files, or a local module
+     it uses), after the last commit: `terraform plan -out=tfplan` (git-ignore `tfplan`), then
+     `bash .specify/extensions/landspec/scripts/tfplan.sh record tfplan` from that folder. It
+     records addresses and counts only, never a value, and prints `PLAN=` and each `STATEFUL=`
+     resource it replaces or destroys. Step 6 refuses without a record
+     for this diff, or without one for each touched root in `aws_prod_paths`, and adds the
+     `## Terraform plan` section to the body. Any later commit needs a new plan.
 
    Then launch the reviewer exactly as `commands/review.md` (`/speckit-landspec-review`) says: one
    `landspec:reviewer` subagent, with `model` and `isolation: "worktree"` as review.md says, given that file and the facts it lists (`base:` is
