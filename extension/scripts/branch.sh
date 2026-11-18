@@ -30,10 +30,7 @@ else fdir="$(feature_dir)"; fi
 # The feature mode: one branch per feature, made when the spec is written.
 if [[ -z "$task" ]]; then
   name="$(basename "$fdir")"
-  if legacy_feature "$fdir"; then
-    echo "LEGACY=$name"
-    die "$name was started under the per-task flow: finish its open task PRs as ordinary PRs, then delete the ' — #N' suffix (and close the issue) of each remaining task in $fdir/tasks.md to continue it"
-  fi
+  refuse_legacy "$fdir"
   base="$(base_branch)"; branch="$(feature_branch "$fdir")"
   if [[ "$(git branch --show-current)" != "$branch" ]]; then
     # The spec folder travels with us; anything else uncommitted is refused before any switch.
