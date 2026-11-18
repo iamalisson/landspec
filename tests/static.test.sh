@@ -498,14 +498,14 @@ check "then README and help list it" 'grep -qF "/landspec:report" README.md && g
 # The AWS agent role (contracts/template.md). Read with awk, so the bash 3.2 job (no python3) runs it too.
 role=extension/aws/agent-role.yaml
 if python3 -c "import yaml" 2>/dev/null; then
-  check "when agent-role.yaml is parsed, then it is plain YAML with the five parameters and their defaults" \
-    'python3 -c "import sys, yaml; p = yaml.safe_load(open(sys.argv[1]))[\"Parameters\"]; sys.exit(0 if {k: v.get(\"Default\") for k, v in p.items()} == {\"RoleName\": \"landspec-agent\", \"Access\": \"read\", \"TrustMode\": \"sso\", \"PermissionSetName\": \"\", \"LoginUserNames\": \"\"} else 1)" '"$role"
+  check "when agent-role.yaml is parsed, then it is plain YAML with the four parameters and their defaults" \
+    'python3 -c "import sys, yaml; p = yaml.safe_load(open(sys.argv[1]))[\"Parameters\"]; sys.exit(0 if {k: v.get(\"Default\") for k, v in p.items()} == {\"RoleName\": \"landspec-agent\", \"Access\": \"read\", \"TrustMode\": \"sso\", \"PermissionSetName\": \"\"} else 1)" '"$role"
 else
   check "when agent-role.yaml is read, then no value starts with a ! tag (python3 with PyYAML not available here)" \
     '! grep -qE "(:|^ *-) +!" '"$role"
 fi
-check "then Access allows read and build, and TrustMode sso and login" \
-  'p="$(awk "/^Parameters:/{f=1;next} /^[A-Z]/{f=0} f" '"$role"')"; for v in read build sso login; do grep -qx "      - $v" <<<"$p"; done'
+check "then Access allows read and build, and TrustMode sso alone (login mode removed: research R3 unconfirmed)" \
+  'p="$(awk "/^Parameters:/{f=1;next} /^[A-Z]/{f=0} f" '"$role"')"; for v in read build sso; do grep -qx "      - $v" <<<"$p"; done; ! grep -qE "LoginUserNames|SignInSessionArn|TrustLogin|^ *- login$" '"$role"
 # "<Sid> <Effect> <action>" per action, "<Sid> <Effect> @<resource>" per resource; "(no-Sid)" when a statement has none.
 statements() {
   awk '/^ *- Sid: /{s=$NF; a=0; r=0; next} /^ *- Effect: /{s="(no-Sid)"; e=$NF; next} /^ *Effect: /{e=$NF; next}
@@ -534,9 +534,9 @@ role_problems() {
   grep -qxF '    AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"' <<<"$(awk '/^  PermissionSetName:/{f=1;next} /^  [A-Za-z]/{f=0} f' "$t")" || echo "PermissionSetName does not refuse * and ?"
   for f in UpdateStack DeleteStack CreateChangeSet ExecuteChangeSet SetStackPolicy; do grep -qxF "DenyOwnStack Deny cloudformation:$f" <<<"$st" || echo "the stack deny lacks cloudformation:$f"; done
   grep -qxF 'DenyOwnStack Deny @arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*' <<<"$st" || echo "the stack deny is not on \${AWS::StackName}"
-  grep -qF 'sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_*' "$t" || echo "the trust does not match /*AWSReservedSSO_<PermissionSetName>_*"
+  grep -qE 'sso\.amazonaws\.com/\*AWSReservedSSO_\$\{PermissionSetName\}_\?{16}$' "$t" || echo "the trust does not end /*AWSReservedSSO_<PermissionSetName>_ and 16 ?"
   ! grep -qF 'sso.amazonaws.com/*/AWSReservedSSO_' "$t" || echo "the trust uses sso.amazonaws.com/*/AWSReservedSSO_ (misses us-east-1)"
-  grep -qF '"Null":' "$t" && grep -qF 'aws:SignInSessionArn: "false"' "$t" || echo "the login trust does not require aws:SignInSessionArn"
+  [[ "$(grep -c "^ *- Sid: Trust" "$t")" == 1 ]] || echo "not one trust statement"
   grep -qx "      MaxSessionDuration: 3600" "$t" || echo "MaxSessionDuration is not 3600"
   grep -qx "        - Key: landspec:access" "$t" || echo "no landspec:access tag"
   grep -oE "iam::aws:policy/[A-Za-z]+" "$t" | grep -vxE "iam::aws:policy/(ReadOnlyAccess|PowerUserAccess)" | sed "s/^/a managed policy other than ReadOnlyAccess or PowerUserAccess: /" || true
@@ -545,8 +545,8 @@ role_problems() {
 aws_lists="extension/aws/denied-actions.txt extension/aws/denied-read-actions.txt"
 problems="$(role_problems "$role" $aws_lists | tr "\n" ";")"
 check "when agent-role.yaml is checked against contracts/template.md, then nothing is wrong${problems:+ — $problems}" '[[ -z "$problems" ]]'
-check "then its Deny holds the 26 actions of denied-actions.txt and its read deny the 20 of denied-read-actions.txt" \
-  '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 26 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 20 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 26 ]]'
+check "then its Deny holds the 26 actions of denied-actions.txt and its read deny the 23 of denied-read-actions.txt" \
+  '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 26 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 23 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 26 ]]'
 check "then the read deny exists only when Access=read" \
   'grep -B2 -- "- Sid: DenyReadData" '"$role"' | grep -q -- "- IsRead"'
 # The failure paths: a broken copy is named.
@@ -570,6 +570,14 @@ check "when the stack deny names a fixed stack, then the check names it" \
   'broken "the stack deny is not on \${AWS::StackName}" "{sub(/stack\\/\\\$\\{AWS::StackName\\}/, \"stack/landspec-agent\")} 1"'
 check "when the trust uses sso.amazonaws.com/*/AWSReservedSSO_, then the check names it" \
   'broken "the trust uses sso.amazonaws.com/*/AWSReservedSSO_" "{sub(/sso.amazonaws.com\\/\\*AWSReservedSSO_/, \"sso.amazonaws.com/*/AWSReservedSSO_\")} 1"'
+check "when the trust ends _* again, then the check names it" \
+  'broken "the trust does not end /*AWSReservedSSO_<PermissionSetName>_ and 16 ?" "{sub(/_\\?+$/, \"_*\")} 1"'
+check "when a second trust statement is added, then the check names it" \
+  'broken "not one trust statement" "{print} /^        Statement:/{print \"          - Sid: TrustLogin\"}"'
+check "then the trust ARN matches permission set Dev's role and not Dev_ReadOnly's, nor a short suffix (ArnLike ? is one character)" \
+  'pat="$(grep -oE "sso\.amazonaws\.com/\*AWSReservedSSO_.*" '"$role"')"; pat="${pat//\$\{PermissionSetName\}/Dev}"; r=sso.amazonaws.com/eu-west-1/AWSReservedSSO_
+   [[ "sso.amazonaws.com/AWSReservedSSO_Dev_0123456789abcdef" == $pat && "${r}Dev_0123456789abcdef" == $pat ]] \
+   && [[ "${r}Dev_ReadOnly_0123456789abcdef" != $pat && "${r}Dev_0123456789abcde" != $pat && "${r}Dev_0123456789abcdef0" != $pat ]]'
 check "when sso-admin:* is put back in the template and the list, then the check names it" \
   'broken "an entry uses sso-admin:" "{sub(/- sso:\\*$/, \"- sso-admin:*\")} 1" "{sub(/^sso:\\* sso:/, \"sso-admin:* sso-admin:\")} 1"'
 check "when PermissionSetName loses its AllowedPattern, then the check names it" \

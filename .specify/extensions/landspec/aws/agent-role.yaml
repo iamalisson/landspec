@@ -23,17 +23,12 @@ Parameters:
     Default: sso
     AllowedValues:
       - sso
-      - login
-    Description: sso (IAM Identity Center) or login (aws login, named IAM users)
+    Description: sso (IAM Identity Center, the only mode; research R3 could not confirm another)
   PermissionSetName:
     Type: String
     Default: ""
     AllowedPattern: "^[A-Za-z0-9+=,.@_-]*$"
-    Description: Identity Center permission set whose users may assume the role (required for sso)
-  LoginUserNames:
-    Type: CommaDelimitedList
-    Default: ""
-    Description: Comma-separated IAM user names that may assume the role through aws login (required for login)
+    Description: Identity Center permission set whose users may assume the role (required)
 
 Rules:
   SsoNeedsPermissionSet:
@@ -48,28 +43,12 @@ Rules:
                 - Ref: PermissionSetName
                 - ""
         AssertDescription: TrustMode=sso needs PermissionSetName
-  LoginNeedsUserNames:
-    RuleCondition:
-      Fn::Equals:
-        - Ref: TrustMode
-        - login
-    Assertions:
-      - Assert:
-          Fn::Not:
-            - Fn::Contains:
-                - Ref: LoginUserNames
-                - ""
-        AssertDescription: TrustMode=login needs LoginUserNames (no empty name)
 
 Conditions:
   IsRead:
     Fn::Equals:
       - Ref: Access
       - read
-  IsSso:
-    Fn::Equals:
-      - Ref: TrustMode
-      - sso
 
 Resources:
   AgentRole:
@@ -77,7 +56,7 @@ Resources:
     Properties:
       RoleName:
         Ref: RoleName
-      Description: landspec agent role, assumed from a short-lived human sign-in
+      Description: landspec agent role, assumed from an IAM Identity Center sign-in
       MaxSessionDuration: 3600
       Tags:
         - Key: landspec:access
@@ -86,34 +65,19 @@ Resources:
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
-          - Fn::If:
-              - IsSso
-              # Research R2: the match is on the role ARN; /*AWSReservedSSO_ covers both region forms.
-              - Sid: TrustSso
-                Effect: Allow
-                Principal:
-                  AWS:
-                    Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:root
-                Action:
-                  - sts:AssumeRole
-                Condition:
-                  ArnLike:
-                    aws:PrincipalArn:
-                      Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_*
-              # Research R3: only an aws login session carries aws:SignInSessionArn; a key-signed call does not.
-              - Sid: TrustLogin
-                Effect: Allow
-                Principal:
-                  AWS:
-                    Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:root
-                Action:
-                  - sts:AssumeRole
-                Condition:
-                  StringEquals:
-                    aws:username:
-                      Ref: LoginUserNames
-                  "Null":
-                    aws:SignInSessionArn: "false"
+          # Research R2: the match is on the role ARN; /*AWSReservedSSO_ covers both region forms, and the
+          # 16 ? (the role's hex suffix) keep permission set Dev from matching Dev_ReadOnly's role.
+          - Sid: TrustSso
+            Effect: Allow
+            Principal:
+              AWS:
+                Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:root
+            Action:
+              - sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:PrincipalArn:
+                  Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_${PermissionSetName}_????????????????
       ManagedPolicyArns:
         - Fn::If:
             - IsRead
@@ -208,12 +172,15 @@ Resources:
                       - dynamodb:BatchGetItem
                       - dynamodb:Query
                       - dynamodb:Scan
+                      - dynamodb:PartiQLSelect
+                      - dynamodb:GetRecords
                       - rds-db:connect
                       - rds-data:ExecuteStatement
                       - logs:StartLiveTail
                       - lambda:GetFunction
                       - lambda:GetFunctionConfiguration
                       - logs:GetLogEvents
+                      - logs:GetLogRecord
                       - logs:FilterLogEvents
                       - logs:GetQueryResults
                       - athena:GetQueryResults
