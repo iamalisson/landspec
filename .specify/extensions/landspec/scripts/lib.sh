@@ -160,12 +160,16 @@ refuse_legacy() {
   die "$(basename "$1") was started under the per-task flow: finish its open task PRs as ordinary PRs, then delete the ' — #N' suffix (and close the issue) of each remaining task in $1/tasks.md to continue it"
 }
 
+# feature_ref <feature dir>: the feature branch's ref, the local one when present, else origin's.
+feature_ref() {
+  local b; b="$(feature_branch "$1")"
+  if git show-ref --verify --quiet "refs/heads/$b"; then echo "refs/heads/$b"; else echo "refs/remotes/origin/$b"; fi
+}
+
 # task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
 # landing commit, a commit whose message has the line "Landspec-Task: <Tnnn>".
 task_done() {
-  local b r; b="$(feature_branch "$1")"; r="refs/heads/$b"
-  git show-ref --verify --quiet "$r" || r="refs/remotes/origin/$b"
-  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$r" -- 2>/dev/null)" ]]
+  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$(feature_ref "$1")" -- 2>/dev/null)" ]]
 }
 
 # plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"
