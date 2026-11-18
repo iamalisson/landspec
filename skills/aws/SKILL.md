@@ -26,7 +26,7 @@ description: "Turn on landspec's AWS access layer in a project: asks which AWS p
    other `aws` command, or edit a policy or role yourself.
 6. Run `bash .specify/extensions/landspec/scripts/aws.sh check` (after setup, once the user
    says the stack is deployed and the profile is in use) and show its output as is:
-   `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=`, each `missing:` entry and the refusal line, which
+   `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=`, `PROD=`, each `missing:` entry and the refusal line, which
    says what to fix. It makes read calls only and never prints a key. When the user asks to prove
    the denies, run it with `--simulate` and show each `denied` / `ALLOWED` line; an `ALLOWED` line
    means the role grants an action it must not: the user fixes the stack, never you.

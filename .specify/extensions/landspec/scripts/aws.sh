@@ -25,9 +25,10 @@ client_entries=(allow:mcp__aws-mcp__aws___search_documentation allow:mcp__aws-mc
 
 #   aws.sh check [--simulate]
 # Which identity Claude's AWS calls run as: only the agent role passes (exit 0). Prints IDENTITY=,
-# ACCOUNT=, ROLE=, ACCESS= and a "missing: <entry>" line per absent .mcp.json server or client
-# entry; --simulate asks IAM's policy simulator whether each denied action is denied. Read calls
-# only (sts get-caller-identity, iam get-role, iam simulate-principal-policy); never prints a key.
+# ACCOUNT=, ROLE=, ACCESS=, PROD= (the prod profiles, or none: information only, never the verdict)
+# and a "missing: <entry>" line per absent .mcp.json server or client entry; --simulate asks
+# IAM's policy simulator whether each denied action is denied. Read calls only (sts
+# get-caller-identity, iam get-role, iam simulate-principal-policy); never prints a key.
 if [[ "${1:-}" == check ]]; then
   case "${2:-}" in "") sim=false ;; --simulate) sim=true ;; *) die "usage: aws.sh check [--simulate]" ;; esac
   (($# <= 2)) || die "usage: aws.sh check [--simulate]"
@@ -59,6 +60,8 @@ if [[ "${1:-}" == check ]]; then
   esac
   echo "IDENTITY=$verdict"; echo "ACCOUNT=$account"
   echo "ROLE=$([[ "$verdict" == user ]] || echo "$name")"; echo "ACCESS=$access"
+  prod="$(cfg aws_prod_profiles "")"
+  echo "PROD=${prod:-none: no prod configured (one account only; /landspec:aws --prod-profiles <names> adds one)}"
   grep -qF '"aws-mcp"' .mcp.json 2>/dev/null || echo "missing: .mcp.json: the aws-mcp server"
   for e in "${client_entries[@]}"; do
     if ! grep -qF "\"${e#*:}\"" .claude/settings.json 2>/dev/null; then echo "missing: .claude/settings.json: permissions.${e%%:*} \"${e#*:}\""; fi
