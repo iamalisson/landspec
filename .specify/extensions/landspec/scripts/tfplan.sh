@@ -12,7 +12,9 @@
 #   tfplan.sh gate
 #       pr.sh's plan gate: only with `aws: on`, a level other than lite and a diff that touches a
 #       *.tf file. Refuses without a record, or without a section for each touched root in
-#       aws_prod_paths; otherwise prints the "## Terraform plan" section for the PR body.
+#       aws_prod_paths; otherwise prints the "## Terraform plan" section for the PR body. A diff
+#       with no *.tf file but CDK, Pulumi or CloudFormation files gets that section with one
+#       "Skipped:" line naming them instead.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -133,8 +135,16 @@ case "${1:-}" in
     ;;
   gate)
     [[ "$(cfg aws off)" == on && "$(landspec_level)" != lite ]] || exit 0
-    touched="$(git diff --name-only --no-renames "$(diff_base)" HEAD -- '*.tf')"
-    [[ -n "$touched" ]] || exit 0
+    changed="$(git diff --name-only --no-renames "$(diff_base)" HEAD)"
+    touched="$(grep -E '\.tf$' <<<"$changed" || true)"
+    if [[ -z "$touched" ]]; then
+      # Files only, never a folder: infra_dir may be ".", and Terraform's own *.tfvars must not match.
+      other="$(grep -E '(^|/)cdk\.json$|(^|/)Pulumi(\.[^/]+)?\.ya?ml$|\.template\.(json|ya?ml)$' <<<"$changed" || true)"
+      [[ -n "$other" ]] || exit 0
+      names="$(awk 'NR <= 3 { printf "%s%s", (NR > 1 ? ", " : ""), $0 } END { if (NR > 3) printf " and %d more", NR - 3 }' <<<"$other")"
+      printf '## Terraform plan\n\nSkipped: this diff changes infrastructure code that is not Terraform (%s); the plan gate covers Terraform only.\n' "$names"
+      exit 0
+    fi
     rec="$(diff_record landspec-tfplan)" || exit 1
     need="no Terraform plan recorded for this diff; run terraform plan -out=tfplan in"
     run="then bash .specify/extensions/landspec/scripts/tfplan.sh record tfplan"

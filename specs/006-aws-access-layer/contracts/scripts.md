@@ -72,6 +72,11 @@ Only when `aws: on`, the level is standard or full, and the diff touches a `*.tf
 - No record for this diff, or none for a touched root in `aws_prod_paths`: `die "no Terraform plan recorded for this diff; run terraform plan -out=tfplan in <dir>, then bash .specify/extensions/landspec/scripts/tfplan.sh record tfplan"`.
 - With a record: the body gets `## Terraform plan` with the counts; `STATEFUL` lines first, under
   `**Destroys or replaces stateful resources:**`.
+- With `aws: on` and a level other than lite, a diff with no `*.tf` file but a path matching
+  `(^|/)cdk\.json$`, `(^|/)Pulumi(\.[^/]+)?\.ya?ml$` or `\.template\.(json|ya?ml)$`: no refusal; the
+  body gets `## Terraform plan` with one line, `Skipped: this diff changes infrastructure code that
+  is not Terraform (<up to 3 paths in git diff order, then "and <n> more">); the plan gate covers
+  Terraform only.`
 
 ## `guard.sh`, AWS rules (only when `cfg aws` is `on`)
 

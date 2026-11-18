@@ -173,6 +173,42 @@ check "when the level is lite, then the gate prints nothing and lets it through"
 set_cfg level standard
 git switch --quiet -c tmp-no-tf "$(git merge-base HEAD origin/develop)"; echo doc > README.txt; git add README.txt; git commit --quiet -m "docs: readme"
 check "when the diff touches no .tf file, then the gate prints nothing and lets it through" '[[ -z "$(bash "$t" gate)" ]]'
+
+# ── Spec 006 T009: infrastructure code that is not Terraform gets a Skipped line ──
+base="$(git merge-base HEAD origin/develop)"
+# only <branch> <path>...: a branch from the base whose diff is exactly these new files.
+only() { git switch --quiet -c "$1" "$base"; shift; local f; for f; do mkdir -p "$(dirname "$f")"; echo x > "$f"; done; git add -- "$@"; git commit --quiet -m "chore: $1"; }
+skipped() { printf '## Terraform plan\n\nSkipped: this diff changes infrastructure code that is not Terraform (%s); the plan gate covers Terraform only.' "$1"; }
+only tmp-cdk cdk/cdk.json
+check "when the diff has only cdk/cdk.json, then the gate prints the section with the Skipped line naming it" '[[ "$(bash "$t" gate)" == "$(skipped cdk/cdk.json)" ]]'
+only tmp-pulumi stack/Pulumi.dev.yaml
+check "when the diff has only stack/Pulumi.dev.yaml, then the Skipped line names it" '[[ "$(bash "$t" gate)" == "$(skipped stack/Pulumi.dev.yaml)" ]]'
+only tmp-cfn deploy/app.template.yaml
+check "when the diff has only deploy/app.template.yaml, then the Skipped line names it" '[[ "$(bash "$t" gate)" == "$(skipped deploy/app.template.yaml)" ]]'
+only tmp-three cdk.json Pulumi.yaml a/b.template.json
+check "when three files match, then the Skipped line names all three in git diff order with no \"more\"" \
+  '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, cdk.json")" ]]'
+only tmp-four cdk.json Pulumi.yaml a/b.template.json c/Pulumi.prod.yml
+check "when four files match, then the Skipped line names the first 3, then and 1 more" \
+  '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, c/Pulumi.prod.yml and 1 more")" ]]'
+only tmp-five cdk.json Pulumi.yaml a/b.template.json c/Pulumi.prod.yml d/e.template.yml src/notcdk.json
+check "when five files match, then the Skipped line names the first 3 in git diff order, then and 2 more" \
+  '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, c/Pulumi.prod.yml and 2 more")" ]]'
+only tmp-tf-cdk infra/main.tf cdk.json
+check "when the diff has a .tf file and cdk.json with no plan recorded, then the gate still refuses, with no Skipped line" \
+  'rm -f "$(rec)"; one_refusal "no Terraform plan recorded for this diff" bash "$t" gate && ! bash "$t" gate 2>&1 | grep -q Skipped'
+printf 'infra_dir: .\n' >> .specify/extensions/landspec/landspec-config.yml
+only tmp-app src/app.py
+check "when the diff has only src/app.py, with infra_dir ., then the gate prints nothing" '[[ -z "$(bash "$t" gate)" ]]'
+set_cfg infra_dir infra
+only tmp-tfvars infra/terraform.tfvars infra/.terraform.lock.hcl infra/x.tf.json
+check "when the diff has only Terraform companions (tfvars, lock file, .tf.json), then the gate prints nothing" '[[ -z "$(bash "$t" gate)" ]]'
+git switch --quiet tmp-cdk
+set_cfg aws off
+check "when aws is off and the diff has cdk.json, then the gate prints nothing" '[[ -z "$(bash "$t" gate)" ]]'
+set_cfg aws on; set_cfg level lite
+check "when the level is lite and the diff has cdk.json, then the gate prints nothing" '[[ -z "$(bash "$t" gate)" ]]'
+set_cfg level standard
 check "when tfplan.sh gets no subcommand, then it prints its usage" 'fails_with "usage: tfplan.sh record" bash "$t"'
 
 exit "$FAIL"

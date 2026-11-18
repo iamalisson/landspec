@@ -550,6 +550,32 @@ set_cfg aws off
 "$p" task T001 "feat: infra" "$TMP/body.md" >/dev/null 2>&1 || true
 check "when aws is off, then the same diff opens with no plan and no Terraform section" 'grep -q "^pr create" "$GH_LOG" && ! grep -q "Terraform plan" "$GH_LOG"'
 
+# ── Spec 006 T009: a diff of infrastructure code that is not Terraform says the plan gate was skipped ──
+rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
+new_repo standard
+commit_tasks '- [ ] T001 Add the stack in `cdk/cdk.json` — #5'
+printf 'aws: on\n' >> .specify/extensions/landspec/landspec-config.yml
+"$SCRIPTS/branch.sh" T001 >/dev/null
+# swap <path>...: the branch's one commit now adds exactly these files, reviewed and scanned again.
+swap() { git reset --quiet --hard "$(git merge-base HEAD origin/develop)"; local f; for f; do mkdir -p "$(dirname "$f")"; echo x > "$f"; done
+  git add -- "$@"; git commit --quiet -m "feat: stack"; git push --quiet --force origin HEAD 2>/dev/null; reviewed; scanned; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"; }
+for f in cdk/cdk.json stack/Pulumi.dev.yaml deploy/app.template.yaml; do
+  swap "$f"
+  "$p" task T001 "feat: stack" "$TMP/body.md" >/dev/null 2>&1 || true
+  check "when aws is on, the level standard and the diff has only $f, then the PR opens and its body says the plan gate was skipped, naming it" \
+    'grep -q "^pr create" "$GH_LOG" && grep -qx "## Terraform plan" "$GH_LOG" && grep -qxF "Skipped: this diff changes infrastructure code that is not Terraform ($f); the plan gate covers Terraform only." "$GH_LOG"'
+done
+swap infra/main.tf cdk.json
+check "when the diff has infra/main.tf and cdk.json with no plan recorded, then it refuses and opens nothing" \
+  'fails_with "landspec: no Terraform plan recorded for this diff" "$p" task T001 "feat: stack" "$TMP/body.md" && ! grep -q "^pr create" "$GH_LOG"'
+swap src/app.py
+printf 'infra_dir: .\n' >> .specify/extensions/landspec/landspec-config.yml
+"$p" task T001 "feat: stack" "$TMP/body.md" >/dev/null 2>&1 || true
+check "when the diff has only src/app.py, with infra_dir ., then the PR opens with no Terraform section" 'grep -q "^pr create" "$GH_LOG" && ! grep -q "Terraform plan" "$GH_LOG"'
+swap cdk/cdk.json; set_cfg aws off
+"$p" task T001 "feat: stack" "$TMP/body.md" >/dev/null 2>&1 || true
+check "when aws is off and the diff has cdk/cdk.json, then the PR opens with no Terraform section" 'grep -q "^pr create" "$GH_LOG" && ! grep -q "Terraform plan" "$GH_LOG"'
+
 # ── Spec 007 T010: pr.sh state reads a PR's conflict, CI and Copilot state, and answers Copilot's threads ──
 check "when pr.sh state has no PR number, then it prints its usage" 'fails_with "usage: pr.sh state <pr> [--reply <thread id> [<file>]]" "$p" state'
 check "when pr.sh state gets a PR that is not a number, then it prints its usage" 'fails_with "usage: pr.sh state" "$p" state abc'
