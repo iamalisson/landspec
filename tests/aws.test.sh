@@ -119,6 +119,18 @@ check "when the caller is assumed-role/landspec-agent/s with tag landspec:access
   '((r == 0)) && grep -qx "IDENTITY=agent" <<<"$out" && grep -qx "ACCOUNT=111122223333" <<<"$out" && grep -qx "ROLE=landspec-agent" <<<"$out" && grep -qx "ACCESS=build" <<<"$out"'
 check "then each absent client entry is a missing: line, and .mcp.json (written by setup) is not" \
   'grep -qxF "missing: .claude/settings.json: permissions.deny \"Read(./.env*)\"" <<<"$out" && [[ "$(grep -c "^missing: " <<<"$out")" == 9 ]]'
+noprod="PROD=none: no prod configured (one account only; /landspec:aws --prod-profiles <names> adds one)"
+cp "$cfgf" "$TMP/cfg.prod"
+sed -i.bak '/^aws_prod_profiles:/d' "$cfgf"; rm -f "$cfgf.bak"
+r=0; out="$("$a" check 2>&1)" || r=$?
+check "when the config has no aws_prod_profiles key, then the line after ACCESS=build is the no-prod one, and exit 0" \
+  '((r == 0)) && [[ "$(grep -A1 -x "ACCESS=build" <<<"$out" | tail -n 1)" == "$noprod" ]] && [[ "$(grep -c "^PROD=" <<<"$out")" == 1 ]]'
+echo 'aws_prod_profiles: ""' >> "$cfgf"
+check "when aws_prod_profiles is \"\" (setup's empty value), then the same no-prod line" \
+  'o="$("$a" check)" && grep -qxF "$noprod" <<<"$o"'
+sed -i.bak 's/^aws_prod_profiles:.*$/aws_prod_profiles: prod,prod-eu/' "$cfgf"; rm -f "$cfgf.bak"
+check "when aws_prod_profiles is prod,prod-eu, then PROD=prod,prod-eu and no no-prod line" \
+  'o="$("$a" check)" && grep -qx "PROD=prod,prod-eu" <<<"$o" && [[ "$o" != *"no prod configured"* ]]'
 AWS_ROLE_JSON="$(role_tag admin)"
 check "when the role tag is neither read nor build, then ACCESS=unknown" 'o="$("$a" check)" && grep -qx "ACCESS=unknown" <<<"$o"'
 AWS_ROLE_JSON=""
@@ -138,6 +150,10 @@ check "when the user has a session token too, then there is no long-lived key li
   'rc=0; o="$(AWS_ACCESS_KEY_ID="$key" AWS_SESSION_TOKEN=t "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=user" <<<"$o" && [[ "$o" != *long-lived* && "$o" != *AKIA* ]]'
 check "when the user has no key in the environment (aws login), then there is no long-lived key line" \
   'rc=0; o="$(env -u AWS_ACCESS_KEY_ID "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=user" <<<"$o" && [[ "$o" != *long-lived* ]]'
+sed -i.bak '/^aws_prod_profiles:/d' "$cfgf"; rm -f "$cfgf.bak"
+check "when the IAM user has no prod profiles, then the no-prod line is printed and it still refuses with exit 1" \
+  'rc=0; o="$(env -u AWS_ACCESS_KEY_ID "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qxF "$noprod" <<<"$o" && grep -qxF "landspec: this is your own IAM user dev, not landspec-agent; use the profile that assumes landspec-agent (aws sso login --profile landspec-agent-dev)" <<<"$o"'
+cp "$TMP/cfg.prod" "$cfgf"
 AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/AWSReservedSSO_Admin_x/me)"
 r=0; out="$("$a" check --simulate 2>&1)" || r=$?
 check "when the caller is assumed-role/AWSReservedSSO_Admin_x/me, then IDENTITY=other-role, exit 1, and no simulation runs" \
@@ -151,9 +167,9 @@ check "when check gets an unknown flag or an extra argument, then it refuses wit
 no_scanners; rm -f "$TMP/none/aws" # a PATH with no aws, whatever this machine has installed
 git status --porcelain --ignored > "$TMP/before"
 check "when aws is missing from PATH, then IDENTITY=no-cli, exit 1, and nothing is written" \
-  'rc=0; o="$(PATH="$TMP/none" "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-cli" <<<"$o" && grep -q "install AWS CLI v2" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
+  'rc=0; o="$(PATH="$TMP/none" "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-cli" <<<"$o" && grep -q "install AWS CLI v2" <<<"$o" && ! grep -q "^PROD=" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
 check "when the aws call fails, then IDENTITY=no-credentials, exit 1, and nothing is written" \
-  'rc=0; o="$(AWS_FAIL=1 "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-credentials" <<<"$o" && grep -q "aws sso login" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
+  'rc=0; o="$(AWS_FAIL=1 "$a" check 2>&1)" || rc=$?; ((rc == 1)) && grep -qx "IDENTITY=no-credentials" <<<"$o" && grep -q "aws sso login" <<<"$o" && ! grep -q "^PROD=" <<<"$o" && git status --porcelain --ignored | cmp -s - "$TMP/before"'
 
 AWS_IDENTITY_JSON="$(who arn:aws:sts::111122223333:assumed-role/landspec-agent/s)"; AWS_ROLE_JSON="$(role_tag build)"; AWS_SIM_JSON=""
 "$a" check --simulate >/dev/null 2>&1 || true

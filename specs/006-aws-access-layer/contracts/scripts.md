@@ -44,7 +44,10 @@ It never runs the deploy command itself, and never edits a policy or role (FR-00
 ## `aws.sh check`
 
 - Prints `IDENTITY=<verdict>` (data-model, "Identity verdict"), `ACCOUNT=<id>`, `ROLE=<name>`,
-  `ACCESS=<read|build|unknown>`, then `missing: <entry>` lines for absent MCP or client entries.
+  `ACCESS=<read|build|unknown>`, `PROD=<aws_prod_profiles as is>` or, when that key is empty or
+  absent, `PROD=none: no prod configured (one account only; /landspec:aws --prod-profiles <names> adds one)`
+  (information only: it never changes the verdict or the exit code; not printed for `no-cli` or
+  `no-credentials`), then `missing: <entry>` lines for absent MCP or client entries.
 - Refusals (exit 1), one line each:
   - `user`: `landspec: this is your own IAM user <name>, not <role>; use the profile that assumes <role> (aws sso login --profile <p>)`, plus `it is a long-lived access key: remove it from the environment` when `AWS_ACCESS_KEY_ID` is set without a session token
   - `other-role`: `landspec: this is role <name>, not <role>; use the profile that assumes <role> (AWS_PROFILE=<profile>)`

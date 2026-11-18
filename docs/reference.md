@@ -365,8 +365,11 @@ changes no config key. You attach it; landspec never does.
 
 `aws.sh check [--simulate]` (the command's later runs) says which identity Claude's AWS calls run
 as, from `aws sts get-caller-identity` and, for the agent role, its `landspec:access` tag (`aws iam
-get-role`). It prints `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=` (`read`, `build` or `unknown`) and
-a `missing: <file>: <entry>` line per absent `aws-mcp` server or client entry. The verdicts:
+get-role`). It prints `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=` (`read`, `build` or `unknown`),
+`PROD=` (the `aws_prod_profiles` list as is, or `PROD=none: no prod configured (one account only;
+/landspec:aws --prod-profiles <names> adds one)` with one account only; information, never the
+verdict or the exit code) and a `missing: <file>: <entry>` line per absent `aws-mcp` server or
+client entry. The verdicts:
 
 | `IDENTITY=` | When | Exit |
 |---|---|---|
