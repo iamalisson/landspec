@@ -179,6 +179,9 @@ check "when the review_model row is read, then the hook blocks a model outside t
   'grep -qF "a review launch on a model outside \`sonnet\`, \`opus\` and \`fable\`" docs/reference.md'
 check "when the docs say what the scan proves, then it ran, never that it passed, and the review is the one fast pass" \
   'grep -qF "refuses the PR until \`security-scan.sh --changed\` ran" docs/security.md && grep -qF "the PR is refused until they ran" README.md && grep -qF "one fast pass on the diff" docs/security.md && ! grep -qF "one mutation" docs/security.md'
+# FR-013/#258: the plan gate is a layer of the security model, with what it checks and how far it holds.
+check "when the security layers table is read, then a Before a PR opens, with row names tfplan.sh gate and its Skipped line" \
+  'grep -E "^\| Before a PR opens, with " docs/security.md | grep -F "tfplan.sh gate" | grep -qF "Skipped"'
 check "when the example describes a [P] task, then it uses the parallel offer of next" \
   'grep -qF "\`next\` prints a \`parallel\` line" examples/README.md && ! grep -qF "claude --worktree" examples/README.md'
 check "when the docs are read, then the README Start and the reference Update say the setup goes to the base branch" \
