@@ -340,6 +340,21 @@ description: "Tasks for safe AWS access for Claude Code"
 
 ---
 
+## Phase 8: Gaps of the whole-feature check
+
+- [ ] T009 [US4] Say in the PR body that the plan gate was skipped when the diff changes infrastructure code that is not Terraform, in extension/scripts/tfplan.sh — #252
+  - Comes from: the whole-feature check's feature review, `not met`: spec.md Edge Cases "Infrastructure code that is not Terraform (CDK, CloudFormation, Pulumi): the plan gate does not apply; the PR body says the plan gate was skipped and why"
+  - What: in `tfplan.sh gate` (`extension/scripts/tfplan.sh`, the `gate)` branch), when `aws: on`, the level is not lite and the diff (`git diff --name-only --no-renames "$(diff_base)" HEAD`) touches no `*.tf` file but touches non-Terraform infrastructure code, print a `## Terraform plan` section with one line instead of exiting silently: `Skipped: this diff changes infrastructure code that is not Terraform (<up to 3 paths, then "and <n> more">); the plan gate covers Terraform only.` Non-Terraform infrastructure code is a path matching `(^|/)cdk\.json$`, `(^|/)Pulumi(\.[^/]+)?\.ya?ml$` or `\.template\.(json|ya?ml)$` (the CloudFormation naming the CDK and SAM tools write); this list only, never a folder (`infra_dir` may be `.`), so Terraform's own companions (`*.tfvars`, `.terraform.lock.hcl`, `*.tf.json`) never get the line. `pr.sh` already appends the gate's non-empty output to the body (`extension/scripts/pr.sh:152-153`), so it is unchanged. A diff with a `*.tf` file keeps today's behaviour; with neither, the gate still prints nothing.
+  - Impact: `extension/scripts/tfplan.sh` (the `gate` branch and its header comment at `:12-14`) and its `.specify/extensions/landspec/scripts/` copy (kept identical); `tests/tfplan.test.sh`; `tests/pr.test.sh` (the plan gate block near `:525-552`); `docs/reference.md` (the plan gate paragraph near `:262-270`); `specs/006-aws-access-layer/contracts/scripts.md` "pr.sh (task and fix), plan gate" gets the skipped line; nothing else.
+  - Completed when: `bash tests/tfplan.test.sh` and `bash tests/pr.test.sh` pass with new checks:
+    - level standard, `aws: on`, a task diff with only `cdk/cdk.json`: `pr.sh task` opens the PR and the body has `## Terraform plan` and the line `Skipped: this diff changes infrastructure code that is not Terraform (cdk/cdk.json); the plan gate covers Terraform only.`;
+    - the same with `stack/Pulumi.dev.yaml` and with `deploy/app.template.yaml`, each named in the line;
+    - five matching files: the line names the first 3 in `git diff` order, then `and 2 more`;
+    - a diff with `infra/main.tf` and `cdk.json`, no plan recorded: still refused with `no Terraform plan recorded for this diff` (failure path: the skipped line must not stand in for a plan);
+    - a diff with only `src/app.py` (also with `infra_dir: .`), or only `infra/terraform.tfvars` or `infra/.terraform.lock.hcl`, or `aws: off`, or level lite: no `## Terraform plan` section.
+
+---
+
 ## Dependencies & order
 
 - Start at once: T001, T002, T005, T006 (`/landspec:implement 006`).
