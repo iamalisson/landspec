@@ -30,11 +30,11 @@ report ready
 check "when the review said ready on this diff, then check passes" '"$r" record "$TMP/report.md" | grep -q "^REVIEW=ready" && "$r" check'
 # F3.1/F4.3: report prints only what the script checked (the patch id and the verdict), never the report's text,
 # even a body line shaped like a header field (warning:, map-full:, map-fix:).
-printf 'Preamble LEAK-1\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n  - Security: LEAK-4 token logged\nwarning: LEAK-5\nmap-full: - deep: LEAK-6\nmap-fix: - deep: LEAK-7\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
+printf 'Preamble LEAK-1\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n  - Security: LEAK-4 token logged\nwarning: LEAK-5\nmap-full: - deep: LEAK-6\nmap-fix: - deep: LEAK-7\n\n%s\nModel: claude-opus-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
 "$r" record "$TMP/report.md" >/dev/null; out="$("$r" report 2>&1)" || true
 id="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')" | cut -c1-12)"
 check "when a review is recorded, then report prints exactly the patch-id line, the Assessment line and the Model line" \
-  '[[ ${#id} == 12 && "$out" == "Independent review recorded for this diff (patch id $id)"$'"'"'\n'"'"'"Assessment: ready"$'"'"'\n'"'"'"Model: claude-sonnet-4-7" ]]'
+  '[[ ${#id} == 12 && "$out" == "Independent review recorded for this diff (patch id $id)"$'"'"'\n'"'"'"Assessment: ready"$'"'"'\n'"'"'"Model: claude-opus-4-7" ]]'
 check "then report prints nothing from the report body (What changed, findings, the security finding)" \
   '! grep -qiE "LEAK|search|what changed|findings|token" <<<"$out"'
 report "changes needed"; "$r" record "$TMP/report.md" >/dev/null
@@ -428,29 +428,28 @@ check "when a report with a Delta from: line is recorded without --delta, then r
 # The model the review ran on: a warning, stored in the record, never a silent downgrade.
 warn() { echo "landspec: warning: $1; the review did not run on the configured model"; }
 rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-haiku-4-5/' "$TMP/report.md"
-check "when review_model is unset or opus and Model: is claude-haiku-4-5, then record prints exactly one warning, the review ran on <id>" \
-  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]] \
-   && echo "review_model: opus" >> .specify/extensions/landspec/landspec-config.yml && err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)" \
-   && [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
+check "when Model: is claude-haiku-4-5, then record prints exactly one warning, the review ran on <id>" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
 check "when CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set, then its reason wins over an outside-family model (one line)" \
   'err="$(CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 "$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set")" ]]'
-sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml; echo "review_model: sonnet" >> .specify/extensions/landspec/landspec-config.yml
+# The review_model key is no longer read: the review runs on Opus whatever it says.
+echo "review_model: sonnet" >> .specify/extensions/landspec/landspec-config.yml
+rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-sonnet-4-7/' "$TMP/report.md"
+check "when Model: is sonnet, even with review_model: sonnet, then record warns the review ran on <id>, not opus" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-sonnet-4-7, not opus")" ]]'
 rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-opus-4-7/' "$TMP/report.md"
-check "when Model: is opus and review_model is sonnet, then record warns the review ran on <id>, not sonnet" \
-  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-opus-4-7, not sonnet")" ]]'
+check "when Model: is opus, even with review_model: sonnet, then record prints no warning" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ -z "$err" ]]'
 sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml; echo "review_model: haiku" >> .specify/extensions/landspec/landspec-config.yml
-check "when review_model is haiku, then record refuses (the config cannot lower the bar)" \
-  'fails_with "landspec: review_model must be sonnet, opus or fable" "$r" record "$TMP/report.md"'
+check "when review_model is haiku, then record ignores it (no refusal)" '"$r" record "$TMP/report.md" >/dev/null 2>&1'
 sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml
 
 # Model: reaches the PR body, so only something shaped like a model id is stored.
 rec() { echo "$(git rev-parse --git-common-dir)/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')"; }
 model_is() { rep ready "${all[@]}"; sed -i.bak "s/^Model: .*/Model: $1/" "$TMP/report.md"; err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$(sed -n 's/^model: //p' "$(rec)" | head -1)" == "$2" ]]; }
-echo "review_model: opus" >> .specify/extensions/landspec/landspec-config.yml
 check "when Model: is claude-opus-4-8[1m], then it is kept with no warning" 'model_is "claude-opus-4-8[1m]" "claude-opus-4-8[1m]" && [[ -z "$err" ]]'
 check "when Model: is us.anthropic.claude-opus-4-1-20250805-v1:0, then it is kept with no warning" \
   'model_is us.anthropic.claude-opus-4-1-20250805-v1:0 us.anthropic.claude-opus-4-1-20250805-v1:0 && [[ -z "$err" ]]'
-sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml
 check "when Model: is claude-haiku-4-5, then it is kept, with its warning" 'model_is claude-haiku-4-5 claude-haiku-4-5 && [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
 for bad in Token=abc ghp_abc123; do
   check "when Model: is $bad, then unknown is stored in the record and the warning, and the value in neither" \
