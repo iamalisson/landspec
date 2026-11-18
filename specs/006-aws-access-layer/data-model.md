@@ -29,8 +29,8 @@ Created by the human deploying `agent-role.yaml` (CloudFormation stack `landspec
 |---|---|
 | `RoleName` | stack parameter, default `landspec-agent` |
 | `Access` | stack parameter: `read` (prod, and every account on level lite) or `build` (dev on standard and full) |
-| `TrustMode` | stack parameter: `sso` (default: an IAM Identity Center permission set) or `login` (named IAM users through `aws login`; gated, research R3) |
-| `PermissionSetName` / `LoginUserNames` | stack parameters for the chosen mode: the permission set whose `AWSReservedSSO_<name>_*` roles may assume it, or the IAM user names |
+| `TrustMode` | stack parameter: `sso` only (an IAM Identity Center permission set); the `login` mode once planned here was dropped by T007 (#251): research R3 could not be confirmed live, so the role trusts IAM Identity Center only |
+| `PermissionSetName` | stack parameter: the permission set whose `AWSReservedSSO_<name>_<16-character suffix>` roles may assume it |
 | `MaxSessionDuration` | 3600 seconds |
 | managed policies | `read`: `ReadOnlyAccess`; `build`: `PowerUserAccess` (R6) |
 | inline deny | `read`: secrets and data deny (FR-005); both: destructive and self-edit deny (FR-004) |

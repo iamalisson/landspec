@@ -107,7 +107,7 @@ constitution block, a diff-bound record like the scan's, and rules inside the on
 
 ## Risks
 
-- **`aws login` trust (R3) is unverified.** `login` mode ships only if quickstart Q2 passes; the
+- **`aws login` trust (R3) is unverified.** Outcome: Q2 was not run, so `login` mode was dropped (T007, #251) and Identity Center is required. Planned: `login` mode ships only if quickstart Q2 passes; the
   default and documented path is Identity Center either way.
 - **The guard's prod detection only sees declared names.** A prod write through a profile not in
   `aws_prod_profiles`, or the default profile pointing at prod, is not caught by the guard; IAM is

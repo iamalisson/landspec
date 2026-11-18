@@ -9,15 +9,14 @@ long form (`Fn::Sub`, `Fn::If`), so `tests/static.test.sh` can parse it.
 |---|---|---|---|
 | `RoleName` | `[A-Za-z0-9+=,.@_-]{1,56}` | `landspec-agent` | the guard's SCP pattern and the check expect the `landspec-agent` prefix |
 | `Access` | `read`, `build` | `read` | `build` only for dev on standard and full |
-| `TrustMode` | `sso`, `login` | `sso` | `login` exists only if quickstart Q2 passes (research R3) |
+| `TrustMode` | `sso` | `sso` | `login` was dropped by T007 (#251): research R3 could not be confirmed live, so the role trusts IAM Identity Center only |
 | `PermissionSetName` | permission-set name | `""` | required when `TrustMode=sso` (a rule fails the stack otherwise) |
-| `LoginUserNames` | comma-separated IAM user names | `""` | required when `TrustMode=login` |
 
 ## Resources
 
 | Logical id | Type | When | What |
 |---|---|---|---|
-| `AgentRole` | `AWS::IAM::Role` (name `RoleName`) | always | trust per R2 (sso) or R3 (login); `MaxSessionDuration: 3600`; tag `landspec:access=<read|build>` (read by `aws.sh check`) |
+| `AgentRole` | `AWS::IAM::Role` (name `RoleName`) | always | trust per R2 (sso; the role name matched to its 16-character suffix); `MaxSessionDuration: 3600`; tag `landspec:access=<read|build>` (read by `aws.sh check`) |
 | managed policies on `AgentRole` | — | — | `read`: `arn:aws:iam::aws:policy/ReadOnlyAccess`; `build`: `arn:aws:iam::aws:policy/PowerUserAccess` |
 | `ReadIam` | inline policy | `build` | `iam:GetRole` and `iam:SimulatePrincipalPolicy` on its own ARN (`aws.sh check` reads its tag and simulates; `PowerUserAccess` grants neither) |
 | `ReadIam` | inline policy | `read` | `iam:SimulatePrincipalPolicy` on its own ARN (`ReadOnlyAccess` already grants `iam:GetRole`) |

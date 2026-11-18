@@ -31,6 +31,8 @@ Checked against primary sources on 2026-11-16. No AWS call was made.
 
 ## R3. Refusing long-term access keys on the `aws login` path
 
+- **Outcome**: not confirmed live; `login` mode was dropped (T007, #251) and the role trusts IAM Identity Center only.
+
 - **Decision**: `TrustMode=login` trusts the named IAM users only with
   `"Null": {"aws:SignInSessionArn": "false"}`. It ships **only if** quickstart scenario Q2 shows, in
   a real account, that the key reaches `sts:AssumeRole` (a key-signed assume is denied, an
