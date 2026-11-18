@@ -1,6 +1,6 @@
 {
   "name": "landspec",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Spec-driven development with GitHub Spec Kit where every task gets an issue, a branch and a PR, and every project gets defaults sized to its complexity.",
   "author": { "name": "iamalisson", "url": "https://github.com/iamalisson" },
   "homepage": "https://github.com/iamalisson/landspec",

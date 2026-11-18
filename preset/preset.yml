@@ -3,7 +3,7 @@ schema_version: "1.0"
 preset:
   id: landspec
   name: "landspec"
-  version: "2.8.0"
+  version: "2.9.0"
   description: "Constitution with level-sized defaults, and tasks sized as one issue and one PR each"
   author: iamalisson
   repository: https://github.com/iamalisson/landspec
