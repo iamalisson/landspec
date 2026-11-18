@@ -120,11 +120,17 @@ protected_branches() {
 is_protected() { [[ " $(protected_branches | tr '\n' ' ') " == *" $1 "* ]]; }
 
 # branch_feature: on a task branch (<prefix>/NNN-tNNN-...), the specs/ folder of its feature when
-# exactly one matches; otherwise nothing.
+# exactly one matches; on a feature branch (<prefix>/NNN-<name>), specs/NNN-<name> when it exists;
+# otherwise nothing.
 branch_feature() {
-  local num matches
-  num="$(git branch --show-current 2>/dev/null | sed -nE "s#^[^/]+/($FEATURE_KEY_RE)-t[0-9]{3,}-.*#\\1#p")"
-  [[ -n "$num" ]] || return 0
+  local b num matches
+  b="$(git branch --show-current 2>/dev/null)"
+  num="$(sed -nE "s#^[^/]+/($FEATURE_KEY_RE)-t[0-9]{3,}-.*#\\1#p" <<<"$b")"
+  if [[ -z "$num" ]]; then
+    b="$(sed -nE "s#^[^/]+/(($FEATURE_KEY_RE)-.+)#\\1#p" <<<"$b")"
+    if [[ -n "$b" && -d "specs/$b" ]]; then echo "specs/$b"; fi
+    return 0
+  fi
   matches="$(find specs -mindepth 1 -maxdepth 1 -type d -name "$num-*" 2>/dev/null)"
   if [[ -n "$matches" && "$(wc -l <<<"$matches")" -eq 1 ]]; then echo "$matches"; fi
 }
@@ -141,6 +147,30 @@ feature_dir() {
   [[ -n "$d" && -d "$d" ]] || die "no active feature (.specify/feature.json); run /speckit-specify first"
   echo "$d"
 }
+
+# feature_branch <feature dir>: the feature's one branch, <branch_prefix>/<folder name>.
+feature_branch() { echo "$(cfg branch_prefix feat)/$(basename "$1")"; }
+
+# legacy_feature <feature dir>: true when the feature was started under the per-task flow (a
+# tasks.md line ends in " — #N").
+legacy_feature() { grep -qE ' — #[0-9]+[[:space:]]*$' "$1/tasks.md" 2>/dev/null; }
+
+# carry_switch <dir> <target> <git switch args...>: switch branches with <dir>'s current content
+# (uncommitted files too) carried over; nothing else is touched.
+carry_switch() {
+  CARRY_DIR="$1"; local target="$2" err; shift 2
+  CARRY_SAVED="$(mktemp -d)"; cp -R "$CARRY_DIR" "$CARRY_SAVED/"
+  # If anything fails before the restore below (a switch refused because of other local
+  # changes), the folder comes back as it was, instead of surviving only in a temp dir.
+  trap 'carry_restore; echo "landspec: the spec folder was put back as it was" >&2' EXIT
+  git checkout --quiet -- "$CARRY_DIR" 2>/dev/null || true; git clean -fdq -- "$CARRY_DIR"
+  if ! err="$(git switch --quiet "$@" 2>&1)"; then
+    echo "$err" >&2
+    die "cannot switch to $target: local changes outside $CARRY_DIR conflict with it. Commit or stash them (git stash push -- <file>), then run again"
+  fi
+  carry_restore; trap - EXIT
+}
+carry_restore() { rm -rf "$CARRY_DIR"; mkdir -p "$(dirname "$CARRY_DIR")"; cp -R "$CARRY_SAVED/$(basename "$CARRY_DIR")" "$CARRY_DIR"; rm -rf "$CARRY_SAVED"; }
 
 # base_ref [<branch>]: what <branch> (default: the current one) is diffed against: its parent task
 # branch while it is stacked on one (branch.<b>.landspec-parent), else the base branch. The base is

@@ -37,6 +37,10 @@ provides:
       description: "Independent review of the branch or the plan by a fresh reader grounded in the whole repository"
 
 hooks:
+  after_specify:
+    command: speckit.landspec.branch
+    optional: false
+    description: "Make the feature's branch and commit the spec on it"
   after_tasks:
     command: speckit.landspec.issues
     optional: false

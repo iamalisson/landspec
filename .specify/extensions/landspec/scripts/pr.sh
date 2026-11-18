@@ -188,18 +188,7 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     if [[ "$(git branch --show-current)" != "$branch" || -z "$open" ]]; then
       ref="$(base_ref "")" # the base itself, never a parent task branch: a spec PR carries no task code
       # The spec folder's current content travels with us; nothing else is touched.
-      saved="$(mktemp -d)"; cp -R "$fdir" "$saved/"
-      restore() { rm -rf "$fdir"; mkdir -p "$(dirname "$fdir")"; cp -R "$saved/$(basename "$fdir")" "$fdir"; rm -rf "$saved"; }
-      # If anything fails before the restore below (a switch refused because of other local
-      # changes), the folder comes back as it was, instead of surviving only in a temp dir.
-      trap 'restore; echo "landspec: the spec folder was put back as it was" >&2' EXIT
-      git checkout --quiet -- "$fdir" 2>/dev/null || true; git clean -fdq -- "$fdir"
-      if [[ -n "$open" ]]; then sw=(git switch --quiet "$branch"); else sw=(git switch --quiet --no-track -C "$branch" "$ref"); fresh=true; fi
-      if ! err="$("${sw[@]}" 2>&1)"; then
-        echo "$err" >&2
-        die "cannot switch to $branch: local changes outside $fdir conflict with it. Commit or stash them (git stash push -- <file>), then run again"
-      fi
-      restore; trap - EXIT
+      if [[ -n "$open" ]]; then carry_switch "$fdir" "$branch" "$branch"; else carry_switch "$fdir" "$branch" --no-track -C "$branch" "$ref"; fresh=true; fi
     fi
     git add -- "$fdir"
     # "update" once the spec exists anywhere: an open PR, or a squash-merged one already on the base.
