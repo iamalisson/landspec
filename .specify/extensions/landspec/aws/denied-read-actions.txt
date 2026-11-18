@@ -7,12 +7,15 @@ dynamodb:GetItem
 dynamodb:BatchGetItem
 dynamodb:Query
 dynamodb:Scan
+dynamodb:PartiQLSelect
+dynamodb:GetRecords
 rds-db:connect
 rds-data:ExecuteStatement
 logs:StartLiveTail
 lambda:GetFunction
 lambda:GetFunctionConfiguration
 logs:GetLogEvents
+logs:GetLogRecord
 logs:FilterLogEvents
 logs:GetQueryResults
 athena:GetQueryResults

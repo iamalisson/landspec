@@ -349,8 +349,10 @@ writes `.mcp.json` and the "Cloud access" text. It never rewrites an existing `.
 for `run_script` and `get_presigned_url`, deny `Read(./.env*)` and `Read(**/*.tfstate*)`) as
 `add to <file>: <entry>`. Then one `deploy:` line per account kind, the `aws cloudformation deploy`
 of `aws/agent-role.yaml` with `Access=build` for dev (`read` on lite) and `Access=read` for prod
-(printed only with prod profiles), and the `~/.aws/config` profile lines. You run the deploy;
-landspec makes no AWS call.
+(printed only with prod profiles), and the `~/.aws/config` profile lines. The role trusts only an
+IAM Identity Center sign-in (`TrustMode=sso`, the one mode): the users of the permission set
+`PermissionSetName` names, matched exactly (`Dev` does not match `Dev_ReadOnly`), so Identity Center
+is required. You run the deploy; landspec makes no AWS call.
 
 `aws.sh setup --scp` (alone) only prints the path of the optional organization policy,
 `aws/scp-agent.json`, and to attach it in AWS Organizations to the accounts the agent uses; it
