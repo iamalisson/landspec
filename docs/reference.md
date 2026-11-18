@@ -273,6 +273,11 @@ It refuses a plan file Terraform cannot read, one older than the last commit, ch
 and one made while a `*.tf` file is uncommitted. Any later commit makes a new diff, which needs a
 new plan.
 
+A diff with no `*.tf` file but infrastructure code that is not Terraform (a `cdk.json`, a
+`Pulumi.yaml` or `Pulumi.<stack>.yaml`, a `*.template.json` or `*.template.yaml`) needs no plan:
+the PR body gets `## Terraform plan` with one line, `Skipped: this diff changes infrastructure code
+that is not Terraform (<up to 3 paths, then "and <n> more">); the plan gate covers Terraform only.`
+
 The PR is refused without a record, or without a section for each root in `aws_prod_paths` whose
 `*.tf` files, or the local modules (`source = "./…"` or `"../…"`, followed recursively) they use,
 the diff touches; the refusal names `infra_dir` as the folder to plan in. With the record, the
