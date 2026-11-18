@@ -158,7 +158,8 @@ lands a `ready` task whose review matches its ref: it commits the tick in `tasks
 it `--no-ff` as `<id>: <summary>` with the trailers `Landspec-Task: <id>` and `Landspec-Review: ready
 <patch id>`, pushes the branch and deletes the ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted
 changes in the feature folder, and a conflict aborts the merge naming the files. `retry` also deletes
-the task ref. The plan review ignores task ticks and the `**Issue**: #N` line.
+the task ref. The plan review ignores task ticks and the `**Issue**: #N` line. On upgrade, a plan
+review recorded on a `tasks.md` that already had `- [X]` ticks or that line goes stale once: review the plan again.
 
 When every task has its PR, `/landspec:implement` checks them **together**: `implement.sh check-copy`
 merges every unmerged task branch in `ORDER` into `<repo>-<feature>-check` (detached at `origin/<base>`,

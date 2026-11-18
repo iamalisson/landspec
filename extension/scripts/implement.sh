@@ -277,7 +277,8 @@ case "$action" in
       [[ -f "$report" ]] || die "usage: implement.sh mark <task> changes <report> (the review that asked for them)"
       round=$((round + 1)); mkdir -p "$rdir"; cp "$report" "$rdir/$t.report"
       set -- "$@" "report=$rdir/$t.report"
-      if ((round >= $(task_rounds))); then set -- "$@" "failed=review rounds"; failed=true; fi
+      max="$(task_rounds)" || exit 1
+      if ((round >= max)); then set -- "$@" "failed=review rounds"; failed=true; fi
     fi
     write_rec "$t" "$@" "round=$round"
     event mark task="$t" phase="$phase" round="$round" branch="$b"

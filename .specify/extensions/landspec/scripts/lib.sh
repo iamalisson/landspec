@@ -161,11 +161,14 @@ refuse_legacy() {
 }
 
 # task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
-# landing commit, a commit whose message has the line "Landspec-Task: <Tnnn>".
+# landing commit, a commit whose message has the line "Landspec-Task: <Tnnn>". Only commits not on the
+# base count: task ids restart at T001 in every feature, and earlier features' landings reach the base.
 task_done() {
-  local b r; b="$(feature_branch "$1")"; r="refs/heads/$b"
+  local b r base x=(); b="$(feature_branch "$1")"; r="refs/heads/$b"; base="$(base_branch)"
   git show-ref --verify --quiet "$r" || r="refs/remotes/origin/$b"
-  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$r" -- 2>/dev/null)" ]]
+  if git show-ref --verify --quiet "refs/remotes/origin/$base"; then x=("^refs/remotes/origin/$base")
+  elif git show-ref --verify --quiet "refs/heads/$base"; then x=("^refs/heads/$base"); fi
+  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$r" ${x[@]+"${x[@]}"} -- 2>/dev/null)" ]]
 }
 
 # plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"

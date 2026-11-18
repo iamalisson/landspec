@@ -583,12 +583,18 @@ check "when T001 is retried, then its task ref is gone and it starts again from 
 build "$R1"; rm -f "$(git rev-parse --git-common-dir)/landspec-run/001-demo/T001"; fs
 check "when T001's ref is there with no run record, then it starts again on that ref: RESUME=yes" \
   'grep -qx "START=T001 REF=$R1 FROM=$(head_fb) RESUME=yes" <<<"$out" && [[ "$(state_of T001)" == pending ]]'
+echo "task_rounds: 10" >> .specify/extensions/landspec/landspec-config.yml
+check "when task_rounds is 10, then mark changes refuses it and exits non-zero" 'one_refusal "task_rounds must be a number from 1 to 9" "$I" mark T001 changes "$TMP/r.md"'
+sed -i.bak '/^task_rounds:/d' .specify/extensions/landspec/landspec-config.yml
 fs --running T001
 check "when T001 is running, then it is building and no next step is given" '[[ "$(state_of T001)" == building ]] && ! grep -qE "^(START|REVIEW|FIX|LAND)=" <<<"$out"'
 git worktree add --quiet "$TMP/l" "$R1"; git worktree lock "$TMP/l"; fs
 check "when T001's ref is checked out in a locked worktree, then it waits with the worktree named" \
   'line_of T001 | grep -qxF "TASK=T001 STATE=waiting REASON=locked worktree $(cd "$TMP/l" && pwd -P)"'
 git worktree unlock "$TMP/l"; git worktree remove --force "$TMP/l"
+"$I" mark T001 changes "$TMP/r.md" >/dev/null; fs
+check "when T001 is marked changes once, then it is changes with ROUND=1 and FIX=T001 is the next step" \
+  'line_of T001 | grep -qx "TASK=T001 STATE=changes ROUND=1" && grep -qx "FIX=T001" <<<"$out"'
 "$I" mark T001 implemented >/dev/null; fs
 check "when T001 is marked implemented, then it is built and REVIEW=T001 is the next step" '[[ "$(state_of T001)" == built ]] && grep -qx "REVIEW=T001" <<<"$out"'
 check "when T001 is not ready, then land refuses it" 'one_refusal "T001 is not ready" "$I" land T001'
@@ -614,6 +620,22 @@ fs
 check "then T001 is done, T002 starts from the new head, and the plan review still holds after the tick" \
   '[[ "$(state_of T001)" == done ]] && grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && grep -qx "DONE=1/3" <<<"$out"'
 check "when T001 is landed already, then land refuses it" 'one_refusal "T001 is landed already" "$I" land T001'
+echo "https://github.com/acme/app/pull/99" > "$GH_PR"; echo "$FB" > "$GH_PR.head"; fs
+check "when the feature branch has an open PR, then status prints PR=<its url>" 'grep -qx "PR=https://github.com/acme/app/pull/99" <<<"$out"'
+rm -f "$GH_PR" "$GH_PR.head"
+# The analyzed marker hashes tasks.md as /speckit-analyze saw it: no tick, with or without the issue line.
+sh256() { bash -c 'source "$0/lib.sh"; sha256' "$SCRIPTS"; }
+mk_marker() { mkdir -p "$(git rev-parse --git-common-dir)/landspec-analyzed"; cat > "$(git rev-parse --git-common-dir)/landspec-analyzed/001-demo"; }
+set_cfg level full; echo stale | mk_marker
+check "when the level is full and the analyzed marker is for another tasks.md, then status refuses" \
+  'one_refusal "level '"'"'full'"'"' requires /speckit-analyze" "$I" status'
+sed 's/^- \[X\] T001 /- [ ] T001 /' specs/001-demo/tasks.md | sh256 | mk_marker
+check "when the marker hashes tasks.md before the tick and before the issue line, then status runs" '"$I" status | grep -q "^DONE=1/3$"'
+awk 'NR == 1 { print; print ""; print "**Issue**: #7"; next } { print }' specs/001-demo/tasks.md > "$TMP/t.md"; cat "$TMP/t.md" > specs/001-demo/tasks.md
+check "when the issue line is added after the analysis, then status still runs" '"$I" status | grep -q "^DONE=1/3$"'
+sed 's/^- \[X\] T001 /- [ ] T001 /' specs/001-demo/tasks.md | sh256 | mk_marker
+check "when the marker hashes tasks.md with its issue line, before the tick, then status runs" '"$I" status | grep -q "^DONE=1/3$"'
+git checkout -- specs/001-demo/tasks.md; set_cfg level standard
 build "$R2" clash.txt task; "$I" mark T002 implemented >/dev/null; ready "$R2"; "$I" mark T002 ready >/dev/null
 echo dev > clash.txt; git add clash.txt; git commit --quiet -m "chore: a conflicting commit"; h="$(git rev-parse HEAD)"; r2="$(git rev-parse "refs/heads/$R2")"
 check "when the feature branch has a conflicting developer commit, then land aborts naming the file and changes nothing" \
@@ -623,4 +645,13 @@ printf '%s\n' '- [ ] T009 Old way in `a` — #5' >> specs/001-demo/tasks.md
 check "when the feature was started under the per-task flow, then status prints LEGACY= and refuses" \
   'rc=0; o="$("$I" status 2>/dev/null)" || rc=$?; ((rc != 0)) && [[ "$o" == LEGACY=001-demo ]]'
 git checkout -- specs/001-demo/tasks.md
+
+# An earlier feature's landings on the base never count: task ids restart at T001 in every feature.
+cd "$TMP"; rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/w"; new_repo standard
+git commit --quiet --allow-empty -m "T001: an earlier feature's task"$'\n\n'"Landspec-Task: T001"; git push --quiet origin HEAD:develop
+printf '%s\n' "$TASKS3" > specs/001-demo/tasks.md; printf '# Plan\n' > specs/001-demo/plan.md
+"$SCRIPTS/branch.sh" >/dev/null 2>&1; plan_review >/dev/null 2>&1; fs
+check "when the base holds another feature's Landspec-Task: T001, then this feature's T001 is pending and starts" \
+  'git log --format=%B | grep -qx "Landspec-Task: T001" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
+check "then land T001 is not refused as landed already" 'one_refusal "has no task ref" "$I" land T001'
 exit "$FAIL"
