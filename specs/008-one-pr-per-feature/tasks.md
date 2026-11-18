@@ -44,7 +44,7 @@ and landed on the branch; one draft PR per feature.
 
 **Independent Test**: quickstart L2, L5, L6 and Q1, Q3.
 
-- [ ] T001 [US1] Make the feature branch when the spec is written, in extension/scripts/branch.sh
+- [X] T001 [US1] Make the feature branch when the spec is written, in extension/scripts/branch.sh
   - Comes from: FR-003, FR-015, US1 scenario 1, US6 scenario 1; research R1, R11; contracts/scripts.md "branch.sh"
   - What: `branch.sh <feature>` with no task id (the feature mode, beside today's task mode, which
     a later task removes): branch `<branch_prefix>/<NNN>-<short-name>` (the folder name); switch if local,
