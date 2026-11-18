@@ -236,10 +236,11 @@ check "then the base is unchanged, locally and on origin" \
 head1="$(git rev-parse HEAD)"
 check "when run again, then it stays on the branch without a new commit" \
   '[[ "$("$b" 002)" == "BRANCH=feat/002-x FEATURE=002 BASE=develop" && "$(git rev-parse HEAD)" == "$head1" ]]'
-echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
-check "when on a feature branch, then feature_dir resolves its folder, whatever the active feature" \
+rm .specify/feature.json # a fresh worktree has none
+check "when on a feature branch with no feature.json, then feature_dir resolves its folder" \
   'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/002-x"'
-check "when on a task ref of that feature, then feature_dir resolves the same folder" \
+echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
+check "when on a task ref of that feature, then feature_dir resolves the same folder, whatever the active feature" \
   'git switch --quiet -c landspec/002-t001-task && bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/002-x"'
 git switch --quiet --detach feat/002-x; git branch --quiet -D feat/002-x landspec/002-t001-task
 check "when the branch is only on origin, then branch.sh switches to it tracking origin's" \
@@ -260,5 +261,13 @@ mkdir -p specs/005-w; echo '# W' > specs/005-w/spec.md; git add specs/005-w; git
 echo '# W edited' > specs/005-w/spec.md; echo new > specs/005-w/plan.md
 check "when the spec folder is committed here only and edited, then its current content is carried and committed on the new branch" \
   '"$b" 005 >/dev/null && [[ "$(git branch --show-current)" == feat/005-w && "$(git cat-file -p HEAD:specs/005-w/spec.md)" == "# W edited" && "$(git cat-file -p HEAD:specs/005-w/plan.md)" == new && -z "$(git status --porcelain)" ]]'
+# /speckit-specify run on another feature's branch: feature.json names the new feature, the branch the old one.
+mkdir -p specs/006-b; echo '# B' > specs/006-b/spec.md; echo '{ "feature_directory": "specs/006-b" }' > .specify/feature.json
+check "when on feature A's branch feature.json names a new uncommitted feature B, then branch.sh with no argument makes B's branch with B's folder" \
+  '"$b" | grep -qx "BRANCH=feat/006-b FEATURE=006 BASE=develop" && [[ "$(git branch --show-current)" == feat/006-b && "$(git rev-parse HEAD~1)" == "$(git rev-parse origin/develop)" && "$(git cat-file -p HEAD:specs/006-b/spec.md)" == "# B" ]] \
+   && ! git cat-file -e HEAD:specs/005-w 2>/dev/null && grep -q "specs/006-b" .specify/feature.json'
+git switch --quiet feat/005-w; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
+check "when on a feature branch with a local feature.json naming another feature, then feature_dir follows feature.json" \
+  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/001-demo"'
 
 exit "$FAIL"

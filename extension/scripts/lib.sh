@@ -120,13 +120,16 @@ protected_branches() {
 is_protected() { [[ " $(protected_branches | tr '\n' ' ') " == *" $1 "* ]]; }
 
 # branch_feature: on a task branch (<prefix>/NNN-tNNN-...), the specs/ folder of its feature when
-# exactly one matches; on a feature branch (<prefix>/NNN-<name>), specs/NNN-<name> when it exists;
-# otherwise nothing.
+# exactly one matches; on a feature branch (<branch_prefix>/NNN-<name>) in a copy with no
+# .specify/feature.json of its own (a fresh worktree), specs/NNN-<name> when it exists; otherwise nothing.
+# A local feature.json wins over a feature branch: /speckit-specify writes the new feature there
+# while still on the branch of the one before.
 branch_feature() {
   local b num matches
   b="$(git branch --show-current 2>/dev/null)"
   num="$(sed -nE "s#^[^/]+/($FEATURE_KEY_RE)-t[0-9]{3,}-.*#\\1#p" <<<"$b")"
   if [[ -z "$num" ]]; then
+    [[ ! -f .specify/feature.json && "$b" == "$(cfg branch_prefix feat)/"* ]] || return 0
     b="$(sed -nE "s#^[^/]+/(($FEATURE_KEY_RE)-.+)#\\1#p" <<<"$b")"
     if [[ -n "$b" && -d "specs/$b" ]]; then echo "specs/$b"; fi
     return 0

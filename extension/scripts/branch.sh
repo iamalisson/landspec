@@ -22,7 +22,10 @@ done
 [[ -z "$task$parent" || "$task" =~ ^T[0-9]{3,}$ ]] || die "usage: branch.sh [feature] T001 (exactly one task ID)"
 landspec_cd_root
 
-if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"; else fdir="$(feature_dir)"; fi
+if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"
+# The feature mode follows what /speckit-specify just wrote, never the branch it ran on (a task ref included).
+elif [[ -z "$task" ]] && fdir="$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json 2>/dev/null)" && [[ -n "$fdir" && -d "$fdir" ]]; then :
+else fdir="$(feature_dir)"; fi
 
 # The feature mode: one branch per feature, made when the spec is written.
 if [[ -z "$task" ]]; then
