@@ -61,8 +61,8 @@ if $plan; then
   # plan_files: the folder's files, relative and sorted; editor and temp files (issues.sh writes tasks.md.tmp) left out.
   # shortcut: a name list stands in for `git ls-files`, since the reviewer hashes a copy outside any repository.
   plan_files() { (cd "$fdir" && find . -type f ! -name '.*' ! -name '*~' ! -name '*.swp' ! -name '*.tmp') | sed 's|^\./||' | LC_ALL=C sort; }
-  # plan_text <file>: its content, tasks.md without the issue numbers issues.sh appends.
-  plan_text() { if [[ "$1" == tasks.md ]]; then sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/$1"; else cat "$fdir/$1"; fi; }
+  # plan_text <file>: its content; tasks.md without the issue numbers issues.sh writes, task ticks read as "- [ ]".
+  plan_text() { if [[ "$1" == tasks.md ]]; then plain_tasks "$fdir/$1" | sed -E 's/ — #[0-9]+[[:space:]]*$//'; else cat "$fdir/$1"; fi; }
   # Each file as path, NUL, byte length, newline, content: no two folders hash alike by moving bytes between files.
   state() {
     local f; plan_files | while IFS= read -r f; do

@@ -6,10 +6,18 @@
 #       elsewhere, failed, running, pr, reviewed, fix, implemented, resume, startable, waiting.
 #       Reads by branch name and never switches; its one write fast-forwards a task branch that is
 #       behind its origin branch and checked out nowhere.
+#   On the feature's branch (<branch_prefix>/<NNN>-<name>), status reads tasks from landing commits instead:
+#       One "TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=<n>] [REASON=<why>]"
+#       line per task, then at most one of START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head>
+#       [RESUME=yes], REVIEW=<id>, FIX=<id>, LAND=<id>, then CHECK=yes|no PR=<url|-> ORDER= DONE=.
+#   implement.sh [feature] land <task>
+#       On the feature's branch: commits the tick on the task ref, merges it --no-ff with the trailers
+#       Landspec-Task and Landspec-Review, pushes, deletes the ref. Prints LANDED=<id> COMMIT=<sha>.
 #   implement.sh [feature] mark <task> implemented|changes|ready|pr [<report>]
+#       changes at task_rounds: (default 3) fix rounds also marks the task failed and prints FAILED=<id>.
 #   implement.sh [feature] mark <task> red   adds 1 to red= (tests red after its implementer said done), prints RED=<n>
 #   implement.sh [feature] fail <task> <reason>
-#   implement.sh [feature] retry <task>
+#   implement.sh [feature] retry <task>   also deletes the task ref, so the task starts again from the feature head
 #   implement.sh [feature] restack [--running T001,T002]
 #       Moves each stacked branch, parents first, in the run's worktree <repo>-<feature>-run: onto the
 #       base once its parent's PR is merged, onto its parent's new head when the parent moved. Prints
@@ -44,13 +52,29 @@ source "$(dirname "$0")/lib.sh"
 landspec_cd_root
 
 feature=""
-case "${1:-}" in status|mark|fail|retry|restack|stack|check-copy|check-result|release-plan|release-bump|audit-plan|audit-record|"") ;; *) feature="$1"; shift ;; esac
+case "${1:-}" in status|mark|land|fail|retry|restack|stack|check-copy|check-result|release-plan|release-bump|audit-plan|audit-record|"") ;; *) feature="$1"; shift ;; esac
 action="${1:-}"; shift || true
 if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"; else fdir="$(feature_dir)"; fi
 [[ -f "$fdir/tasks.md" ]] || die "$fdir/tasks.md not found; run /speckit-tasks first"
 num="$(feature_key "$fdir")"
 rdir="$(git rev-parse --git-common-dir)/landspec-run/$(basename "$fdir")"
-MAX_ROUNDS=3
+fb="$(feature_branch "$fdir")"
+
+# task_rounds: the fix rounds a task gets before it fails (task_rounds:, default 3).
+task_rounds() {
+  local n; n="$(cfg task_rounds 3)"
+  [[ "$n" =~ ^[1-9]$ ]] || die "task_rounds must be a number from 1 to 9"
+  echo "$n"
+}
+# task_ref <id>: the local ref a task is built on before it lands, landspec/<NNN>-<tnnn>-task.
+task_ref() { echo "landspec/$num-$(tr '[:upper:]' '[:lower:]' <<<"$1")-task"; }
+# on_feature_branch: this checkout is on the feature's one branch, so tasks land there.
+on_feature_branch() { [[ "$(git branch --show-current)" == "$fb" ]]; }
+# ref_wt <ref>: "<path>\t<locked 0|1>" of the worktree that has <ref> checked out, or nothing.
+ref_wt() {
+  git worktree list --porcelain | awk -v b="refs/heads/$1" 'function out() { if (m) print p "\t" l; m = 0 }
+    /^worktree / { out(); p = substr($0, 10); l = 0 } $0 == "branch " b { m = 1 } /^locked/ { l = 1 } END { out() }'
+}
 
 # task_branch <id> [refs/heads|refs/remotes/origin]: the task's branch there, by its name's key.
 task_branch() {
@@ -138,6 +162,100 @@ move() {
   echo "RESTACKED=$t REVIEW=$rv"
 }
 
+# deps <task line>: the tasks its "(depends on …)" names, one per line.
+deps() { grep -oiE 'depends on T[0-9]{3,}([, ]+(and )?T[0-9]{3,})*' <<<"$1" | grep -oE 'T[0-9]{3,}' || true; }
+
+# feature_status: status on the feature's branch (contracts/scripts.md "implement.sh"); one task at a time.
+feature_status() {
+  local line t r rh w st why f fh phase round d marker plain act="" first="" running=false ids="" out="" n=0 done_n=0 pr
+  refuse_legacy "$fdir"
+  bash "$(dirname "$0")/review.sh" check --plan >/dev/null || exit 1
+  if [[ "$(landspec_level)" == full ]]; then
+    marker="$(git rev-parse --git-common-dir)/landspec-analyzed/$(basename "$fdir")"
+    # the marker hashes tasks.md as analyzed, before any tick, with or without the issue line
+    [[ -f "$marker" ]] && plain="$(cat "$marker")" \
+      && [[ "$plain" == "$(plain_tasks "$fdir/tasks.md" | sha256)" || "$plain" == "$(plain_tasks "$fdir/tasks.md" issue | sha256)" ]] \
+      || die "level 'full' requires /speckit-analyze on the current tasks.md before implementing"
+  fi
+  git worktree prune
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    t="$(sed -E 's/^- \[.\] (T[0-9]{3,}) .*/\1/' <<<"$line")"; ids+=" $t"; n=$((n + 1))
+    r="$(task_ref "$t")"; rh=""; w=""; why=""
+    if git show-ref --verify --quiet "refs/heads/$r"; then rh="$(git rev-parse "refs/heads/$r")"; w="$(ref_wt "$r")"; fi
+    f="$(rec "$t" failed)"; fh="$(rec "$t" head)"; phase="$(rec "$t" phase)"; round="$(rec "$t" round)"
+    if task_done "$fdir" "$t"; then st=done; done_n=$((done_n + 1))
+    elif [[ -n "$f" && ( -z "$fh" || "$fh" == "$rh" ) ]]; then st=failed; why="$f"
+    elif [[ "$running_list" == *" $t "* ]]; then st=building; running=true
+    elif [[ "$w" == *$'\t'1 ]]; then st=waiting; why="locked worktree ${w%%$'\t'*}"
+    else
+      st=""
+      for d in $(deps "$line"); do task_done "$fdir" "$d" || { st=waiting; why="waits for $d"; break; }; done
+      if [[ -n "$st" ]]; then :
+      elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == changes ]]; then st=changes
+      elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == ready ]] \
+           && bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1; then st=review
+      elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == implemented ]]; then st=built
+      else st=pending
+      fi
+    fi
+    out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == done ]] || out+=" ROUND=$round"
+    out+="${why:+ REASON=$why}"$'\n'
+    # the one next step: the task already under way, else the first pending one
+    if [[ -z "$act" ]]; then
+      case "$st" in
+        built) act="REVIEW=$t" ;; review) act="LAND=$t" ;; changes) act="FIX=$t" ;;
+        pending) if [[ -n "$rh" ]]; then act="START=$t REF=$r FROM=$(git rev-parse "refs/heads/$fb") RESUME=yes"
+                 elif [[ -z "$first" ]]; then first="START=$t REF=$r FROM=$(git rev-parse "refs/heads/$fb")"; fi ;;
+      esac
+    fi
+  done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$fdir/tasks.md" || true)
+  pr="$(gh pr list --head "$fb" --state open --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')" \
+    || die "cannot look up the feature's pull request; fix gh's error above"
+  printf '%s' "$out"
+  if ! $running; then act="${act:-$first}"; [[ -z "$act" ]] || echo "$act"; fi
+  echo "CHECK=$( ((n > 0 && done_n == n)) && echo yes || echo no)"
+  echo "PR=${pr:--}"; echo "ORDER=${ids# }"; echo "DONE=$done_n/$n"
+}
+
+# land <task>: the reviewed task ref merged into the feature branch (data-model "Landing commit").
+land() {
+  local t="$1" r rh line pid tick blob mode tree c msg files err w
+  on_feature_branch || die "land merges into the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
+  task_done "$fdir" "$t" && die "$t is landed already; push the branch if origin lacks it: git push origin $fb"
+  r="$(task_ref "$t")"; git show-ref --verify --quiet "refs/heads/$r" || die "$t has no task ref $r in this clone: start it first"
+  rh="$(git rev-parse "refs/heads/$r")"
+  [[ "$(rec "$t" phase)" == ready && "$(rec "$t" head)" == "$rh" && -z "$(rec "$t" failed)" ]] \
+    || die "$t is not ready at its ref's head: review it and mark it (implement.sh mark $t ready <report>)"
+  bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1 \
+    || die "$r changed since its ready review: review it again and record it (review.sh record --branch $r <report>)"
+  [[ -z "$(git status --porcelain -- "$fdir")" ]] || die "uncommitted changes in $fdir: commit them on $fb first"
+  w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then land again"
+  pid="$(diff_id "$r")" || exit 1
+  line="$(task_line "$fdir" "$t")"
+  # The tick, committed on the ref without checking it out (a temporary index).
+  tick="$(git show "$rh:$fdir/tasks.md" | sed -E "s/^- \[ \] $t /- [X] $t /")" || die "$r has no $fdir/tasks.md"
+  blob="$(printf '%s\n' "$tick" | git hash-object -w --stdin)"
+  mode="$(git ls-tree "$rh" -- "$fdir/tasks.md" | cut -d' ' -f1)"
+  tree="$(export GIT_INDEX_FILE; GIT_INDEX_FILE="$(mktemp)"; git read-tree "$rh" && git update-index --cacheinfo "$mode,$blob,$fdir/tasks.md" && git write-tree; rm -f "$GIT_INDEX_FILE")"
+  if [[ "$tree" != "$(git rev-parse "$rh^{tree}")" ]]; then
+    c="$(git commit-tree "$tree" -p "$rh" -m "docs(specs): tick $t")"; git update-ref "refs/heads/$r" "$c" "$rh"
+  fi
+  msg="$(printf '%s: %s\n\nLandspec-Task: %s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$t" "$pid")"
+  if ! err="$(git merge --quiet --no-ff --no-edit -m "$msg" "refs/heads/$r" 2>&1)"; then
+    files="$(git diff --name-only --diff-filter=U | paste -sd, -)"
+    git merge --abort 2>/dev/null || true
+    git update-ref "refs/heads/$r" "$rh" # the tick goes, so the review still matches the ref
+    [[ -n "$files" ]] || { echo "$err" >&2; die "could not merge $r into $fb (not a conflict); fix git's error above, then land again"; }
+    die "$r conflicts with $fb in $files: merge $fb into $r in the task's copy, review it again, then land again"
+  fi
+  c="$(git rev-parse HEAD)"
+  git push --quiet origin "$fb" || die "$t landed as $c but $fb could not be pushed: git push origin $fb"
+  git branch --quiet -D "$r"; git config --remove-section "branch.$r" 2>/dev/null || true
+  event land task="$t" commit="$c"
+  echo "LANDED=$t COMMIT=$c"
+}
+
 case "$action" in
   mark)
     t="${1:-}"; phase="${2:-}"; report="${3:-}"; valid_task "$t"
@@ -154,16 +272,18 @@ case "$action" in
       grep -vE '^(failed|round)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; round=0
     fi
     if [[ -f "$rdir/$t" ]]; then grep -v '^red=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi # green again
-    set -- "phase=$phase" "head=$head"
+    set -- "phase=$phase" "head=$head"; failed=false
     if [[ "$phase" == changes ]]; then
       [[ -f "$report" ]] || die "usage: implement.sh mark <task> changes <report> (the review that asked for them)"
       round=$((round + 1)); mkdir -p "$rdir"; cp "$report" "$rdir/$t.report"
       set -- "$@" "report=$rdir/$t.report"
-      if ((round >= MAX_ROUNDS)); then set -- "$@" "failed=review rounds"; fi
+      if ((round >= $(task_rounds))); then set -- "$@" "failed=review rounds"; failed=true; fi
     fi
     write_rec "$t" "$@" "round=$round"
     event mark task="$t" phase="$phase" round="$round" branch="$b"
-    echo "MARKED=$t PHASE=$phase ROUND=$round" ;;
+    echo "MARKED=$t PHASE=$phase ROUND=$round"
+    if $failed; then echo "FAILED=$t"; fi ;;
+  land) t="${1:-}"; valid_task "$t"; land "$t" ;;
   fail)
     t="${1:-}"; why="${2:-}"; valid_task "$t"; [[ -n "$why" ]] || die "usage: implement.sh fail <task> <reason>"
     b="$(task_branch "$t")"; head=""; [[ -z "$b" ]] || head="$(git rev-parse "refs/heads/$b")"
@@ -171,10 +291,17 @@ case "$action" in
   retry)
     t="${1:-}"; valid_task "$t"
     if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
+    r="$(task_ref "$t")"
+    if git show-ref --verify --quiet "refs/heads/$r"; then # the task starts again from the feature head
+      w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then run retry again"
+      git branch --quiet -D "$r"; git config --remove-section "branch.$r" 2>/dev/null || true
+    fi
     echo "RETRY=$t" ;;
   status)
     running_list=""
     if [[ "${1:-}" == --running ]]; then running_list=" $(tr ',' ' ' <<<"${2:-}") "; fi
+    rounds="$(task_rounds)"
+    if on_feature_branch; then feature_status; exit 0; fi
     base="$(base_branch)"
     par="$(cfg parallel_tasks 4)"
     [[ "$par" =~ ^[0-9]+$ ]] && ((10#$par >= 1 && 10#$par <= 16)) || die "parallel_tasks must be a number from 1 to 16"
@@ -236,7 +363,7 @@ case "$action" in
           # even be read against that parent): until restack moves it, it waits.
           st=waiting; why="restack pending"
         # a changes mark on this head beats a ready record: Copilot's comments come after the review
-        elif [[ "$phase" == changes && "$fh" == "$head" && -n "$head" && "${round:-0}" -lt "$MAX_ROUNDS" ]]; then st=fix
+        elif [[ "$phase" == changes && "$fh" == "$head" && -n "$head" && "${round:-0}" -lt "$rounds" ]]; then st=fix
         elif [[ -n "$b" ]] && bash "$(dirname "$0")/review.sh" check --branch "$b" >/dev/null 2>&1; then st=reviewed
         elif [[ "$phase" == implemented && "$fh" == "$head" && -n "$head" ]]; then st=implemented
         elif [[ -n "$b" ]]; then st=resume
@@ -486,5 +613,5 @@ case "$action" in
     [[ "$r" -ef "$ad/audit-$c.md" ]] || cp "$r" "$ad/audit-$c.md" # a copy: the audit's report may be a temp file
     printf 'commit=%s\nreport=%s\nhold=%s\n' "$c" "$ad/audit-$c.md" "$h" > "$ad/audit"
     echo "AUDITED=$c REPORT=$ad/audit-$c.md HOLD=$h" ;;
-  *) die "usage: implement.sh [feature] status [--running T001,T002] | mark <task> implemented|changes|ready|pr|red [<report>] | fail <task> <reason> | retry <task> | restack | stack <task> <onto-task> | check-copy [--remove] | check-result red|green | release-plan | release-bump X.Y.Z | audit-plan | audit-record <commit> <report> <hold>" ;;
+  *) die "usage: implement.sh [feature] status [--running T001,T002] | mark <task> implemented|changes|ready|pr|red [<report>] | land <task> | fail <task> <reason> | retry <task> | restack | stack <task> <onto-task> | check-copy [--remove] | check-result red|green | release-plan | release-bump X.Y.Z | audit-plan | audit-record <commit> <report> <hold>" ;;
 esac
