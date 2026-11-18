@@ -65,12 +65,8 @@ cfg_set() {
 
 landspec_level() { cfg level standard; }
 
-# review_model: the model family the independent review must run on (default sonnet). Any other
-# value dies, so the config can never lower the bar: callers read it with `|| exit 1`.
-review_model() {
-  local m; m="$(cfg review_model sonnet)"
-  case "$m" in sonnet|opus|fable) echo "$m" ;; *) die "review_model must be sonnet, opus or fable" ;; esac
-}
+# review_model: the model family every review runs on: Opus only, never read from the config.
+review_model() { echo opus; }
 
 # Paths that hold tests, across the stacks landspec supports (Django's app/tests.py, SwiftPM's
 # Tests/, .NET's X.Tests/, Cypress). Case-sensitive: the PascalCase name is anchored on a lowercase

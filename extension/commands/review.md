@@ -12,14 +12,12 @@ catches what the author's own session misses, because that session shares the au
 user ran `/speckit-landspec-review`): launch one subagent of type `landspec:reviewer` whose prompt
 starts with the line `landspec review: independent reviewer`, then this whole file plus the
 facts below, and nothing else: no summary of what you built, no "I already checked X". Pass the
-call's `model`: `review_model:` from `.specify/extensions/landspec/landspec-config.yml` when it is `sonnet`,
-`opus` or `fable`, `sonnet` when the key is absent or empty. If `review_model:` holds any other
-value, print `landspec: review_model must be sonnet, opus or fable` and stop.
-Never run the review on `haiku`, and never in a fork of this session. Pass `isolation: "worktree"` on the
+call's `model`: `opus`. Reviews run on Opus only: if Opus is not available, stop and name this
+review; never run it on another model, and never in a fork of this session. Pass `isolation: "worktree"` on the
 call too: the reviewer then runs in its own copy of the repository and never writes to yours. If
 the call refuses the type `landspec:reviewer` (the plugin is not installed), launch a
 `general-purpose` subagent with the same prompt, the same `model` and `isolation: "worktree"`. The
-plugin's hook blocks a review launch without one of those models, without that isolation, or in a
+plugin's hook blocks a review launch on any model but `opus`, without that isolation, or in a
 fork.
 Wait for its report. The reviewer writes it to a file itself and names it on its first line,
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:

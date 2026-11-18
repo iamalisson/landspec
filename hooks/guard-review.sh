@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Claude Code PreToolUse hook (Agent, and Task on older clients). A review launch, landspec:reviewer
-# or any agent whose prompt holds the reviewer sentinel, must run on sonnet, opus or fable, passed as
+# or any agent whose prompt holds the reviewer sentinel, must run on opus, passed as
 # the call's model (never the session's, which may be cheap), in a fresh agent (a fork inherits the
 # author's context, so it is not independent), and in its own copy of the repository (isolation:
 # worktree), so it never writes to the author's checkout. Every other launch passes untouched.
@@ -25,14 +25,10 @@ if [[ "$type" == fork ]]; then
   echo "landspec: the review must run in a fresh agent, not a fork of this session" >&2; exit 2
 fi
 model="$(field model)"
-case "$model" in
-  sonnet|opus|fable) ;;
-  "") # A session that forces one subagent model decides it; the record warns.
-      if [[ -z "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" ]]; then
-        echo "landspec: the review must run on sonnet, opus or fable (review_model:), not the session's model" >&2; exit 2
-      fi ;;
-  *) echo "landspec: the review must run on sonnet, opus or fable (review_model:), not $model" >&2; exit 2 ;;
-esac
+# An empty model passes only when the session forces an Opus model on every subagent; the record warns.
+if [[ "$model" != opus && ! ( -z "$model" && "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" == *opus* ) ]]; then
+  echo "landspec: reviews run on Opus only (model: opus)" >&2; exit 2
+fi
 if [[ "$(field isolation)" != worktree ]]; then
   echo 'landspec: the review must run in its own copy of the repository: pass isolation: "worktree" (an older landspec copy in this project? run /landspec:init; Claude Code too old to take it? update it)' >&2; exit 2
 fi
