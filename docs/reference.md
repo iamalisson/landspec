@@ -147,6 +147,19 @@ review, Copilot comments being answered). CI never holds a PR back: "CI passed",
 or "CI failed: <jobs>" is shown beside each, and every PR is written `[#N](<url>)`. landspec never
 requests a Copilot review: a repository's ruleset, or a person, does.
 
+On the feature's own branch (`<branch_prefix>/<NNN>-<name>`, made by `branch.sh <feature>`),
+`implement.sh status` builds one task at a time instead: it refuses without a current `ready` plan
+review, a legacy feature (`LEGACY=`) or, on `full`, the analyzed marker; prints one `TASK=<id>
+STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per task, then at most
+one of `START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]`, `REVIEW=`, `FIX=`
+or `LAND=`, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. A task is `done` when the
+branch holds its landing commit (a message line `Landspec-Task: <id>`). `implement.sh land <task>`
+lands a `ready` task whose review matches its ref: it commits the tick in `tasks.md` on the ref, merges
+it `--no-ff` as `<id>: <summary>` with the trailers `Landspec-Task: <id>` and `Landspec-Review: ready
+<patch id>`, pushes the branch and deletes the ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted
+changes in the feature folder, and a conflict aborts the merge naming the files. `retry` also deletes
+the task ref. The plan review ignores task ticks and the `**Issue**: #N` line.
+
 When every task has its PR, `/landspec:implement` checks them **together**: `implement.sh check-copy`
 merges every unmerged task branch in `ORDER` into `<repo>-<feature>-check` (detached at `origin/<base>`,
 never pushed, kept at `refs/landspec/check/<feature>`), runs the test command there, and records the
@@ -335,6 +348,7 @@ twice adds both PRs into one row.
 | `review_model` | *(no longer read)* | every review (task, plan, feature) runs on `opus` in the plugin's `landspec:reviewer` agent, whatever this key says; when Opus is not available the review stops, with no fallback. `opus` is passed on every launch, so on a cheap session the review costs more than the session. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides it (the launch may then leave `model` empty only when it names an Opus model; the record warns). The plugin's hook that blocks a review launch on any model but `opus`, in a fork, or without `isolation: "worktree"`, exists only where the plugin is installed. A project whose landspec copy predates that rule is refused until `/landspec:init` updates it |
 | `worktree_setup` | *(empty)* | one command each `/landspec:implement` implementer runs first in its own copy (a new worktree has no git-ignored files: `pnpm install`, say); when it fails, that task is `failed` with its output. Empty: each implementer prepares its own copy as the README says, and a task it cannot prepare is `failed` (`setup: <what is missing>`) |
 | `implement_model` | *(empty: the session's)* | the model of `/landspec:implement`'s implementers: `sonnet`, `opus` or `fable`; any other value is refused |
+| `task_rounds` | `3` | how many `changes needed` reviews a task gets before `implement.sh mark … changes` marks it `failed` (`FAILED=<id>`; `retry` lifts it): a number from `1` to `9` |
 | `feature_rounds` | `3` | how many whole-feature check attempts `/landspec:implement` makes (a conflict, a red run or a `changes needed` feature review each count once per new combination of task heads) before it stops and asks: a number from `1` to `9` |
 | `version_files` | *(empty)* | the files that carry the version (`version: "X.Y.Z"` or `"version": "X.Y.Z"`), comma separated, the first one read as the current version; `/landspec:implement` bumps them for the release (minor; patch when every task is a `Fix`). Empty: no release step, only notes |
 | `release_notes` | *(empty)* | the folder for each release's notes, `<folder>/X.Y.Z.md`; they are also the published release's body; without it, the notes are the release PR's body, up to its `## Evidence` or `## Review` |
