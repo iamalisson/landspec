@@ -27,7 +27,7 @@ Prerequisites: AWS CLI ≥ 2.32, an Identity Center permission set for yourself,
 | # | Steps | Expect |
 |---|---|---|
 | Q1 | In a test project: `/landspec:aws`; run the printed deploy line for dev (`Access=build`) and prod (`Access=read`); add the printed profiles; `aws sso login`; `/landspec:aws` again | stacks `CREATE_COMPLETE`; check prints `IDENTITY=agent` with the right `ACCESS`; under 15 minutes per account (SC-001) |
-| Q2 | `TrustMode=login` only: assume the role once with an `aws login` session and once with an IAM user's access key | the first succeeds, the second is `AccessDenied`. If the key is not denied, drop `login` mode (research R3) |
+| Q2 | Dropped with `login` mode (T007, #251); kept for the record. `TrustMode=login` only: assume the role once with an `aws login` session and once with an IAM user's access key | the first succeeds, the second is `AccessDenied`. If the key is not denied, drop `login` mode (research R3) |
 | Q3 | `bash .specify/extensions/landspec/scripts/aws.sh check --simulate` with each profile; then one live destructive call per account on a resource the stack made for it (e.g. `aws iam create-user --user-name x`) | every FR-004/FR-005 action `denied`; the live call `AccessDenied` (SC-002) |
 | Q4 | Start Claude Code in the project; `/mcp` | `aws-mcp` connected as the agent profile; its tool list matches research R8 (confirms whether `call_aws` is gone) |
 | Q5 | With `AWS_PROFILE` set to your admin profile, `/landspec:aws` | `IDENTITY=other-role`, refused with the profile to use |

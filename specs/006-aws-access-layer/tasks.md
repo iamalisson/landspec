@@ -53,7 +53,7 @@ description: "Tasks for safe AWS access for Claude Code"
     concrete action to simulate for a wildcard entry); `extension/aws/agent-role.yaml` (CloudFormation, plain YAML: long-form
     intrinsics `Fn::Sub`, `Fn::If`, `Fn::Equals`, no `!` tags) with the parameters, resources and
     outputs of contracts/template.md: `RoleName` (default `landspec-agent`), `Access`
-    (`read`|`build`, default `read`), `TrustMode` (`sso`|`login`, default `sso`),
+    (`read`|`build`, default `read`), `TrustMode` (`sso`|`login`, default `sso`; `login` later dropped by T007, #251),
     `PermissionSetName`, `LoginUserNames`; a `Rules` section that fails the stack when the
     parameter of the chosen mode is empty; trust per research R2 (`Principal: {AWS: account root}`,
     `ArnLike aws:PrincipalArn arn:aws:iam::<acct>:role/aws-reserved/sso.amazonaws.com/*AWSReservedSSO_<PermissionSetName>_*`)
@@ -317,6 +317,7 @@ description: "Tasks for safe AWS access for Claude Code"
     of the live call, Q2's two results (or "login mode removed"), Q4's tool list, Q5's refusal, and
     the stack deletions; `bash tests/run.sh` passes. Failure path: a step that does not give its
     expected result is written in the PR and blocks the release.
+  - Outcome (#251): by the developer's decision the live run (Q1–Q6, the SCP attach, the MCP tool list) was not made; `login` mode was removed as prescribed above, the SSO trust matches the role's 16-character suffix, and three read denies were added. The live checks stay unverified.
 
 ---
 
@@ -364,6 +365,12 @@ description: "Tasks for safe AWS access for Claude Code"
     - an IAM user caller with no prod profiles: still exit 1 with its refusal, and the `PROD=` line printed (failure path: the line never turns a refusal into a pass);
     - `no-credentials`: no `PROD=` line;
     - the existing check, `--simulate` and setup checks pass unchanged.
+
+- [ ] T011 [US4] List the Terraform plan gate as a layer in the security model, in docs/security.md — #258
+  - Comes from: the whole-feature check's feature review, `not met`: FR-013 "`docs/security.md` MUST list each new layer with what it checks and whether it can be bypassed": it has rows for the guard's AWS rules and the agent role, none for the plan gate (`tfplan.sh gate`, called by `pr.sh:151-153`)
+  - What: one new row in the layers table of `docs/security.md` (the `| When | Where | What it checks | Bypassable? |` table, after the "Before a PR opens" row): When `Before a PR opens, with aws: on (standard, full)`; Where `pr.sh`, through `tfplan.sh gate`; What it checks: a diff touching a `*.tf` file needs a Terraform plan recorded for that exact diff (`tfplan.sh record`), one per touched root in `aws_prod_paths`, and the PR body shows its create, change and destroy counts with stateful replaces and destroys first; a diff with only CDK, Pulumi or CloudFormation template files gets a "Skipped" line instead; Bypassable: `yes`: it is a local check of what the author recorded (a plan is not re-run in CI), it is off on lite and with `aws: off`, and infrastructure tools other than Terraform are named, not gated; IAM and branch protection are the boundary.
+  - Impact: `docs/security.md` (the layers table); `tests/static.test.sh` (one check that the row exists); nothing else.
+  - Completed when: `bash tests/static.test.sh` passes with a new check: `docs/security.md` has a table row whose first cell starts `Before a PR opens, with` and that names `tfplan.sh gate` and `Skipped`; deleting the row makes that check fail.
 
 ---
 

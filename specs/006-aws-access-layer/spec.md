@@ -29,7 +29,7 @@ they have one). The template creates the agent's role: in dev it can build, but 
 any IAM role, user or policy, and it is denied deleting data, touching audit services or changing
 its own access; in
 prod it can only read, and cannot read secret values or data. The role can be assumed only by the
-developer's own short-lived sign-in (IAM Identity Center or `aws login`), never by an access key.
+developer's own short-lived IAM Identity Center sign-in, never by an access key.
 Claude never creates or changes its own role.
 
 **Why this priority**: every other part relies on this identity. AWS permissions are what actually
@@ -146,8 +146,6 @@ on lite, see no plan required.
 
 - A developer with only one AWS account: the template is deployed once as dev; nothing about prod
   is required, and the check reports "no prod configured".
-- The AWS CLI is older than the version that supports `aws login`: the check says so and points to
-  IAM Identity Center, or to upgrading.
 - Claude Code's environment already has `AWS_ACCESS_KEY_ID` set: the check names it as the
   reason the identity is a key, without printing its value.
 - The project already has `.claude/settings.json` or `.mcp.json`: landspec does not overwrite them
@@ -157,8 +155,9 @@ on lite, see no plan required.
   apply; the PR body says the plan gate was skipped and why.
 - A prod profile that is not named like prod: the prod accounts and profiles are listed in the
   project's landspec config, not guessed from names.
-- The AWS MCP server or the Agent Toolkit is not installed: the check says how to install it; the
-  rest of landspec works without it.
+- The AWS MCP server or the Agent Toolkit is not installed: the check prints `missing: .mcp.json:
+  the aws-mcp server` (setup prints the entry to add) and `/landspec:aws` says how to add the
+  Agent Toolkit; the rest of landspec works without it.
 
 ## Requirements *(mandatory)*
 
@@ -171,7 +170,8 @@ on lite, see no plan required.
   credentials, and MUST show the exact deploy command per account. landspec MUST NOT deploy it,
   run any AWS write call, or create or change the agent's role itself.
 - **FR-003**: The template MUST create, per account, an agent role assumable only through
-  short-lived human sign-in (IAM Identity Center or `aws login`), with a session of at most one
+  short-lived human sign-in through IAM Identity Center (`aws login` mode was dropped: research R3
+  could not be confirmed live, T007), with a session of at most one
   hour, and MUST NOT create IAM users, access keys or console passwords.
 - **FR-004**: In dev, the agent role MUST act only as itself: no IAM write (service-linked roles
   aside), no passing a role to a service, no assuming another role, no IAM Identity Center write;
