@@ -219,7 +219,7 @@ and landed on the branch; one draft PR per feature.
 
 **Independent Test**: quickstart L7 and Q4.
 
-- [ ] T007 [P] [US3] Run every review on Opus only, in hooks/guard-review.sh and extension/scripts/lib.sh
+- [X] T007 [P] [US3] Run every review on Opus only, in hooks/guard-review.sh and extension/scripts/lib.sh
   - Comes from: FR-005, US3 scenario 4, edge case (Opus not available); research R4; contracts/scripts.md "review.sh", "hooks/guard-review.sh"
   - What: `lib.sh` `review_model` always prints `opus` (the `review_model` config key is no longer
     read); `hooks/guard-review.sh` refuses a reviewer launch whose `model` is not `opus` with
