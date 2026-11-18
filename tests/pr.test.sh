@@ -316,11 +316,11 @@ check "after a delta, then the PR body lists both labeled risk maps, as paths" \
 check "when the record was made with CLAUDE_CODE_SUBAGENT_MODEL_FORCE set, then the PR body has the model and the warning, though pr.sh ran without it" \
   'grep -qxF "Model: claude-sonnet-4-7" <<<"$body" && grep -qxF "warning: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set; the review did not run on the configured model" <<<"$body"'
 check "then no risk-map prose reaches the PR body" '[[ -n "$body" ]] && ! grep -q PROSE "$GH_LOG"'
-printf 'What changed: x\n\n- deep: db/migrations/002_drop.sql\n\n%s\n\nAssessment: ready\n' "$(range | sed 's/^Model: .*/Model: claude-opus-4-8/')" > "$TMP/review.md"
+printf 'What changed: x\n\n- deep: db/migrations/002_drop.sql\n\n%s\n\nAssessment: ready\n' "$(range | sed 's/^Model: .*/Model: claude-sonnet-4-8/')" > "$TMP/review.md"
 "$SCRIPTS/review.sh" record "$TMP/review.md" >/dev/null 2>&1 || true; rm -f "$GH_PR"; : > "$GH_LOG"
 "$p" task T001 "feat: drop" "$TMP/body.md" >/dev/null 2>&1 || true
 check "when Model: is outside the configured family, then the warning reaches the PR body from the record" \
-  'grep -qxF "warning: the review ran on claude-opus-4-8, not sonnet; the review did not run on the configured model" "$GH_LOG"'
+  'grep -qxF "warning: the review ran on claude-sonnet-4-8, not opus; the review did not run on the configured model" "$GH_LOG"'
 
 # ── FR-009: the diff id ignores the user's git config ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
