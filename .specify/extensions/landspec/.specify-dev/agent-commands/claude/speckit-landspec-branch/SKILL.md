@@ -12,6 +12,16 @@ metadata:
 One task = one issue = one branch = one PR. This puts the session on the task's branch before
 any code is touched.
 
+**After `/speckit-specify`** (the `after_specify` hook), it makes the feature's branch instead, and
+the steps below do not apply:
+
+- Run `bash .specify/extensions/landspec/scripts/branch.sh` with no task ID (the new feature is the
+  active one). It makes `<branch_prefix>/<NNN>-<short-name>` from the base branch, commits the spec
+  folder on it and pushes it; on a later run it only switches to it.
+- On `LEGACY=<feature>`, or any other failure, show the script's message as is and stop. Never work
+  around it: no stash, no reset, no checkout of other files.
+- On success, print `On <BRANCH> for feature <FEATURE>`; the plan and tasks are written on that branch.
+
 1. Find the task ID: the single `T###` in the arguments passed to `/speckit-implement`.
    - If there is none, or more than one: **stop the whole implement run**. Tell the user to pass
      exactly one task, e.g. `/speckit-implement T003`. Do not implement anything.

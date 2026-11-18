@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Switch to the branch for one task, creating it from the base branch if needed.
+# Switch to the feature's branch, or to the branch for one task, creating it from the base branch if needed.
+# Usage: branch.sh [feature]   the feature's one branch, <branch_prefix>/<NNN>-<short-name>
+#   A new one starts from the base with the spec folder's current content committed on it.
+#   Prints: BRANCH=<name> FEATURE=<NNN> BASE=<base>
 # Usage: branch.sh [feature] T003 [--from <branch>]   feature: a number (002) or folder name, else the active one
 #   --from <branch>: a new branch starts from that task branch's reviewed head (a stack), not the base
-# A new branch is pushed to origin at once, so the task shows as in progress to every clone.
-# Prints: BRANCH=<name> ISSUE=<n> TASK=<id> BASE=<base>
+#   Prints: BRANCH=<name> ISSUE=<n> TASK=<id> BASE=<base>
+# A new branch is pushed to origin at once, so the work shows as in progress to every clone.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -16,10 +19,48 @@ while [[ $# -gt 0 ]]; do
     *) [[ -z "$feature" ]] || die "usage: branch.sh [feature] T001 (one feature at most)"; feature="$1" ;;
   esac; shift
 done
-[[ "$task" =~ ^T[0-9]{3,}$ ]] || die "usage: branch.sh [feature] T001 (exactly one task ID)"
+[[ -z "$task$parent" || "$task" =~ ^T[0-9]{3,}$ ]] || die "usage: branch.sh [feature] T001 (exactly one task ID)"
 landspec_cd_root
 
-if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"; else fdir="$(feature_dir)"; fi
+if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"
+# The feature mode follows what /speckit-specify just wrote, never the branch it ran on (a task ref included).
+elif [[ -z "$task" ]] && fdir="$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json 2>/dev/null)" && [[ -n "$fdir" && -d "$fdir" ]]; then :
+else fdir="$(feature_dir)"; fi
+
+# The feature mode: one branch per feature, made when the spec is written.
+if [[ -z "$task" ]]; then
+  name="$(basename "$fdir")"
+  if legacy_feature "$fdir"; then
+    echo "LEGACY=$name"
+    die "$name was started under the per-task flow: finish its open task PRs as ordinary PRs, then delete the ' — #N' suffix (and close the issue) of each remaining task in $fdir/tasks.md to continue it"
+  fi
+  base="$(base_branch)"; branch="$(feature_branch "$fdir")"
+  if [[ "$(git branch --show-current)" != "$branch" ]]; then
+    # The spec folder travels with us; anything else uncommitted is refused before any switch.
+    [[ -z "$(git status --porcelain -- . ":(exclude)$fdir" ':(exclude).claude/worktrees')" ]] || die "uncommitted changes on '$(git branch --show-current)'; commit or stash them first"
+    git fetch --quiet origin 2>/dev/null || true
+    stuck="cannot switch to $branch: uncommitted changes in $fdir conflict with it; commit or stash them first"
+    if git show-ref --verify --quiet "refs/heads/$branch"; then git switch --quiet "$branch" || die "$stuck"
+    elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then git switch --quiet --track "origin/$branch" || die "$stuck"
+    else
+      if git show-ref --verify --quiet "refs/remotes/origin/$base"; then from="origin/$base"
+      elif git show-ref --verify --quiet "refs/heads/$base"; then from="$base"
+      else die "base branch '$base' does not exist; run /landspec:level to set up the branch flow"
+      fi
+      carry_switch "$fdir" "$branch" --no-track -c "$branch" "$from"
+      git add -- "$fdir"
+      git diff --cached --quiet || git commit --quiet -m "docs(specs): add $name spec"
+    fi
+  fi
+  # A branch made here but never pushed (origin was down) is pushed on the next run.
+  git rev-parse --quiet --verify '@{u}' >/dev/null 2>&1 \
+    || git push --quiet -u origin "$branch" || die "could not push $branch to origin; run branch.sh again once origin is reachable"
+  mkdir -p .specify
+  printf '{ "feature_directory": "%s" }\n' "$fdir" > .specify/feature.json
+  echo "BRANCH=$branch FEATURE=$(feature_key "$fdir") BASE=$base"
+  exit 0
+fi
+
 line="$(task_line "$fdir" "$task")"
 [[ -n "$line" ]] || die "$task not found in $fdir/tasks.md"
 issue="$(task_issue "$line")"
