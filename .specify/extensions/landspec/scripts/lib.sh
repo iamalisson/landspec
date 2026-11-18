@@ -161,14 +161,14 @@ refuse_legacy() {
 }
 
 # task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
-# landing commit, a commit whose message has the line "Landspec-Task: <Tnnn>". Only commits not on the
-# base count: task ids restart at T001 in every feature, and earlier features' landings reach the base.
+# landing commit: a merge commit on its first-parent chain whose message has the line "Landspec-Task: <Tnnn>".
+# Task ids restart at T001 in every feature: another feature's landings reach this branch's history only
+# under a PR merge's second parent, or squashed into a non-merge commit, and neither counts; this feature's
+# own stay on its chain after its PR is merged.
 task_done() {
-  local b r base x=(); b="$(feature_branch "$1")"; r="refs/heads/$b"; base="$(base_branch)"
+  local b r; b="$(feature_branch "$1")"; r="refs/heads/$b"
   git show-ref --verify --quiet "$r" || r="refs/remotes/origin/$b"
-  if git show-ref --verify --quiet "refs/remotes/origin/$base"; then x=("^refs/remotes/origin/$base")
-  elif git show-ref --verify --quiet "refs/heads/$base"; then x=("^refs/heads/$base"); fi
-  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$r" ${x[@]+"${x[@]}"} -- 2>/dev/null)" ]]
+  [[ -n "$(git log -1 --first-parent --merges --format=%H --grep="^Landspec-Task: $2\$" "$r" -- 2>/dev/null)" ]]
 }
 
 # plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"

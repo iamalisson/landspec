@@ -641,17 +641,32 @@ echo dev > clash.txt; git add clash.txt; git commit --quiet -m "chore: a conflic
 check "when the feature branch has a conflicting developer commit, then land aborts naming the file and changes nothing" \
   'one_refusal "conflicts with $FB in clash.txt" "$I" land T002 && [[ "$(git rev-parse HEAD)" == "$h" && "$(git rev-parse "refs/heads/$R2")" == "$r2" && -z "$(git status --porcelain)" ]] \
    && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
+git push --quiet origin "$(git commit-tree "$FB^{tree}" -p origin/develop -p "$FB" -m "Merge pull request #99 from $FB"):refs/heads/develop"; git fetch --quiet origin; fs
+check "when this feature's PR is merged into the base with a merge commit and fetched, then its landed task is still done" \
+  'git merge-base --is-ancestor "$FB" origin/develop && [[ "$(state_of T001)" == done ]] && grep -qx "DONE=1/3" <<<"$out" && one_refusal "T001 is landed already" "$I" land T001'
 printf '%s\n' '- [ ] T009 Old way in `a` — #5' >> specs/001-demo/tasks.md
 check "when the feature was started under the per-task flow, then status prints LEGACY= and refuses" \
   'rc=0; o="$("$I" status 2>/dev/null)" || rc=$?; ((rc != 0)) && [[ "$o" == LEGACY=001-demo ]]'
 git checkout -- specs/001-demo/tasks.md
 
 # An earlier feature's landings on the base never count: task ids restart at T001 in every feature.
-cd "$TMP"; rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/w"; new_repo standard
-git commit --quiet --allow-empty -m "T001: an earlier feature's task"$'\n\n'"Landspec-Task: T001"; git push --quiet origin HEAD:develop
-printf '%s\n' "$TASKS3" > specs/001-demo/tasks.md; printf '# Plan\n' > specs/001-demo/plan.md
-"$SCRIPTS/branch.sh" >/dev/null 2>&1; plan_review >/dev/null 2>&1; fs
-check "when the base holds another feature's Landspec-Task: T001, then this feature's T001 is pending and starts" \
-  'git log --format=%B | grep -qx "Landspec-Task: T001" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
-check "then land T001 is not refused as landed already" 'one_refusal "has no task ref" "$I" land T001'
+OLD="T001: an earlier feature's task"$'\n\n'"Landspec-Task: T001"
+# on_base <how>: a fresh repo whose develop holds another feature's T001, squashed or merged by its PR's merge commit;
+# then this feature's branch is cut from it, with a ready plan review, and status runs.
+on_base() {
+  cd "$TMP"; rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/w"; new_repo standard
+  local b t s l; b="$(git rev-parse HEAD)"; t="$(git rev-parse 'HEAD^{tree}')"
+  if [[ "$1" == squash ]]; then s="$(git commit-tree "$t" -p "$b" -m "$OLD")"
+  else l="$(git commit-tree "$t" -p "$b" -p "$(git commit-tree "$t" -p "$b" -m "feat: old work")" -m "$OLD")" # its landing
+    s="$(git commit-tree "$t" -p "$b" -p "$l" -m "Merge pull request #1 from feat/000-old")"; fi
+  git push --quiet origin "$s:refs/heads/develop"; git fetch --quiet origin
+  printf '%s\n' "$TASKS3" > specs/001-demo/tasks.md; printf '# Plan\n' > specs/001-demo/plan.md
+  "$SCRIPTS/branch.sh" >/dev/null 2>&1; plan_review >/dev/null 2>&1; fs
+}
+for how in squash merge; do
+  on_base "$how"
+  check "when the base holds another feature's T001 landing ($how), then this feature's T001 is pending and starts" \
+    'git log --format=%B | grep -qx "Landspec-Task: T001" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
+  check "then land T001 is not refused as landed already ($how)" 'one_refusal "has no task ref" "$I" land T001'
+done
 exit "$FAIL"
