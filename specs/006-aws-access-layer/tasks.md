@@ -353,6 +353,18 @@ description: "Tasks for safe AWS access for Claude Code"
     - a diff with `infra/main.tf` and `cdk.json`, no plan recorded: still refused with `no Terraform plan recorded for this diff` (failure path: the skipped line must not stand in for a plan);
     - a diff with only `src/app.py` (also with `infra_dir: .`), or only `infra/terraform.tfvars` or `infra/.terraform.lock.hcl`, or `aws: off`, or level lite: no `## Terraform plan` section.
 
+- [ ] T010 [US2] Report "no prod configured" from `aws.sh check` when the project lists no prod profile, in extension/scripts/aws.sh — #255
+  - Comes from: the whole-feature check's feature review, `not met`: spec.md Edge Cases "A developer with only one AWS account: the template is deployed once as dev; nothing about prod is required, and the check reports \"no prod configured\""; data-model "A prod profile or path list that is empty while `aws: on`: allowed (one account only); the check reports \"no prod configured\""
+  - What: in `aws.sh check` (`extension/scripts/aws.sh`, after the `ACCESS=` line at `:61`, before the `missing:` lines), when `cfg aws_prod_profiles ""` is empty, print the line `PROD=none: no prod configured (one account only; /landspec:aws --prod-profiles <names> adds one)`; when it is set, print `PROD=<the configured list as is>`. It is information only: it never changes the verdict or the exit code, and `--simulate` is unchanged. The refusals (`user`, `other-role`, `no-cli`, `no-credentials`) keep their output; the `PROD=` line is printed only on the path that prints `ACCESS=` (so not for `no-cli` or `no-credentials`).
+  - Impact: `extension/scripts/aws.sh` (the check branch and its header comment near `:25-29`) and its `.specify/extensions/landspec/scripts/` copy (kept identical); `tests/aws.test.sh` (the check block near `:118-160`); `docs/reference.md` (the `aws.sh check` paragraph near `:361-364`); `specs/006-aws-access-layer/contracts/scripts.md` "aws.sh check" (the printed lines); `skills/aws/SKILL.md` step 6 (the lines it shows: `IDENTITY=`, `ACCOUNT=`, `ROLE=`, `ACCESS=`); nothing else.
+  - Completed when: `bash tests/aws.test.sh` passes with new checks:
+    - the agent caller (tag `build`) with no `aws_prod_profiles` key: output has the exact line `PROD=none: no prod configured (one account only; /landspec:aws --prod-profiles <names> adds one)`, after `ACCESS=build`, and exit 0;
+    - the same with `aws_prod_profiles: ""` (setup's empty value): the same line;
+    - with `aws_prod_profiles: prod,prod-eu`: the line `PROD=prod,prod-eu` and no `no prod configured`;
+    - an IAM user caller with no prod profiles: still exit 1 with its refusal, and the `PROD=` line printed (failure path: the line never turns a refusal into a pass);
+    - `no-credentials`: no `PROD=` line;
+    - the existing check, `--simulate` and setup checks pass unchanged.
+
 ---
 
 ## Dependencies & order
