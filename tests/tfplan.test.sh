@@ -188,6 +188,9 @@ check "when the diff has only deploy/app.template.yaml, then the Skipped line na
 only tmp-three cdk.json Pulumi.yaml a/b.template.json
 check "when three files match, then the Skipped line names all three in git diff order with no \"more\"" \
   '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, cdk.json")" ]]'
+only tmp-four cdk.json Pulumi.yaml a/b.template.json c/Pulumi.prod.yml
+check "when four files match, then the Skipped line names the first 3, then and 1 more" \
+  '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, c/Pulumi.prod.yml and 1 more")" ]]'
 only tmp-five cdk.json Pulumi.yaml a/b.template.json c/Pulumi.prod.yml d/e.template.yml src/notcdk.json
 check "when five files match, then the Skipped line names the first 3 in git diff order, then and 2 more" \
   '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, c/Pulumi.prod.yml and 2 more")" ]]'
