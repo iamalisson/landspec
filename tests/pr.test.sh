@@ -688,4 +688,61 @@ set +e; out="$(GH_FAIL_RESOLVE=1 "$p" state 12 --reply PRRT_1 "$TMP/answer.md" 2
 check "when the resolve fails, then --reply prints REPLIED= and exits 1" '[[ "$out" == REPLIED=PRRT_1 && "$code" == 1 ]]'
 fi
 
+# ── Spec 008 T003: one draft PR per feature, from the feature branch, with the task table ──
+rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
+new_repo standard
+FB=feat/001-demo; PID=0123456789abcdef0123456789abcdef01234567
+printf '%s\n' '# Tasks' '' '**Issue**: #42' '' '- [ ] T001 Add search in `src/search.ts`' \
+  '- [ ] T002 Add ranking in `src/rank.ts` (depends on T001)' '- [ ] T003 Add export in `src/export.ts`' > specs/001-demo/tasks.md
+"$SCRIPTS/branch.sh" >/dev/null 2>&1
+# landed <id> <file>: what implement.sh land makes, a --no-ff merge of a task ref carrying its tick, with both trailers.
+landed() {
+  git switch --quiet -c "landspec/001-$1-task"; echo "$1" > "$2"
+  sed -i.bak "s/^- \[ \] $1 /- [X] $1 /" specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak
+  git add -A; git commit --quiet -m "feat: $1"; git switch --quiet "$FB"
+  git merge --quiet --no-ff -m "$1: x" -m "Landspec-Task: $1"$'\n'"Landspec-Review: ready $PID" "landspec/001-$1-task"
+  git branch --quiet -D "landspec/001-$1-task"
+}
+landed T001 search.ts; landed T002 rank.ts
+printf 'The demo feature.\n\n## Evidence\n\nran\n' > "$TMP/fbody.md" # no ## Review: the feature PR needs none
+git switch --quiet main
+check "when pr.sh feature runs off the feature branch, then it refuses naming branch.sh <feature>" \
+  'one_refusal "run branch.sh 001-demo" "$p" feature "feat: demo" "$TMP/fbody.md"'
+git switch --quiet "$FB"
+check "when no scan was recorded for the feature diff, then pr.sh feature refuses (the shared gates run)" \
+  'fails_with "no security-scan.sh --changed result for this diff" "$p" feature "feat: demo" "$TMP/fbody.md" && ! grep -q "^pr create" "$GH_LOG"'
+sed -i.bak 's/^- \[ \] T003 /- [X] T003 /' specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak; git commit --quiet -am "docs: tick T003 by hand"
+check "when a task is ticked with no landing commit, then pr.sh feature refuses it" \
+  'one_refusal "T003 is ticked but was never landed: untick it or run /landspec:implement" "$p" feature "feat: demo" "$TMP/fbody.md"'
+git reset --quiet --hard HEAD~1
+scanned
+mkdir -p .specify/memory
+printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' "$TMP/red.sh" > .specify/memory/constitution.md
+check "when the test command is red, then pr.sh feature refuses and opens nothing" \
+  'fails_with "the test command failed" "$p" feature "feat: demo" "$TMP/fbody.md" && ! grep -q "^pr create" "$GH_LOG"'
+rm .specify/memory/constitution.md
+out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>/dev/null)" || true
+check "when two tasks are landed, with no review record of the branch, then one draft PR opens into the base and prints READY=no" \
+  '[[ "$out" == *"PR=https://github.com/acme/app/pull/99 READY=no" ]] && grep -q "^pr create --draft --base develop --head $FB" "$GH_LOG" && [[ "$(grep -c "^pr create" "$GH_LOG")" == 1 ]]'
+check "then the body has the Tasks table: each task's state, landing commit and review, and no Independent review block" \
+  'grep -qxF "## Tasks" "$GH_LOG" && grep -qxF "| Task | Summary | State | Landing commit | Review |" "$GH_LOG" \
+   && grep -qxF "| T001 | Add search | done | $(git log -1 --format=%h --grep="^Landspec-Task: T001$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
+   && grep -qxF "| T002 | Add ranking | done | $(git log -1 --format=%h --grep="^Landspec-Task: T002$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
+   && grep -qxF "| T003 | Add export | pending | - | - |" "$GH_LOG" && ! grep -q "Independent review" "$GH_LOG"'
+check "then the body closes the feature issue and has no End check yet" 'grep -qxF "Closes #42" "$GH_LOG" && ! grep -q "## End check" "$GH_LOG"'
+: > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>/dev/null)" || true
+check "when pr.sh feature runs again, then it replaces that PR's body and opens no other" \
+  '! grep -q "^pr create" "$GH_LOG" && grep -q "^pr edit https://github.com/acme/app/pull/99 --body" "$GH_LOG" && [[ "$out" == *"PR=https://github.com/acme/app/pull/99 READY=no" ]]'
+old="$(git rev-parse HEAD~1)"; mkdir -p "$(git rev-parse --git-common-dir)/landspec-review"
+printf 'head: %s\nheads: %s %s\ntests: green\nverdict: changes needed\nreviewed: %s\n\n- met: FR-001 the demo searches\n- not met: SC-001 ranking is tested\n' \
+  "$old" "$(git rev-parse HEAD~2)" "$old" "$old" > "$(git rev-parse --git-common-dir)/landspec-review/feature-001-demo"
+rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
+out="$(GH_NO_DRAFT=1 "$p" feature "feat: demo" "$TMP/fbody.md" 2>"$TMP/pr.err")" || true
+check "when gh refuses drafts, then a normal PR opens with the do-not-merge warning" \
+  'grep -q "^pr create --base develop --head $FB" "$GH_LOG" && grep -qxF "landspec: warning: drafts are not available: do not merge this PR before pr.sh feature --ready" "$TMP/pr.err" && [[ "$out" == *"READY=no" ]]'
+check "when the feature has a changes needed end check for an older head, then the body has End check with its lines and checked at" \
+  'grep -qxF "## End check" "$GH_LOG" && grep -qxF "Head: $old (round 2), tests: green" "$GH_LOG" && grep -qxF "Assessment: changes needed" "$GH_LOG" \
+   && grep -qxF -- "- not met: SC-001 ranking is tested" "$GH_LOG" && grep -qxF -- "- met: FR-001 the demo searches" "$GH_LOG" \
+   && grep -qxF "checked at $old; the branch is now at $(git rev-parse HEAD)" "$GH_LOG"'
+
 exit "$FAIL"

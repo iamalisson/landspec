@@ -8,6 +8,12 @@
 #       "full" also requires "## Evidence".
 #       Runs the constitution's test command before the push and refuses when it fails.
 #       On an open PR, replaces its body from body-file.
+#   pr.sh feature "feat(api): price search" <body-file>
+#       On the feature's branch: the gates of a fix PR on the whole diff from the base, except the
+#       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
+#       [X] with no landing commit. Adds a "## Tasks" table, "## End check" from the feature's
+#       end-check record when there is one, and "Closes #N" from tasks.md's "**Issue**: #N" line.
+#       Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
 #       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch: the same
 #       review, mutants, scan and test gate as a task, without an issue.
@@ -42,11 +48,12 @@ open_pr() { # open_pr <title> <body> [body-file]
     || die "could not check for an open PR"
   if [[ -z "$url" ]]; then
     # A stacked PR opens as a draft: GitHub cannot merge a draft, so it never lands in its parent.
-    if [[ -n "${parent:-}" ]]; then
+    if [[ -n "${parent:-}" || "${draft:-}" == true ]]; then
       local ef; ef="$(mktemp)"
       if ! url="$(gh pr create --draft --base "$base" --head "$(git branch --show-current)" --title "$1" --body "$2" 2>"$ef")"; then
         grep -qi draft "$ef" || { cat "$ef" >&2; die "could not open the PR"; }
-        echo "landspec: warning: drafts are not available: merge #$parent_pr first, and only after this PR's review is current" >&2
+        [[ -n "${nodraft:-}" ]] || nodraft="merge #$parent_pr first, and only after this PR's review is current"
+        echo "landspec: warning: drafts are not available: $nodraft" >&2
         url="$(gh pr create --base "$base" --head "$(git branch --show-current)" --title "$1" --body "$2")"
       fi
       rm -f "$ef"
@@ -58,15 +65,56 @@ open_pr() { # open_pr <title> <body> [body-file]
     echo "PR body replaced from $3; edits made on GitHub are gone"
   fi
   event pr mode="$mode" url="$url"
-  echo "PR=$url"
+  echo "PR=$url${ready:+ READY=$ready}"
+}
+
+# feature_sections: the feature PR's generated "## Tasks" table and "## End check" (data-model
+# "Feature PR"), into $extra; dies on a task ticked with no landing commit.
+feature_sections() {
+  local line t c rv st sum fr hd n v h r l
+  record_field() { awk -v k="$1: " 'index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$fr"; }
+  extra=$'\n\n## Tasks\n\n| Task | Summary | State | Landing commit | Review |\n|---|---|---|---|---|'
+  while IFS= read -r line; do
+    t="$(sed -E 's/^- \[.\] (T[0-9]{3,}) .*/\1/' <<<"$line")"
+    c="$(git log -1 --format=%h --grep="^Landspec-Task: $t\$" HEAD --)"
+    rv=""; st=pending
+    if [[ -n "$c" ]]; then
+      st=done; rv="$(git log -1 --format=%B "$c" | sed -nE 's/^Landspec-Review: ([a-z ]*[a-z]) ([0-9a-f]{12}).*/\1 (patch id \2)/p')"
+    elif grep -qE '^- \[[xX]\]' <<<"$line"; then die "$t is ticked but was never landed: untick it or run /landspec:implement"
+    elif grep -q '^failed=.' "$(git rev-parse --git-common-dir)/landspec-run/$(basename "$fdir")/$t" 2>/dev/null; then st=failed
+    fi
+    sum="$(task_summary "$line" | sed 's/|/\\|/g')"
+    extra+=$'\n'"| $t | $sum | $st | ${c:--} | ${rv:--} |"
+  done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$fdir/tasks.md" || true)
+  # The end-check record (data-model "End check"): "<field>: <value>" lines, then the review's lines.
+  fr="$(git rev-parse --git-common-dir)/landspec-review/feature-$(basename "$fdir")"
+  [[ -f "$fr" ]] || return 0
+  hd="$(record_field head)"; [[ -n "$hd" ]] || return 0
+  n="$(record_field heads | wc -w | tr -d ' ')" # one word per head checked: the round is their count
+  extra+=$'\n\n## End check\n\n'"Head: $hd (round $n), tests: $(record_field tests)"
+  v="$(record_field verdict)"
+  extra+=$'\n'"Assessment: ${v:-not reviewed yet}"$'\n'
+  while IFS= read -r l; do extra+=$'\n'"$l"; done < <(grep -E '^- (met|not met|not verifiable): ' "$fr" || true)
+  h="$(git rev-parse HEAD)"; r="$(record_field reviewed)"; r="${r:-$hd}"
+  [[ "$r" == "$h" ]] || extra+=$'\n\n'"checked at $r; the branch is now at $h"
 }
 
 case "$mode" in
-  task|fix)
+  feature|task|fix) # guard.sh knows a pr.sh with pr.sh fix by the text "task|fix)"
     # fix: any PR that is not a task (a small fix, a dependency bump, landspec's own setup) gets the
     # same gate, so no PR opens without a recorded review at any level; only "Closes #N" is task-only.
     branch="$(git branch --show-current)"; issue=""
-    if [[ "$mode" == task ]]; then
+    # What feature mode changes, set here once: no branch-wide review (research R9), a draft, the generated sections.
+    need_review=true; draft=false; nodraft=""; ready=""; extra=""
+    if [[ "$mode" == feature ]]; then
+      title="${2:-}"; body_file="${3:-}"
+      [[ -n "$title" && -n "$body_file" ]] || die 'usage: pr.sh feature "type(scope): summary" <body-file>'
+      [[ "$branch" == "$(feature_branch "$fdir")" ]] \
+        || die "not on the feature's branch $(feature_branch "$fdir") (on '${branch:-a detached HEAD}'); run branch.sh $(basename "$fdir")"
+      need_review=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
+      issue="$(sed -nE 's/^\*\*Issue\*\*: #([0-9]+)[[:space:]]*$/\1/p' "$fdir/tasks.md" | tail -1)"
+      feature_sections
+    elif [[ "$mode" == task ]]; then
       task="${2:-}"; title="${3:-}"; body_file="${4:-}"
       [[ "$task" =~ ^T[0-9]{3,}$ && -n "$title" ]] || die 'usage: pr.sh task T003 "type(scope): summary" [body-file]'
       line="$(task_line "$fdir" "$task")"
@@ -104,7 +152,7 @@ case "$mode" in
     if [[ "$(landspec_level)" == full ]] && ! grep -qE '^## Evidence' <<<"$body"; then
       die "level 'full' requires an '## Evidence' section in the PR body (test output, screenshots, run links)"
     fi
-    grep -qE '^## Review' <<<"$body" \
+    ! $need_review || grep -qE '^## Review' <<<"$body" \
       || die "the PR body needs a '## Review' section: the independent review's findings and what was done about them (/speckit-landspec-review)"
     # A test that changes to fit the code proves nothing: editing, renaming, skipping or deleting
     # an existing test needs a reason a reviewer can check. Lines only added need none; position
@@ -128,7 +176,7 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     # The review has to have happened, on this diff, and said ready: a heading alone proves nothing.
     # Only that recorded fact and its Assessment go in the body; the report's text never does (the agent's ## Review
     # carries them, a security finding as one line), so nothing private reaches a public PR here.
-    review="$(bash "$LANDSPEC_EXT_DIR/scripts/review.sh" report)"
+    review=""; if $need_review; then review="$(bash "$LANDSPEC_EXT_DIR/scripts/review.sh" report)"; fi
     # Mutation testing too, when the project has a mutate command: mutants.sh records it per diff.
     if [[ -n "$(constitution_cmd mutate)" ]]; then
       mutants="$(diff_record landspec-mutants)"
@@ -160,8 +208,9 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     else
       echo "landspec: tests not run before the PR (no test command in the constitution)" >&2
     fi
-    body+=$'\n\n<details><summary>Independent review</summary>\n\n'"$review"$'\n\n</details>'
+    if $need_review; then body+=$'\n\n<details><summary>Independent review</summary>\n\n'"$review"$'\n\n</details>'; fi
     if [[ -n "$parent_pr" ]]; then body+=$'\n\n'"Stacked on #$parent_pr (merge it first)"; fi
+    body+="$extra"
     if [[ -n "$issue" ]] && ! grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #$issue([^0-9]|$)" <<<"$body"; then body+=$'\n\n'"Closes #$issue"; fi
     git push --quiet -u origin "$branch"
     open_pr "$title" "$body" "$body_file"
@@ -286,5 +335,5 @@ Merge this before starting tasks: \`/speckit-implement Tnnn\` branches from \`$b
     else die "$usage"
     fi
     ;;
-  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
+  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh feature \"type(scope): summary\" <body-file> | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
 esac
