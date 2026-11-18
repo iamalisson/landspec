@@ -39,11 +39,13 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
 ## R3. What marks a task as done
 
 - **Decision**: the landing merge commit. Its message is `<Tnnn>: <task summary>`, and it carries
-  the trailers `Landspec-Task: <Tnnn>` and `Landspec-Review: ready <patch id>`; the same commit
+  the trailers `Landspec-Task: <NNN>/<Tnnn>` (the feature's number, since task ids restart in every
+  feature) and `Landspec-Review: ready <patch id>`; the same commit
   brings the task's tick (`- [X] Tnnn` in `tasks.md`, committed on the task ref by `land` just before
   the merge). A task is done when the feature branch holds
   such a commit; `next.sh`, `implement.sh status` and `pr.sh feature` read it with
-  `git log --grep '^Landspec-Task: Tnnn$'`.
+  `git log --grep '^Landspec-Task: NNN/Tnnn$'` over the branch's whole history (the developer's
+  answer at T002's round limit: every merge shape keeps the landing, and no other feature's matches).
 - **Rationale**: it is on the branch, so every clone and a resumed run see it (FR-014), it needs no
   GitHub call (today's `closed_issues`, `lib.sh:374-387`, goes away), and the tick is what spec-kit's
   own implement does. A box ticked by hand without a landing commit is not done, and `pr.sh feature`

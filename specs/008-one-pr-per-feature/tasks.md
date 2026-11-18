@@ -76,8 +76,9 @@ and landed on the branch; one draft PR per feature.
     `TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per
     task, then at most one of `START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]`,
     `REVIEW=`, `FIX=`, `LAND=`, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=`, `DONE=x/y`; done from
-    `task_done` (new in `lib.sh`: the feature branch holds a commit whose message has the line
-    `Landspec-Task: <id>`); `waiting` while a `depends on` task is not done; `git worktree prune`
+    `task_done` (new in `lib.sh`: the feature branch's history holds a commit whose message has the
+    line `Landspec-Task: <NNN>/<id>`, the feature's number and the task id, so another feature's
+    landings never count and this feature's count in every merge shape); `waiting` while a `depends on` task is not done; `git worktree prune`
     first, `RESUME=yes` when the ref exists, `waiting REASON=locked worktree <path>` when it is
     checked out in a locked worktree. `changes` at `cfg task_rounds 3` fix rounds (replacing the
     `MAX_ROUNDS` constant) marks the task failed and prints `FAILED=<id>` (dependants stay
@@ -87,7 +88,7 @@ and landed on the branch; one draft PR per feature.
     refuse unless the task is `ready` and `review.sh check --branch <ref>` passes for the ref's head,
     and refuse uncommitted changes to the feature folder; commit `- [X] <id>` in `tasks.md` on the
     ref; merge it `--no-ff` into the feature branch with message `<id>: <summary>` and trailers
-    `Landspec-Task: <id>` and `Landspec-Review: ready <patch id>`; push; delete the ref and its
+    `Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready <patch id>`; push; delete the ref and its
     `branch.<ref>.*` settings; print `LANDED=<id> COMMIT=<sha>`; a conflict aborts the merge and
     dies naming the files. In `extension/scripts/review.sh` `plan_text`, also drop the
     `**Issue**: #N` line and read `- [X]`/`- [x]` as `- [ ]`, so ticks and the issue line never
