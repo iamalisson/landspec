@@ -473,7 +473,7 @@ only one PR per feature, with no issues.
     through `pr.sh fix`; `bash tests/guard.test.sh` passes with the new message; `tests/run.sh`
     passes.
 
-- [ ] T012 [US6] Remove branch.sh's task mode, in extension/scripts/branch.sh (depends on T011)
+- [X] T012 [US6] Remove branch.sh's task mode, in extension/scripts/branch.sh (depends on T011)
   - Comes from: FR-003, FR-016; research R1
   - What: delete the task id, the issue check, "merge the spec PR first", `--from`, the claim push
     and exit 3, and the parent-head file; a task id refuses with `branch.sh takes a feature, not a

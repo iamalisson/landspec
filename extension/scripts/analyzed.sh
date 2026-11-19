@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record that /speckit-analyze ran on the current tasks.md (checked by branch.sh on level "full").
+# Record that /speckit-analyze ran on the current tasks.md (checked by implement.sh status on level "full").
 # Usage: analyzed.sh <report-file>  (the report, saved as it came; kept next to the marker)
 # The marker lives in .git, so it never dirties the working tree.
 set -euo pipefail

@@ -18,8 +18,8 @@ FAKE
 chmod +x "$TMP/mutate.sh"; export TMP
 printf '**Commands**: build `[BUILD_COMMAND]` · test `npm test` · lint `[LINT_COMMAND]` · mutate `%s`\n' "$TMP/mutate.sh" > .specify/memory/constitution.md
 
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 check "when nothing changed on the branch, then it is skipped" 'out="$("$m")" && grep -q "^mutants skipped" <<<"$out"'
 
 mkdir -p src tests; echo 'export const search = 1' > src/search.ts; echo 'test' > tests/search.test.ts

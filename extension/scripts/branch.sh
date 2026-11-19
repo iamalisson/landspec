@@ -1,133 +1,52 @@
 #!/usr/bin/env bash
-# Switch to the feature's branch, or to the branch for one task, creating it from the base branch if needed.
-# Usage: branch.sh [feature]   the feature's one branch, <branch_prefix>/<NNN>-<short-name>
-#   A new one starts from the base with the spec folder's current content committed on it.
+# Switch to the feature's one branch, <branch_prefix>/<NNN>-<short-name>, creating it if needed.
+# Usage: branch.sh [feature]   feature: a number (002) or folder name, else the active one
+#   A new one starts from the base with the spec folder's current content committed on it, and is
+#   pushed to origin at once. Tasks are built on the feature branch, never on a branch of their own.
 #   Prints: BRANCH=<name> FEATURE=<NNN> BASE=<base>
-# Usage: branch.sh [feature] T003 [--from <branch>]   feature: a number (002) or folder name, else the active one
-#   --from <branch>: a new branch starts from that task branch's reviewed head (a stack), not the base
-#   Prints: BRANCH=<name> ISSUE=<n> TASK=<id> BASE=<base>
-# A new branch is pushed to origin at once, so the work shows as in progress to every clone.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
-task=""; feature=""; parent=""
+feature=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --from) parent="${2:-}"; [[ -n "$parent" ]] || die "usage: branch.sh [feature] T001 --from <branch>"; shift ;;
-    T[0-9]*) [[ -z "$task" ]] || die "usage: branch.sh [feature] T001 (exactly one task ID)"; task="$1" ;;
-    *) [[ -z "$feature" ]] || die "usage: branch.sh [feature] T001 (one feature at most)"; feature="$1" ;;
+    T[0-9]*) die "branch.sh takes a feature, not a task: tasks are built on the feature branch" ;;
+    -*) die "usage: branch.sh [feature]" ;;
+    *) [[ -z "$feature" ]] || die "usage: branch.sh [feature] (one feature at most)"; feature="$1" ;;
   esac; shift
 done
-[[ -z "$task$parent" || "$task" =~ ^T[0-9]{3,}$ ]] || die "usage: branch.sh [feature] T001 (exactly one task ID)"
 landspec_cd_root
 
 if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"
-# The feature mode follows what /speckit-specify just wrote, never the branch it ran on (a task ref included).
-elif [[ -z "$task" ]] && fdir="$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json 2>/dev/null)" && [[ -n "$fdir" && -d "$fdir" ]]; then :
+# Follows what /speckit-specify just wrote, never the branch it ran on (a task ref included).
+elif fdir="$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json 2>/dev/null)" && [[ -n "$fdir" && -d "$fdir" ]]; then :
 else fdir="$(feature_dir)"; fi
 
-# The feature mode: one branch per feature, made when the spec is written.
-if [[ -z "$task" ]]; then
-  name="$(basename "$fdir")"
-  refuse_legacy "$fdir"
-  base="$(base_branch)"; branch="$(feature_branch "$fdir")"
-  if [[ "$(git branch --show-current)" != "$branch" ]]; then
-    # The spec folder travels with us; anything else uncommitted is refused before any switch.
-    [[ -z "$(git status --porcelain -- . ":(exclude)$fdir" ':(exclude).claude/worktrees')" ]] || die "uncommitted changes on '$(git branch --show-current)'; commit or stash them first"
-    git fetch --quiet origin 2>/dev/null || true
-    stuck="cannot switch to $branch: uncommitted changes in $fdir conflict with it; commit or stash them first"
-    if git show-ref --verify --quiet "refs/heads/$branch"; then git switch --quiet "$branch" || die "$stuck"
-    elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then git switch --quiet --track "origin/$branch" || die "$stuck"
-    else
-      if git show-ref --verify --quiet "refs/remotes/origin/$base"; then from="origin/$base"
-      elif git show-ref --verify --quiet "refs/heads/$base"; then from="$base"
-      else die "base branch '$base' does not exist; run /landspec:level to set up the branch flow"
-      fi
-      carry_switch "$fdir" "$branch" --no-track -c "$branch" "$from"
-      git add -- "$fdir"
-      git diff --cached --quiet || git commit --quiet -m "docs(specs): add $name spec"
-    fi
-  fi
-  # A branch made here but never pushed (origin was down) is pushed on the next run.
-  git rev-parse --quiet --verify '@{u}' >/dev/null 2>&1 \
-    || git push --quiet -u origin "$branch" || die "could not push $branch to origin; run branch.sh again once origin is reachable"
-  mkdir -p .specify
-  printf '{ "feature_directory": "%s" }\n' "$fdir" > .specify/feature.json
-  echo "BRANCH=$branch FEATURE=$(feature_key "$fdir") BASE=$base"
-  exit 0
-fi
-
-line="$(task_line "$fdir" "$task")"
-[[ -n "$line" ]] || die "$task not found in $fdir/tasks.md"
-issue="$(task_issue "$line")"
-[[ -n "$issue" ]] || die "$task has no issue yet (every task needs one); run /speckit-landspec-issues"
-
-base="$(base_branch)"
-git fetch --quiet origin 2>/dev/null || true
-if git show-ref --verify --quiet "refs/remotes/origin/$base"; then from="origin/$base"
-elif git show-ref --verify --quiet "refs/heads/$base"; then from="$base"
-else die "base branch '$base' does not exist; run /landspec:level to set up the branch flow"
-fi
-
-# Task branches start from the base, so the spec, with this task's line, has to be merged there first.
-on_base="$(git show "$from:$fdir/tasks.md" 2>/dev/null)" \
-  || die "$fdir/tasks.md is not on '$base' yet; merge the spec PR first"
-grep -qE "^- \[.\] $task " <<<"$on_base" \
-  || die "$task is not in $fdir/tasks.md on '$base' yet; merge the spec PR first"
-
-if [[ "$(landspec_level)" == full ]]; then
-  marker="$(git rev-parse --git-common-dir)/landspec-analyzed/$(basename "$fdir")"
-  want="$(git show "$from:$fdir/tasks.md" | sha256)"
-  [[ -f "$marker" && "$(cat "$marker")" == "$want" ]] \
-    || die "level 'full' requires /speckit-analyze on the current tasks.md before implementing"
-fi
-
-num="$(feature_key "$fdir")"
-slug="$(task_summary "$line" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9\n' '-' | tr -s '-' | sed 's/^-//; s/-$//' | cut -d- -f1-4)"
-branch="$(cfg branch_prefix feat)/$num-$(tr '[:upper:]' '[:lower:]' <<<"$task")-$slug"
-
+name="$(basename "$fdir")"
+refuse_legacy "$fdir"
+base="$(base_branch)"; branch="$(feature_branch "$fdir")"
 if [[ "$(git branch --show-current)" != "$branch" ]]; then
-  # Never carry uncommitted work onto another task's branch.
-  # A reviewer's copy (Claude Code puts it under .claude/worktrees) is not the author's work.
-  [[ -z "$(git status --porcelain -- . ':(exclude).claude/worktrees')" ]] || die "uncommitted changes on '$(git branch --show-current)'; commit or stash them first"
-  if git show-ref --verify --quiet "refs/heads/$branch"; then git switch --quiet "$branch"
-  elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then git switch --quiet --track "origin/$branch"
+  # The spec folder travels with us; anything else uncommitted is refused before any switch.
+  [[ -z "$(git status --porcelain -- . ":(exclude)$fdir" ':(exclude).claude/worktrees')" ]] || die "uncommitted changes on '$(git branch --show-current)'; commit or stash them first"
+  git fetch --quiet origin 2>/dev/null || true
+  stuck="cannot switch to $branch: uncommitted changes in $fdir conflict with it; commit or stash them first"
+  if git show-ref --verify --quiet "refs/heads/$branch"; then git switch --quiet "$branch" || die "$stuck"
+  elif git show-ref --verify --quiet "refs/remotes/origin/$branch"; then git switch --quiet --track "origin/$branch" || die "$stuck"
   else
-    if [[ -n "$parent" ]]; then
-      # A stack starts from the parent's reviewed head, read by name (it may be checked out elsewhere).
-      git show-ref --verify --quiet "refs/heads/$parent" || die "--from $parent: no branch '$parent' in this clone"
-      why="$(bash "$(dirname "$0")/review.sh" check --branch "$parent" 2>&1 >/dev/null)" \
-        || die "--from $parent: its head has no recorded ready review ($(sed 's/^landspec: //' <<<"$why" | tail -1))"
-      from="refs/heads/$parent"
+    if git show-ref --verify --quiet "refs/remotes/origin/$base"; then from="origin/$base"
+    elif git show-ref --verify --quiet "refs/heads/$base"; then from="$base"
+    else die "base branch '$base' does not exist; run /landspec:level to set up the branch flow"
     fi
-    start="$(git branch --show-current)"; start_head="$(git rev-parse HEAD)"
-    git switch --quiet --no-track -c "$branch" "$from"
-    event start task="$task"
-    if [[ -n "$parent" ]]; then
-      git config "branch.$branch.landspec-parent" "$parent"
-      d="$(git rev-parse --git-common-dir)/landspec-review"; mkdir -p "$d"
-      git rev-parse "$from" > "$d/parent-head-${branch//\//__}"
-    fi
-    # The claim: an empty branch on origin tells every other clone's `next` this task is taken.
-    # Of two clones starting the same task, only one wins: the lease refuses a branch already on
-    # origin at another commit, and an up-to-date ref ("=": both claims are the same empty commit)
-    # means another clone pushed it first.
-    rc=0; err="$(git push --porcelain -u --force-with-lease="refs/heads/$branch:" origin "$branch" 2>&1)" || rc=$?
-    if [[ $rc == 0 ]] && ! printf '%s\n' "$err" | grep -q '^='; then echo "claim: $branch pushed to origin" >&2
-    elif [[ $rc == 0 ]] || git ls-remote --exit-code origin "refs/heads/$branch" >/dev/null 2>&1; then
-      if [[ -n "$start" ]]; then git switch --quiet "$start"; else git switch --quiet --detach "$start_head"; fi
-      git branch --quiet -D "$branch" # also drops its branch.<name>.* settings
-      rm -f "$(git rev-parse --git-common-dir)/landspec-review/parent-head-${branch//\//__}"
-      echo "landspec: $task was claimed elsewhere ($branch is on origin)" >&2; exit 3
-    else echo "landspec: warning: could not claim $branch on origin: $(tr '\n' ' ' <<<"${err:-unknown error}" | sed 's/ *$//'); other clones may start this task" >&2
-    fi
+    carry_switch "$fdir" "$branch" --no-track -c "$branch" "$from"
+    git add -- "$fdir"
+    git diff --cached --quiet || git commit --quiet -m "docs(specs): add $name spec"
+    event start feature="$name"
   fi
 fi
-
-# spec-kit's own /speckit-implement reads only this file (git-ignored, so a new worktree has none):
-# point it at the task's feature, so landspec and spec-kit always work on the same one.
+# A branch made here but never pushed (origin was down) is pushed on the next run.
+git rev-parse --quiet --verify '@{u}' >/dev/null 2>&1 \
+  || git push --quiet -u origin "$branch" || die "could not push $branch to origin; run branch.sh again once origin is reachable"
 mkdir -p .specify
 printf '{ "feature_directory": "%s" }\n' "$fdir" > .specify/feature.json
-
-echo "BRANCH=$branch ISSUE=$issue TASK=$task BASE=$base"
+echo "BRANCH=$branch FEATURE=$(feature_key "$fdir") BASE=$base"
