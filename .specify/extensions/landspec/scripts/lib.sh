@@ -65,8 +65,8 @@ cfg_set() {
 
 landspec_level() { cfg level standard; }
 
-# review_model: the model family every review runs on: Opus only, never read from the config.
-review_model() { echo opus; }
+# reviewer_model: the model family every review runs on: Opus only, never read from the config.
+reviewer_model() { echo opus; }
 
 # Paths that hold tests, across the stacks landspec supports (Django's app/tests.py, SwiftPM's
 # Tests/, .NET's X.Tests/, Cypress). Case-sensitive: the PascalCase name is anchored on a lowercase
@@ -90,7 +90,7 @@ default_branch() {
   git config init.defaultBranch || echo main
 }
 
-# The branch task PRs target: configured, or derived from the level.
+# The branch the feature PR targets: configured, or derived from the level.
 base_branch() {
   local b
   b="$(cfg base_branch auto)"

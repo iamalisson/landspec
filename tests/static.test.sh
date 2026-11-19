@@ -183,8 +183,8 @@ check "when the docs say what the scan proves, then it ran, never that it passed
 # FR-013/#258: the plan gate is a layer of the security model, with what it checks and how far it holds.
 check "when the security layers table is read, then a Before a PR opens, with row names tfplan.sh gate and its Skipped line" \
   'grep -E "^\| Before a PR opens, with " docs/security.md | grep -F "tfplan.sh gate" | grep -qF "Skipped"'
-check "when the example describes a [P] task, then it uses the parallel offer of next" \
-  'grep -qF "\`next\` prints a \`parallel\` line" examples/README.md && ! grep -qF "claude --worktree" examples/README.md'
+check "when the example describes the build, then /landspec:implement starts the startable tasks at once, a dependent one waits, and next makes no parallel offer" \
+  'grep -qF "starts T001 and T003 at once" examples/README.md && grep -qF "so it waits" examples/README.md && ! grep -qE "parallel. line|claude --worktree" examples/README.md'
 check "when the docs are read, then the README Start and the reference Update say the setup goes to the base branch" \
   'grep -q "base branch" <<<"$(sed -n "/^## Start/,/^## The loop/p" README.md)" && grep -q "base branch" <<<"$(sed -n "/^## Update/,/^## What/p" docs/reference.md)"'
 
@@ -503,6 +503,11 @@ check "then without worktree_setup it prepares its own copy from the README, and
    && grep -qF "return \`Failed: setup: <what is missing>\` and stop" <<<"$ag"'
 check "then README, help and the reference list /landspec:implement, worktree_setup and implement_model" \
   'grep -qF "/landspec:implement" README.md && grep -qF "\`implement\`" skills/help/SKILL.md && grep -q "^| \`worktree_setup\` |" docs/reference.md && grep -q "^| \`implement_model\` |" docs/reference.md'
+# Spec 008 T016 (FR-016): README and help describe one PR per feature, its tasks in parallel, each reviewed by Opus.
+for f in README.md skills/help/SKILL.md; do
+  check "when $f describes the loop, then it names pr.sh feature, tasks in parallel and Opus reviews" \
+    "grep -qF '\`pr.sh feature\`' $f && grep -qiE 'in parallel' $f && grep -qF Opus $f"
+done
 
 # Only the repository's own PRs count: a fork's PR may reuse any branch name or title.
 check "when a script lists PRs, then every gh pr list keeps only PRs from this repository" \

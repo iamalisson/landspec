@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Per-PR numbers from the local event log (.git/landspec-events, written by lib.sh event()).
 #   stats.sh
-# Prints one line per branch that opened a feature or fix PR (or a task PR of the per-task flow), timed to its
-# first pr event; spec PRs are left out. A feature PR's line also counts its tasks' refs (landspec/<NNN>-t<nnn>-task):
+# Prints one line per branch that opened a feature or fix PR (or each PR of a legacy per-task feature), timed to its
+# first pr event; a legacy feature's PR of its spec folder is left out. A feature PR's line also counts its tasks' refs (landspec/<NNN>-t<nnn>-task):
 #   <branch> start->pr <m>m | reviews <f> full + <d> delta | first <verdict> | tests <s>s x<n> | H+M <n>
 # H+M: high and medium findings over the branch's reviews, "?" when no report carried the count line.
 # then one line per feature with plan events (2.7.0's, which name no feature, under "?"):
 #   PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> ... | outside <n>
-# findings: one per plan round, "?" when its report had no count line; outside: the real findings the spec PR's
-# outside reviewers found.
+# findings: one per plan round, "?" when its report had no count line; outside: the real findings outside reviewers
+# found in the plan (review.sh outside --plan).
 # then: PRS=<n> MEDIAN_START_TO_PR=<m>m MEAN_ROUNDS=<x> READY_FIRST=<k>/<n>
 # Nothing leaves .git: the log is never pushed and never reaches a PR body.
 set -euo pipefail

@@ -1,5 +1,5 @@
 ---
-description: "Independent review of the branch (or of the plan, before issues) by a fresh reader grounded in the whole repository"
+description: "Independent review of the branch (or of the plan, before any task is built) by a fresh reader grounded in the whole repository"
 ---
 
 # Independent review
@@ -8,7 +8,7 @@ A fresh reader, not the author, in one fast pass, the way GitHub's Copilot code 
 reads the diff and the code around it, and reports few findings, each tied to a changed line. It
 catches what the author's own session misses, because that session shares the author's assumptions.
 
-**Two roles.** If you are the author's session (`/speckit-landspec-pr`, `/speckit-landspec-issues`, or the
+**Two roles.** If you are the author's session (`/speckit-landspec-pr`, `/speckit-landspec-plan-review`, `/landspec:implement`, or the
 user ran `/speckit-landspec-review`): launch one subagent of type `landspec:reviewer` whose prompt
 starts with the line `landspec review: independent reviewer`, then this whole file plus the
 facts below, and nothing else: no summary of what you built, no "I already checked X". Pass the
@@ -22,8 +22,8 @@ fork.
 Wait for its report. The reviewer writes it to a file itself and names it on its first line,
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:
 `bash .specify/extensions/landspec/scripts/review.sh record <file>` (`record --plan <file>` for a plan
-review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `issues.sh` refuse to
-open anything without a recorded review of the current state that passes its gate (no High
+review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
+go on without a recorded review of the current state that passes its gate (no High
 finding in a plan review, no High or Medium in a task review), at every level,
 so a commit after the review means another review. Recording removes the reviewer's copy (its
 `Copy:` line) once it is safe to.
@@ -56,9 +56,9 @@ Facts the author passes:
 - the base branch and the branch under review, and `base:` the ref the branch is diffed against
   (`base_ref` in landspec's `lib.sh`: `origin/<base>`, or the parent task branch of a stacked
   branch), or, for a plan review, the feature folder `specs/NNN-*/`;
-- for a feature review: "feature review", the feature folder, `commit:` the check copy's merge result
-  (`refs/landspec/check/<feature>`, a local ref your copy can reach), `base:` `origin/<base>`, and the
-  test command's output on that combination;
+- for a feature review: "feature review", the feature folder, `commit:` the check ref
+  (`refs/landspec/check/<feature>`, the feature branch's head, a local ref your copy can reach), `base:` `origin/<base>`, and the
+  test command's output on that commit;
 - the task's line from `tasks.md` with its sub-bullets, "plan review", or, for a PR that is not a
   task (`pr.sh fix`), one line on what it changes and why;
 - the path of the PR body draft, if there is one;
@@ -156,7 +156,7 @@ step 2 allows.
    findings: follow each one's own scenario through the fix. A plan review or a feature review
    skips this step.
 
-**Plan review** (before the issues are created): review the copy of the feature folder
+**Plan review** (before any task is built): review the copy of the feature folder
 hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text
 you read; apply step 1 and read every task in `tasks.md`,
 asking what happens where state already exists. Then run the eight passes below, in this order,

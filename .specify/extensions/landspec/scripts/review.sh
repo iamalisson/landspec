@@ -55,10 +55,10 @@ if $plan; then
     for f in plan.md tasks.md; do [[ -f "$fdir/$f" ]] || die "no $f in $1"; done
   else fdir="$(feature_dir)"; fi
   name="plan-$(basename "$fdir")"; what="the plan ($fdir)"
-  # plan_files: the folder's files, relative and sorted; editor and temp files (issues.sh writes tasks.md.tmp) left out.
+  # plan_files: the folder's files, relative and sorted; editor and temp files (*~, *.swp, *.tmp) left out.
   # shortcut: a name list stands in for `git ls-files`, since the reviewer hashes a copy outside any repository.
   plan_files() { (cd "$fdir" && find . -type f ! -name '.*' ! -name '*~' ! -name '*.swp' ! -name '*.tmp') | sed 's|^\./||' | LC_ALL=C sort; }
-  # plan_text <file>: its content; tasks.md without the issue numbers issues.sh writes, task ticks read as "- [ ]".
+  # plan_text <file>: its content; tasks.md without a legacy feature's " — #N" issue numbers, task ticks read as "- [ ]".
   plan_text() { if [[ "$1" == tasks.md ]]; then plain_tasks "$fdir/$1" | sed -E 's/ — #[0-9]+[[:space:]]*$//'; else cat "$fdir/$1"; fi; }
   # Each file as path, NUL, byte length, newline, content: no two folders hash alike by moving bytes between files.
   state() {
@@ -332,7 +332,7 @@ case "$action" in
     # Untracked files (the report itself, kept outside the repo anyway) cannot be part of the diff.
     if ! $plan && [[ -z "$bopt" && -n "$(git status --porcelain --untracked-files=no)" ]]; then die "commit the work first: the review is recorded for the committed diff"; fi
     st="$(state)"
-    want="$(review_model)" || exit 1
+    want="$(reviewer_model)" || exit 1
     model="$(field model)"; from=""; head=""; carried=""
     if $plan; then
       [[ -n "$model" ]] || die "the report must state Model: <id> for the plan: run the review again"

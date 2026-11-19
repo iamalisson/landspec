@@ -468,7 +468,7 @@ check "when every task is done, then check prints CHECK=<head> ROUND=1 and the c
 check "then the end-check record holds head:, heads: and tests: pending" \
   '[[ "$(head -3 "$(ER)")" == "head: $h1"$'"'"'\n'"'"'"heads: $h1"$'"'"'\n'"'"'"tests: pending" ]]'
 printf 'round=1\ncombo=x\noutcome=\n' > "$(ER)-round"; "$I" check-result red >/dev/null
-check "when a check-copy round file waits for its outcome, then check-result still sets tests: in the end-check record" 'grep -qx "tests: red" "$(ER)"'
+check "when a round file still waits for its outcome, then check-result still sets tests: in the end-check record" 'grep -qx "tests: red" "$(ER)"'
 rm -f "$(ER)-round"; ck
 check "when check-result red then check on the same head, then UNCHANGED=1" '[[ "$out" == UNCHANGED=1 ]] && grep -qx "tests: red" "$(ER)"'
 fcommit gap.txt; h2="$(head_fb)"; ck

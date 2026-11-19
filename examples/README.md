@@ -1,66 +1,55 @@
-# Example: one feature, from idea to merged PRs
+# Example: one feature, from idea to merged PR
 
 This walks through **price search**, a small feature with 3 tasks, on a `standard` project
 (`feat/*` → `develop` → `main`). Every file named here is in this folder, in the exact shape
 landspec produces, so you can open each one and see what you'll get.
 
-**Your job:** plan the feature, review each PR, merge it. **Claude:** writes the spec, plan,
-tasks and code. **landspec:** does everything in between (issues, branches, checks, PRs), the
-same way every time.
+**Your job:** plan the feature, review its PR, merge it. **Claude:** writes the spec, plan,
+tasks and code. **landspec:** does everything in between (the branch, the checks, the reviews, the
+PR), the same way every time.
 
 ## 1. Plan the feature (once)
 
 | You run | What appears | What you do |
 |---|---|---|
-| `/speckit-specify "shoppers filter products by max price"` | [`spec.md`](specs/001-price-search/spec.md): stories, requirements, success criteria | read it, fix what's wrong |
+| `/speckit-specify "shoppers filter products by max price"` | [`spec.md`](specs/001-price-search/spec.md): stories, requirements, success criteria, committed on the feature's branch `feat/001-price-search`, made from `develop` and pushed | read it, fix what's wrong |
 | `/speckit-plan` | [`plan.md`](specs/001-price-search/plan.md): stack, design, constitution check | read it |
-| `/speckit-tasks` | [`tasks.md`](specs/001-price-search/tasks.md), one GitHub issue per task ([#21](github/issue-T001.md), #22, #23) with `— #N` written on each line, and the **spec PR** ([#20](github/spec-pr.md)) | review and **merge the spec PR** |
+| `/speckit-tasks` | [`tasks.md`](specs/001-price-search/tasks.md), then one Opus review of the plan against the real code; the spec folder is committed on the branch. No GitHub issue is created | read the review's findings; a high one sends the plan back |
 
-Each issue is assigned to you. If `landspec-config.yml` sets a `milestone:` or a `project:`, the
-issue gets it too.
-
-## 2. Build it (once per task)
+## 2. Build it (once per feature)
 
 | You run | What happens | What you do |
 |---|---|---|
-| `/landspec:next` | shows `0/3 done`, then starts T001: branch `feat/001-t001-add-the-price-query` from `develop`, code, tests, security scan, the independent review, commit, push, and [PR #24](github/task-pr-T001.md) with `Closes #21` | review PR #24, merge it (issue #21 closes) |
-| `/landspec:next` | `1/3 done`, then T002 → PR #25, `Closes #22` | review, merge |
-| `/landspec:next` | `2/3 done`, then T003 → PR #26, `Closes #23` | review, merge |
-| `/landspec:next` | `3/3 done`, and it suggests `/speckit-converge` | run it: it compares the merged code with the spec. Nothing left, so the feature is finished; `/landspec:security` before you release |
+| `/landspec:implement` | starts T001 and T003 at once, each in its own copy on a local task ref (`landspec/001-t001-task`, never pushed): code, tests, one Opus review of the task's diff. T002 says "depends on T001", so it waits. T001 lands first (one merge commit on `feat/001-price-search`, its tick in `tasks.md`), and the draft [PR #20](github/feature-pr.md) opens (`pr.sh feature`); T002 starts. T003 and T002 land as each is ready | nothing; `/landspec:next` shows `1/3 done`, `2/3 done` meanwhile |
+| *(same run)* | every task has landed: the end check runs the tests on the branch head and an Opus review of the whole feature against the spec (each FR and SC `met`), then one scan and one mutation run of the whole diff, and PR #20 is marked ready | review PR #20 and merge it |
+| `/landspec:implement` | the feature is on `develop`: the full security audit, then the release | merge the release PR |
 
-T003 is marked `[P]` (parallel), so when it can start, `next` prints a `parallel` line for it beside
-T002 and offers to start it in its own worktree.
+Had the end check found a requirement `not met`, it would have become a new task on the same
+branch, built, reviewed and landed the same way, before the PR was marked ready.
 
 The PR timeline on GitHub:
 
 ```
-#20  docs(specs): 001-price-search            spec/001-price-search  → develop   merged first
-#24  feat(products): add price search query   feat/001-t001-…        → develop   Closes #21
-#25  feat(products): add max price endpoint   feat/001-t002-…        → develop   Closes #22
-#26  feat(web): add max price field           feat/001-t003-…        → develop   Closes #23
+#20  feat(products): price search   feat/001-price-search → develop   one PR for T001, T002, T003
 ```
 
-## Why two kinds of PR?
+## Why one PR?
 
-The spec PR (#20) holds only documents. The task PRs (#24 to #26) hold only code. They are split
-on purpose:
+- **You merge once.** Each task still gets its own small review before it lands, but no task waits
+  for you to merge the one before it, and `tasks.md` is on the branch from the start.
+- **The review stays small.** Each task is reviewed alone, on its own diff; the end check is the
+  one review of all of them together, against the spec.
+- **A task is still one commit.** Each landing is one merge commit with its review in a trailer, so
+  `git revert -m 1` takes out one task before the feature merges.
+- **You review the design before any code exists.** The plan review runs before the first task
+  starts. Changing your mind costs one edit to a doc, not a rewrite.
 
-- **Task branches start from the base branch and need `tasks.md` there.** That's where each task
-  finds its issue number, and where `/landspec:next` counts progress. Until the spec PR is
-  merged, `/speckit-implement` refuses to start: "merge the spec PR first".
-- **Every task PR stays small and independent.** If the spec rode along with the code, each task
-  PR would carry its own copy of `specs/001-price-search/`. They would conflict with each other,
-  or the spec would only reach `develop` in one big PR at the end.
-- **You review the design before any code exists.** Changing your mind costs one edit to a doc,
-  not a rewrite of three PRs.
-- **One task = one issue = one PR**, so `Closes #N` closes exactly the right issue when each PR
-  merges, and the history reads one task at a time.
+## Reading the PR
 
-## Reading a PR
-
-Task PRs keep what a reviewer needs visible (what changed, a one-line evidence summary, and
-`Closes #N`). Long output, such as test logs and scan details, is folded into `<details>` blocks
-that you click open. See [`github/task-pr-T001.md`](github/task-pr-T001.md).
+The feature PR keeps what a reviewer needs visible: what changed, a one-line evidence summary, the
+task table (each task's landing commit and review), the low findings and the end check's lines.
+Long output, such as test logs and scan details, is folded into `<details>` blocks that you click
+open. See [`github/feature-pr.md`](github/feature-pr.md).
 
 ## Starting from zero
 
