@@ -439,14 +439,21 @@ check "when Copilot's threads are answered, then branch.md replies with a file a
 check "when a hook rewrites files outside the task, then the implementer returns the Failed: formatter line (FR-017)" \
   'grep -qF "return \`Failed: formatter <hook> rewrote <n> files outside the task'"'"'s change: run /landspec:adopt, or format the code in its own PR first\` and stop" <<<"$ag"'
 check "then no \"not built yet\" line is left: the gaps are filed" '! grep -qF "not built yet" skills/implement/SKILL.md'
-gp="$(sed -n "/^5\. \*\*The gaps\*\*/,/^## /p" skills/implement/SKILL.md)"
-check "then each not met becomes a task through pr.sh spec, in the run worktree, which is detached last" \
-  'grep -qF "<repo>-<feature>-run" <<<"$gp" && grep -qF "pr.sh spec" <<<"$gp" && ! grep -qF "issues.sh" <<<"$gp" && grep -qF "review.sh record --plan" <<<"$gp" \
-   && [[ "$(grep -n "pr.sh spec" <<<"$gp" | head -1 | cut -d: -f1)" -lt "$(grep -n "git switch --detach\` there, last" <<<"$gp" | cut -d: -f1)" ]]'
-check "then a spec branch checked out elsewhere is SKIPPED=, and the check never runs with an open spec PR" \
-  'grep -qF "SKIPPED=spec/<feature dir name> (checked out in <path>)" <<<"$gp" && grep -qF "SPEC_PR=<url>" <<<"$im" && grep -qF "skip the" <<<"$im"'
-check "then, when gaps were filed, the report ends with the merge … then run again line" \
-  'grep -qF "Last line, when gaps were filed: \`merge the PRs in ORDER and <spec PR>, then run /landspec:implement" <<<"$im"'
+# Spec 008 T008 (FR-008, FR-009): the end check runs on the feature branch and files its gaps as tasks there.
+ec="$(sed -n "/^## The end check/,/^## /p" skills/implement/SKILL.md)"; ecf="$(flat <<<"$ec")"
+check "when the skill runs the end check, then it names implement.sh check, the tests through run_tests, record --feature, and no check-copy or issues.sh" \
+  'grep -qF "\`I check\`" <<<"$ec" && grep -qF "implement.sh check" <<<"$ec" && grep -qF "run_tests" <<<"$ec" && grep -qF "I check-result red" <<<"$ecf" \
+   && grep -qF "review.sh record --feature <report>" <<<"$ec" && ! grep -qE "check-copy|issues\.sh|pr\.sh spec" skills/implement/SKILL.md'
+check "then the feature review is Opus, with commit: the head and base: origin/<base>" \
+  '[[ "$ecf" == *"\`model: opus\`"* && "$ecf" == *"\`commit:\` \`<head>\`, \`base:\` \`origin/<base>\`"* ]]'
+check "then each not met line and red tests become tasks on the branch, given one review.sh record --plan pass, committed and pushed, back to the loop" \
+  '[[ "$ecf" == *"one task per \`not met\` line, and one task for the red tests"* && "$ecf" == *"\`Comes from:\` the line"* && "$ecf" == *"review.sh record --plan <file>"* \
+     && "$ecf" == *"push the branch, and go back to the loop"* ]]'
+check "then on a pass security-scan.sh --changed and mutants.sh run before pr.sh feature --ready" \
+  '[[ "$ecf" == *"security-scan.sh --changed\` and \`bash .specify/extensions/landspec/scripts/mutants.sh\`"* ]] \
+   && a="${ecf%%security-scan.sh --changed*}" && [[ "$a" != "$ecf" && "${ecf#"$a"}" == *"--ready"* && "$a" != *"--ready"* ]]'
+check "then UNCHANGED= and ROUNDS_EXHAUSTED= stop with the PR a draft keeping the not met lines" \
+  '[[ "$ecf" == *"\`UNCHANGED=<n>\`"* && "$ecf" == *"\`ROUNDS_EXHAUSTED=<n>\`"* && "$ecf" == *"the PR stays a draft, its body keeps the record'"'"'s \`not met\` lines"* ]]'
 check "when plan-review.md ends, then it names /landspec:implement <feature> for the whole feature" \
   'grep -qF "run \`/landspec:implement <feature>\`" extension/commands/plan-review.md'
 # Spec 008 T005 (FR-001, FR-002): no GitHub issue; the tasks hooks run one plan review and commit the spec folder.
@@ -469,10 +476,6 @@ check "when next.sh has shown the progress, then the next skill offers /landspec
 rv="$(cat extension/commands/review.md)"
 check "when review.md describes the feature review, then it has the three line kinds and record --feature" \
   'for k in "- met: " "- not met: " "- not verifiable: "; do grep -qF -- "$k" <<<"$rv" || exit 1; done; grep -qF "record --feature <file>" <<<"$rv" && grep -qF "only when no line is \`not met\`" <<<"$rv"'
-check "then /landspec:implement checks the feature: check-copy, the test, check-result, the feature review, --remove" \
-  'grep -qF "I check-copy" <<<"$im" && grep -qF "I check-result red" <<<"$im" && grep -qF "review.sh record --feature <report>" <<<"$im" && grep -qF "I check-copy --remove" <<<"$im"'
-check "then it stops and asks on UNCHANGED= and ROUNDS_EXHAUSTED=, and waits for an open spec PR" \
-  'grep -qF "\`UNCHANGED=<n>\`" <<<"$im" && grep -qF "\`ROUNDS_EXHAUSTED=<n>\`" <<<"$im" && grep -qF "Either way, stop, and ask the developer" <<<"$im" && grep -qF "merge <url> first" <<<"$im"'
 check "then the reference documents feature_rounds" 'grep -q "^| \`feature_rounds\` | \`3\` |" docs/reference.md'
 check "then it reads implement_model and refuses any model but sonnet, opus or fable" 'grep -qF "implement_model must be sonnet, opus or" <<<"$im"'
 check "when agents/implementer.md is read, then it is named implementer, isolated in a worktree, never git add -A, and detaches last" \
@@ -512,7 +515,7 @@ check "when the run ends, then the report gives each waiting task's reason and t
 # The audit before the release (spec 004 T010): once per base commit, unattended, holding on a confirmed critical or high.
 au="$(sed -n "/^## The audit before the bump/,/^## When an implementer returns/p" skills/implement/SKILL.md)"
 check "when the skill reaches a bump, then it acts on the one AUDIT= line, for needed, done and hold" \
-  'grep -qF "On \`RELEASE=bump\` and on \`RELEASE=none\`, once the whole-feature check on the base passed and before anything else" <<<"$au" && [[ "$(grep -cF "then the audit (below); only on \`AUDIT=done\`" skills/implement/SKILL.md)" == 2 ]] && grep -qF "I audit-plan" <<<"$au" && grep -qF "I audit-record <sha> <file> <n>" <<<"$au" \
+  'grep -qF "On \`RELEASE=bump\` and on \`RELEASE=none\`, before anything else" <<<"$au" && [[ "$(grep -cF "first the audit (below); only on \`AUDIT=done\`" skills/implement/SKILL.md)" == 2 ]] && grep -qF "I audit-plan" <<<"$au" && grep -qF "I audit-record <sha> <file> <n>" <<<"$au" \
    && for k in needed done hold; do grep -qF -- "- \`AUDIT=$k" <<<"$au" || exit 1; done'
 check "then a hold files and posts nothing and the last line names /landspec:security with the report" \
   'grep -qF "nothing filed or posted about the findings" <<<"$au" && grep -qF "release held: <n> confirmed critical or high; run /landspec:security" skills/implement/SKILL.md'
@@ -534,10 +537,8 @@ check "then /landspec:next and README point to /landspec:implement once every ta
   'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "audits it and makes the release" skills/next/SKILL.md \
    && grep -qF "however the tasks were done: it checks the" README.md && grep -qF "audits the base" README.md \
    && ! grep -qF "speckit-converge" skills/next/SKILL.md && ! grep -qF "/speckit-converge" README.md'
-check "then, with every task merged, the base is checked only on RELEASE=bump or none, and a red run is a gap task with no release" \
-  'grep -qF "only from \"The release\" below: after" <<<"$im" && grep -qF "on \`RELEASE=bump\` or \`RELEASE=none\`, never on \`pending\`, \`tag\`, \`publish\` or \`done\`" <<<"$im" \
-   && grep -qF "there is no task branch to fix:" <<<"$im" && grep -qF "the failing test becomes a gap task (step 5), and there is no release" <<<"$im" \
-   && grep -qF "first the whole-feature check on the base (above): go on" <<<"$im" && grep -qF "\`CHECKED=<sha>\`" <<<"$im" && grep -qF "\`base: <FROM>\`" <<<"$im"'
+check "then the release runs no whole-feature check on the base: the end check ran on the branch before the PR was ready" \
+  '! grep -qE "whole-feature check|CHECKED=|base: <FROM>" <<<"$im"'
 
 # /landspec:report: public issues, so nothing is filed without a yes and nothing private leaves the project.
 rp="$(cat skills/report/SKILL.md)"

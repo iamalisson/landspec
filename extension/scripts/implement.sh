@@ -36,7 +36,14 @@
 #       Prints CHECK=<path> ROUND=<n>, or CONFLICT=<task> WITH=<earlier task> FILES=<a,b>; UNCHANGED=<n>
 #       (the same task heads as the last attempt that was not green), ROUNDS_EXHAUSTED=<max> or
 #       SPEC_PR=<url> (merge it first) create nothing. --remove removes the copy and the ref.
-#   implement.sh [feature] check-result red|green   the outcome of the test command in the check copy
+#   implement.sh [feature] check
+#       The end check, on the feature's branch once every task is done: merges origin/<base> in first (a
+#       conflict aborts and dies naming the files), points refs/landspec/check/<feature> at the head and
+#       writes the end-check record (head:, heads:, tests: pending). Prints CHECK=<head> ROUND=<n> (n: the
+#       heads checked), UNCHANGED=<n> (this head's tests or its own review failed), or ROUNDS_EXHAUSTED=<max>
+#       (feature_rounds:, default 3).
+#   implement.sh [feature] check-result red|green   the test command's outcome: tests: in the end-check record
+#       (after check-copy: the outcome of its check copy)
 #   implement.sh [feature] release-plan
 #       The release's one next step, from git and GitHub (V: the version in the first of version_files:
 #       on origin/<base>; M: the merge commit of the feature's last merged feature PR, head <branch_prefix>/<NNN>-,
@@ -57,7 +64,7 @@ source "$(dirname "$0")/lib.sh"
 landspec_cd_root
 
 feature=""
-case "${1:-}" in status|mark|land|fail|retry|restack|stack|check-copy|check-result|release-plan|release-bump|audit-plan|audit-record|"") ;; *) feature="$1"; shift ;; esac
+case "${1:-}" in status|mark|land|fail|retry|restack|stack|check|check-copy|check-result|release-plan|release-bump|audit-plan|audit-record|"") ;; *) feature="$1"; shift ;; esac
 action="${1:-}"; shift || true
 if [[ -n "$feature" ]]; then fdir="$(resolve_feature "$feature")"; else fdir="$(feature_dir)"; fi
 [[ -f "$fdir/tasks.md" ]] || die "$fdir/tasks.md not found; run /speckit-tasks first"
@@ -564,11 +571,48 @@ case "$action" in
     done
     git update-ref "$ref" "$(git -C "$w" rev-parse HEAD)"
     echo "CHECK=$w ROUND=$round${from:+ FROM=$from}" ;;
+  check)
+    on_feature_branch || die "the end check runs on the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
+    max="$(cfg feature_rounds 3)"; [[ "$max" =~ ^[1-9]$ ]] || die "feature_rounds must be a number from 1 to 9"
+    for t in $(sed -nE 's/^- \[.\] (T[0-9]{3,}) .*/\1/p' "$fdir/tasks.md"); do
+      task_done "$fdir" "$t" || die "$t is not done: the end check runs once every task has landed"
+    done
+    [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "uncommitted changes: commit them on $fb first"
+    base="$(base_branch)"
+    git fetch --quiet origin "+refs/heads/$base:refs/remotes/origin/$base" || die "cannot fetch origin/$base; fix the error above"
+    if ! git merge-base --is-ancestor "origin/$base" HEAD; then # the branch is behind the base: check what the PR would merge
+      if ! err="$(git merge --quiet --no-ff --no-edit "origin/$base" 2>&1)"; then
+        files="$(git diff --name-only --diff-filter=U | paste -sd, -)"; git merge --abort 2>/dev/null || true
+        [[ -n "$files" ]] || { echo "$err" >&2; die "could not merge origin/$base into $fb (not a conflict); fix git's error above"; }
+        die "$fb conflicts with origin/$base in $files: merge origin/$base into $fb, resolve them, run the tests, then run check again"
+      fi
+      git push --quiet origin "$fb" || die "merged origin/$base into $fb but could not push it: git push origin $fb"
+    fi
+    h="$(git rev-parse HEAD)"; er="$(git rev-parse --git-common-dir)/landspec-review/feature-$(basename "$fdir")"
+    efield() { [[ -f "$er" ]] || return 0; awk -v k="$1: " 'index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$er"; }
+    heads="$(efield heads)"; n="$(wc -w <<<"$heads" | tr -d ' ')"
+    if [[ "$(efield head)" == "$h" ]]; then
+      # only this head's own failure counts: a verdict is for the head it reviewed
+      if [[ "$(efield tests)" == red || ( "$(efield reviewed)" == "$h" && "$(efield verdict)" == "changes needed" ) ]]; then echo "UNCHANGED=$n"; exit 0; fi
+    else
+      if ((n + 1 > max)); then echo "ROUNDS_EXHAUSTED=$max"; exit 0; fi
+      n=$((n + 1)); mkdir -p "${er%/*}"
+      # the last review's verdict and lines stay (pr.sh shows the head they were for); the record is never deleted
+      { printf 'head: %s\nheads: %s\ntests: pending\n' "$h" "${heads:+$heads }$h"; [[ ! -f "$er" ]] || grep -vE '^(head|heads|tests): ' "$er" || true; } > "$er.tmp"
+      mv "$er.tmp" "$er"
+    fi
+    git update-ref "refs/landspec/check/$(basename "$fdir")" "$h"
+    event check feature="$(basename "$fdir")" round="$n"
+    echo "CHECK=$h ROUND=$n" ;;
   check-result)
     o="${1:-}"; [[ "$o" == red || "$o" == green ]] || die "usage: implement.sh check-result red|green"
     rf="$(git rev-parse --git-common-dir)/landspec-review/feature-$(basename "$fdir")-round"
-    [[ -f "$rf" && -z "$(sed -n 's/^outcome=//p' "$rf")" ]] || die "no check attempt is waiting for its result: run check-copy first"
-    sed -i.bak "s/^outcome=.*/outcome=$o/" "$rf"; rm -f "$rf.bak"; echo "OUTCOME=$o" ;;
+    er="${rf%-round}"
+    if [[ -f "$rf" && -z "$(sed -n 's/^outcome=//p' "$rf")" ]]; then # a check-copy attempt
+      sed -i.bak "s/^outcome=.*/outcome=$o/" "$rf"; rm -f "$rf.bak"; echo "OUTCOME=$o"; exit 0
+    fi
+    [[ -f "$er" ]] && grep -q '^head: ' "$er" || die "no end check is waiting for its result: run implement.sh check first"
+    sed -i.bak "s/^tests: .*/tests: $o/" "$er"; rm -f "$er.bak"; echo "OUTCOME=$o" ;;
   release-plan)
     vf="$(vfiles)"; [[ -n "$vf" ]] || { echo "RELEASE=none (no version_files:)"; exit 0; }
     base="$(base_branch)"
@@ -664,5 +708,5 @@ case "$action" in
     [[ "$r" -ef "$ad/audit-$c.md" ]] || cp "$r" "$ad/audit-$c.md" # a copy: the audit's report may be a temp file
     printf 'commit=%s\nreport=%s\nhold=%s\n' "$c" "$ad/audit-$c.md" "$h" > "$ad/audit"
     echo "AUDITED=$c REPORT=$ad/audit-$c.md HOLD=$h" ;;
-  *) die "usage: implement.sh [feature] status [--running T001,T002] | mark <task> implemented|changes|ready|pr|red [<report>] | land <task> | fail <task> <reason> | retry <task> | restack | stack <task> <onto-task> | check-copy [--remove] | check-result red|green | release-plan | release-bump X.Y.Z | audit-plan | audit-record <commit> <report> <hold>" ;;
+  *) die "usage: implement.sh [feature] status [--running T001,T002] | mark <task> implemented|changes|ready|pr|red [<report>] | land <task> | fail <task> <reason> | retry <task> | restack | stack <task> <onto-task> | check | check-copy [--remove] | check-result red|green | release-plan | release-bump X.Y.Z | audit-plan | audit-record <commit> <report> <hold>" ;;
 esac

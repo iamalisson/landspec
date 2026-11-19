@@ -689,4 +689,14 @@ check "on a spec branch (pr.sh spec mode), then base_ref is the base: it never h
 git switch --quiet "$P"
 check "on the parent (no parent of its own), then base_ref is still the base" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 
+# Spec 008 T008: the feature review of the end check reads the check ref (no check copy) and adds to the end-check record.
+fh="$(git rev-parse HEAD)"; fr="$(git rev-parse --git-common-dir)/landspec-review/feature-001-demo"
+printf -- '- met: FR-001 — search.ts searches\nCopy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\n\nAssessment: ready\n' "$(git rev-parse origin/develop)" "$fh" > "$TMP/feature.md"
+check "when there is no check ref, then record --feature refuses and says to run implement.sh check" \
+  'fails_with "no check ref for 001-demo: run implement.sh check first" "$r" record --feature "$TMP/feature.md"'
+git update-ref refs/landspec/check/001-demo "$fh"; printf 'head: %s\nheads: %s\ntests: green\n' "$fh" "$fh" > "$fr"
+check "when the check ref points at the head and no check copy exists, then record --feature adds verdict:, reviewed: and the lines to the end-check record" \
+  '"$r" record --feature "$TMP/feature.md" 2>/dev/null | grep -qx "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
+   && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | grep -q -- "-check "'
+
 exit "$FAIL"
