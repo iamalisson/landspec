@@ -86,23 +86,26 @@ creates carries its number: issues `[001] T003: ...`, branches `feat/001-t003-..
 `spec/001-login`. They never collide. The **active feature** is per clone (`.specify/feature.json`,
 git-ignored): `/speckit-specify` sets it to the new feature, and `/landspec:next 002` or
 `/speckit-implement 002 T001` set it explicitly. With no argument, `next` serves the active
-feature; when more than one feature has tasks to start, it lists them and asks, and when only one
-does, it serves that one without changing the active feature. On a task branch the branch name
-decides, for `next` too, so a worktree never follows the main checkout. `next` prints `FEATURE=` and
-starts `/speckit-implement <FEATURE> <NEXT>`, so `next 002` on a 001 task branch starts 002's task.
-It fetches origin first, and stops, naming the reason above git's or gh's error, when it cannot
-fetch origin, read its branches or list the open PRs: without them a task another clone claimed
-would look free. It prints a `parallel` line only for a task whose
-line is on `origin/<base>` with its issue: a task of an unmerged spec PR, converge ones included,
-gets no line, and `branch.sh` refuses it with "merge the spec PR first" before any claim. A task is
-done when the issue number on its line is closed: `next` reads every task's issue by number in one
-query per feature, so a renamed issue still counts, and a number it cannot read stops it with
-GitHub's error. GitHub closes a PR's `Closes #N` issues only on a merge into the default branch;
-on standard and full, the managed `close-linked-issues.yml` closes them on a merge into `develop`
-or `staging`, and its job fails, naming `could not close: #N`, when one of them cannot be closed.
+feature; when more than one feature has tasks to build, it lists them and asks, and when only one
+does, it serves that one without changing the active feature. On a task ref or the feature branch
+the branch name decides, for `next` too, so a worktree never follows the main checkout.
 
-A task whose line says `(depends on T003)` is **blocked** until T003's issue closes, so `next`
-never offers work whose prerequisite has not merged. The clause is not part of the task's summary:
+`next.sh [feature]` reads `tasks.md` and the landing commits from the feature branch (the local
+one, else origin's after a fetch; before the branch exists, the checkout's `tasks.md`) and reads no
+GitHub issue. It prints one `done|failed|pending|waiting Tnnn <summary>` line per task, then
+`FEATURE=<NNN> BRANCH=<branch> ISSUE=<#N|-> PR=<url|->` and `DONE=x/y NEXT=<Tnnn|>`. A task is
+`done` when the branch's history holds its landing commit (`Landspec-Task: <NNN>/<id>`), `failed` while its run
+record says so, `waiting` while a task its line depends on has not landed, else `pending`; `NEXT` is
+the first pending one, and `/landspec:next` offers `/landspec:implement <FEATURE>`. A feature
+started under the per-task flow (a task line ends in ` — #N`) named explicitly prints `LEGACY=` and
+stops with the way to continue it (exit 1); with no argument such features (and their per-task branches) are left
+out of the scan and never asked about, and `LEGACY=` stops it only when no other feature is left. GitHub closes a PR's `Closes #N` issues only on a merge
+into the default branch; on standard and full, the managed `close-linked-issues.yml` closes them on a
+merge into `develop` or `staging`, and its job fails, naming `could not close: #N`, when one of them
+cannot be closed.
+
+A task whose line says `(depends on T003)` **waits** until T003 has landed, so `next`
+never offers work whose prerequisite is not done. The clause is not part of the task's summary:
 a trailing `(depends on …)` (any case) is left out of the issue title, the branch slug and the text
 `next` shows, before the ` in <path>` part is cut; one in the middle of a line stays. So a linked
 line (`— #N`) may gain or lose a dependency: run the plan review again, record it, then
@@ -197,7 +200,7 @@ and a neutral category, on a private one each remaining finding's title and cate
 exploit detail. The run's last report names the scanners that were missing.
 
 `/landspec:implement` is the default after `/speckit-tasks`: the spec PR's last line names it, and
-`next.sh` prints `RUN=/landspec:implement <feature>` before `FEATURE=` when two or more tasks can start.
+`/landspec:next` offers it after the progress.
 
 Merge stacked PRs **parents first**. Once a parent's PR is merged, `implement.sh [feature] restack` moves
 each stacked branch, in `ORDER`, onto the base (or onto its next unmerged ancestor), and a child whose
@@ -336,7 +339,7 @@ twice adds both PRs into one row.
 | **Plan mode** (`Shift+Tab`) | thinking out loud before `/speckit-specify` or during `/speckit-clarify`. Not for `/speckit-plan`, which writes files that plan mode blocks. |
 | **`/code-review ultra`** | yourself, before merging a large or risky change (cloud, billed). The review before each PR is landspec's own `/speckit-landspec-review`: a fresh agent grounded in the whole repository, so it is not anchored on the session that wrote the code. |
 | **`/security-review`** | before each PR, automatically, and inside `/landspec:security` |
-| **Worktrees** | `/landspec:next` lists the other `[P]` tasks that can start now and, on yes, gives each its own worktree beside the repo (`<repo>-<feature>-<task>`) and claims its branch on origin, one after another. Open a Claude Code session in each and run `/speckit-implement <feature> <task>`. Each task keeps its own branch and PR. Blocked tasks and tasks without `[P]` right after their ID are never offered. A claim that cannot be pushed only warns, so another clone may still start the same task. When you're done, remove each worktree with `git worktree remove <path>`. The active feature, the `/speckit-analyze` record and the security reports are shared by every worktree, so `full` works there too. |
+| **Worktrees** | `branch.sh <feature> <task>` run in a worktree beside the repo (`<repo>-<feature>-<task>`) claims the task's branch on origin. Open a Claude Code session in it and run `/speckit-implement <feature> <task>`. Each task keeps its own branch and PR. Blocked tasks and tasks without `[P]` right after their ID are never offered. A claim that cannot be pushed only warns, so another clone may still start the same task. When you're done, remove each worktree with `git worktree remove <path>`. The active feature, the `/speckit-analyze` record and the security reports are shared by every worktree, so `full` works there too. |
 
 ## Configuration
 

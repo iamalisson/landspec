@@ -415,8 +415,8 @@ check "then, when gaps were filed, the report ends with the merge … then run a
   'grep -qF "Last line, when gaps were filed: \`merge the PRs in ORDER and <spec PR>, then run /landspec:implement" <<<"$im"'
 check "when issues.md ends, then step 6 names /landspec:implement for the whole feature" \
   'grep -qF "merge it, then run \`/landspec:implement\`" extension/commands/issues.md'
-check "when next.sh prints RUN=, then the next skill offers /landspec:implement" \
-  'grep -qF "If it printed \`RUN=/landspec:implement <feature>\`" skills/next/SKILL.md && grep -qF "/landspec:implement" <<<"$(sed -n 3p skills/next/SKILL.md)"'
+check "when next.sh has shown the progress, then the next skill offers /landspec:implement <FEATURE>, never a parallel offer" \
+  'grep -qF "Suggest \`/landspec:implement <FEATURE>\`" skills/next/SKILL.md && grep -qF "/landspec:implement" <<<"$(sed -n 3p skills/next/SKILL.md)" && ! grep -qE "RUN=|parallel" skills/next/SKILL.md'
 rv="$(cat extension/commands/review.md)"
 check "when review.md describes the feature review, then it has the three line kinds and record --feature" \
   'for k in "- met: " "- not met: " "- not verifiable: "; do grep -qF -- "$k" <<<"$rv" || exit 1; done; grep -qF "record --feature <file>" <<<"$rv" && grep -qF "only when no line is \`not met\`" <<<"$rv"'
@@ -482,7 +482,7 @@ check "then /landspec:security has the unattended mode (steps 1 to 6, HOLD=) and
   'grep -qF "**Unattended**" skills/security/SKILL.md && grep -qF "steps 1 to 6 only" skills/security/SKILL.md && grep -qF "\`HOLD=<n>\`" skills/security/SKILL.md \
    && grep -qF "Read it, show its summary as step 6 says, then step 7" skills/security/SKILL.md'
 check "then /landspec:next and README point to /landspec:implement once every task is merged, never to /speckit-converge" \
-  'grep -qF "it checks the whole feature on the base against the spec" skills/next/SKILL.md && grep -qF "audits the base and makes the release" skills/next/SKILL.md \
+  'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "audits it and makes the release" skills/next/SKILL.md \
    && grep -qF "however the tasks were done: it checks the" README.md && grep -qF "audits the base" README.md \
    && ! grep -qF "speckit-converge" skills/next/SKILL.md && ! grep -qF "/speckit-converge" README.md'
 check "then, with every task merged, the base is checked only on RELEASE=bump or none, and a red run is a gap task with no release" \
