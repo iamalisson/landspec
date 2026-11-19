@@ -63,7 +63,7 @@ mkdir -p "$TMP/wt/.specify/extensions/landspec"
 cp .specify/extensions/landspec/landspec-config.yml "$TMP/wt/.specify/extensions/landspec/" # committed in a real project
 ln -s "$ROOT/extension/scripts" "$TMP/wt/.specify/extensions/landspec/scripts"
 check "when the feature's branch is switched to in a fresh worktree, then it is on the feature branch there" \
-  '(cd "$TMP/wt" && [[ ! -f .specify/feature.json ]] && "$b" 001 | grep -qx "BRANCH=feat/001-demo FEATURE=001 BASE=develop")'
+  '(cd "$TMP/wt" && [[ ! -f .specify/feature.json ]] && "$b" 001 | gq -x "BRANCH=feat/001-demo FEATURE=001 BASE=develop")'
 check "then the worktree's own feature.json points spec-kit at the feature" \
   'grep -q "\"feature_directory\": \"specs/001-demo\"" "$TMP/wt/.specify/feature.json"'
 check "then the main checkout is untouched" \
@@ -71,7 +71,7 @@ check "then the main checkout is untouched" \
 mkdir -p specs/002-other; printf '%s\n' '- [ ] T002 Other thing in `o`' > specs/002-other/tasks.md
 echo '{ "feature_directory": "specs/002-other" }' > .specify/feature.json # the main checkout moved on
 check "when the main checkout moves to another feature, then the worktree keeps its own" \
-  '(cd "$TMP/wt" && bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir") | grep -qx "specs/001-demo"'
+  '(cd "$TMP/wt" && bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir") | gq -x "specs/001-demo"'
 echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json; rm -rf specs/002-other
 git worktree remove --force "$TMP/wt"
 
@@ -107,7 +107,7 @@ check "when features use timestamp numbering, then the branch carries the whole 
   '[[ "$out" == "BRANCH=feat/20261104-153000-ts FEATURE=20261104-153000 BASE=develop" ]]'
 rm .specify/feature.json # a fresh worktree has none
 check "then that branch still resolves to its own timestamp feature" \
-  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/20261104-153000-ts"'
+  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | gq -x "specs/20261104-153000-ts"'
 echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 # Spec 003: a reviewer's copy under .claude/worktrees is not the author's uncommitted work.
@@ -139,10 +139,10 @@ check "when run again, then it stays on the branch without a new commit" \
   '[[ "$("$b" 002)" == "BRANCH=feat/002-x FEATURE=002 BASE=develop" && "$(git rev-parse HEAD)" == "$head1" ]]'
 rm .specify/feature.json # a fresh worktree has none
 check "when on a feature branch with no feature.json, then feature_dir resolves its folder" \
-  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/002-x"'
+  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | gq -x "specs/002-x"'
 echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 check "when on a task ref of that feature, then feature_dir resolves the same folder, whatever the active feature" \
-  'git switch --quiet -c landspec/002-t001-task && bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/002-x"'
+  'git switch --quiet -c landspec/002-t001-task && bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | gq -x "specs/002-x"'
 git switch --quiet --detach feat/002-x; git branch --quiet -D feat/002-x landspec/002-t001-task
 check "when the branch is only on origin, then branch.sh switches to it tracking origin's" \
   '"$b" 002 >/dev/null && [[ "$(git branch --show-current)" == feat/002-x && "$(git rev-parse HEAD)" == "$head1" && "$(git rev-parse --abbrev-ref @{u})" == origin/feat/002-x ]]'
@@ -164,10 +164,10 @@ check "when the spec folder is committed here only and edited, then its current 
 # /speckit-specify run on another feature's branch: feature.json names the new feature, the branch the old one.
 mkdir -p specs/006-b; echo '# B' > specs/006-b/spec.md; echo '{ "feature_directory": "specs/006-b" }' > .specify/feature.json
 check "when on feature A's branch feature.json names a new uncommitted feature B, then branch.sh with no argument makes B's branch with B's folder" \
-  '"$b" | grep -qx "BRANCH=feat/006-b FEATURE=006 BASE=develop" && [[ "$(git branch --show-current)" == feat/006-b && "$(git rev-parse HEAD~1)" == "$(git rev-parse origin/develop)" && "$(git cat-file -p HEAD:specs/006-b/spec.md)" == "# B" ]] \
+  '"$b" | gq -x "BRANCH=feat/006-b FEATURE=006 BASE=develop" && [[ "$(git branch --show-current)" == feat/006-b && "$(git rev-parse HEAD~1)" == "$(git rev-parse origin/develop)" && "$(git cat-file -p HEAD:specs/006-b/spec.md)" == "# B" ]] \
    && ! git cat-file -e HEAD:specs/005-w 2>/dev/null && grep -q "specs/006-b" .specify/feature.json'
 git switch --quiet feat/005-w; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 check "when on a feature branch with a local feature.json naming another feature, then feature_dir follows feature.json" \
-  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | grep -qx "specs/001-demo"'
+  'bash -c "source \"$SCRIPTS/lib.sh\"; feature_dir" | gq -x "specs/001-demo"'
 
 exit "$FAIL"

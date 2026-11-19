@@ -62,7 +62,7 @@ out="$("$p" fix "feat(search): add search" "$TMP/body.md" 2>"$TMP/pr.err")" || t
 check "when the constitution's test command exits 0, then it opens the PR with no warning" \
   '[[ -f "$TMP/green.ran" && "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && grep -q "^pr create" "$GH_LOG" && ! grep -q "^landspec:" "$TMP/pr.err"'
 check "then the green run and the PR are logged, in that order" \
-  'tail -2 "$(git rev-parse --git-common-dir)/landspec-events" | cut -d" " -f3- | tr "\n" "|" | grep -qE "^feat/001-demo tests secs=[0-9]+ ok=1\|feat/001-demo pr mode=fix url=https://github.com/acme/app/pull/99\|$"'
+  'tail -2 "$(git rev-parse --git-common-dir)/landspec-events" | cut -d" " -f3- | tr "\n" "|" | gq -E "^feat/001-demo tests secs=[0-9]+ ok=1\|feat/001-demo pr mode=fix url=https://github.com/acme/app/pull/99\|$"'
 check "then the body names each scanner that did not run" \
   'grep -qxF "Scanners not run: gitleaks (missing), osv-scanner (missing), semgrep (missing)" "$GH_LOG"'
 rm -f "$TMP/green.ran"
@@ -78,7 +78,7 @@ out="$("$p" fix "feat(search): add search" "$TMP/body.md" 2>"$TMP/pr.err")"
 check "when the constitution has no test command, then it says the tests were not run and opens the PR" \
   'grep -qx "landspec: tests not run before the PR (no test command in the constitution)" "$TMP/pr.err" && [[ "$out" == *"PR=https://github.com/acme/app/pull/99" ]]'
 check "when a review is recorded, then the body sent to gh pr create has the patch-id and Assessment lines, folded" \
-  'sed -n "/^pr create/,\$p" "$GH_LOG" | grep -A4 -xF "<details><summary>Independent review</summary>" | grep -xE -e "Independent review recorded for this diff \(patch id [0-9a-f]{12}\)" -e "Assessment: ready" | wc -l | grep -qx " *2"'
+  'sed -n "/^pr create/,\$p" "$GH_LOG" | grep -A4 -xF "<details><summary>Independent review</summary>" | grep -xE -e "Independent review recorded for this diff \(patch id [0-9a-f]{12}\)" -e "Assessment: ready" | wc -l | gq -x " *2"'
 check "then none of the report's text reaches the body" '! grep -qE "LEAK|What changed|token logged" "$GH_LOG"'
 check "when the work is committed, then it pushes and opens the PR into the base" \
   '[[ "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && git ls-remote --exit-code origin "$(git branch --show-current)" && grep -q -- "--base develop" "$GH_LOG"'
@@ -107,7 +107,7 @@ check "when the level is full and the body has no Evidence section, then it refu
 sed -i.bak 's/^level: .*/level: standard/' .specify/extensions/landspec/landspec-config.yml
 echo 'export const x = 2' >> search.ts; git commit --quiet -am "feat: more"
 check "when the code changed after the review, then the PR is refused until a new review is recorded" \
-  'fails_with "changed since" "$p" fix "feat(search): add search" "$TMP/body.md" && reviewed && scanned && "$p" fix "feat(search): add search" "$TMP/body.md" | grep -q "^PR="'
+  'fails_with "changed since" "$p" fix "feat(search): add search" "$TMP/body.md" && reviewed && scanned && "$p" fix "feat(search): add search" "$TMP/body.md" | gq "^PR="'
 # ── Changing existing tests needs a reason ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
@@ -126,7 +126,7 @@ git rm --quiet src/keep.test.ts; git commit --quiet -m "chore: drop test"; revie
 check "when an existing test is deleted, then it refuses too" 'fails_with "src/keep.test.ts" "$p" fix "feat(search): add search" "$TMP/plain.md"'
 
 printf 'Adds search.\n\n## Review\n\nready: no findings\n\n## Test changes\n\nThe spec changed the price rule (FR-002).\n' > "$TMP/why.md"
-check "when the body explains the test changes, then the PR opens" '"$p" fix "feat(search): add search" "$TMP/why.md" | grep -q "^PR="'
+check "when the body explains the test changes, then the PR opens" '"$p" fix "feat(search): add search" "$TMP/why.md" | gq "^PR="'
 
 git push --quiet origin --delete "$(git branch --show-current)" 2>/dev/null || true; git reset --quiet --hard origin/develop; rm -f "$GH_PR"
 mkdir -p attic; git mv tests/test_price.py attic/price_checks.py; git commit --quiet -m "chore: move"
@@ -142,7 +142,7 @@ git remote set-url origin "$TMP/origin.git"; git fetch --quiet origin; git branc
 # A fresh branch for this scenario: drop the pushed one and start again from the base.
 git push --quiet origin --delete "$(git branch --show-current)" 2>/dev/null || true; git reset --quiet --hard origin/develop; rm -f "$GH_PR"
 echo 'assert 2 == 2' > tests/test_new.py; git add tests/test_new.py; git commit --quiet -m "test: add"; reviewed; scanned
-check "when only new tests are added, then no explanation is needed" '"$p" fix "feat(search): add search" "$TMP/plain.md" | grep -q "^PR="'
+check "when only new tests are added, then no explanation is needed" '"$p" fix "feat(search): add search" "$TMP/plain.md" | gq "^PR="'
 
 # ── FR-006: adding to an existing test file needs no explanation; a deletion, an edit or an added skip does ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
@@ -152,7 +152,7 @@ printf 'one\n' > tests/xfail.test.sh; printf '\0\1' > tests/data.test.bin
 commit_tasks '- [ ] T001 Add search in `src/search.ts`'
 "$SCRIPTS/branch.sh" 001 >/dev/null
 fresh() { git push --quiet origin --delete "$(git branch --show-current)" 2>/dev/null || true; git reset --quiet --hard origin/develop; rm -f "$GH_PR"; }
-opens() { git commit --quiet -am "test: change"; reviewed; scanned; "$p" fix "test: change" "$TMP/plain.md" | grep -q "^PR="; }
+opens() { git commit --quiet -am "test: change"; reviewed; scanned; "$p" fix "test: change" "$TMP/plain.md" | gq "^PR="; }
 refused() { git commit --quiet -am "test: change"; fails_with "existing tests were changed: $1" "$p" fix "test: change" "$TMP/plain.md"; }
 printf 'check one\ncheck two\nexit "$FAIL"\n' > tests/a.test.sh
 check "when a test is added above a file's closing exit, then the PR opens with no Test changes section" opens; fresh
@@ -191,7 +191,7 @@ check "when an existing app/tests.py or Tests/AppTests/AppTests.swift is edited 
 git reset --quiet --hard origin/develop
 echo 'y' > src/latest.ts; git commit --quiet -am "feat: latest"; reviewed; scanned
 check "when an existing src/latest.ts is edited, then it is not taken for a test and the PR opens" \
-  '"$p" fix "feat(search): add search" "$TMP/plain.md" | grep -q "^PR="'
+  '"$p" fix "feat(search): add search" "$TMP/plain.md" | gq "^PR="'
 echo 'check 2' > checks/price.sh; git commit --quiet -am "feat: weaken a check"; reviewed; scanned; rm -f "$GH_PR"
 mkdir -p .specify/memory; printf '# Constitution\n\ntests: ^checks/\n' > .specify/memory/constitution.md
 check "when the constitution adds a tests: regex, then a file it matches counts as a test" \
@@ -211,7 +211,7 @@ mutate true
 check "when a mutate command is set and mutants.sh was not run on this diff, then it refuses and names mutants.sh" \
   'fails_with "no mutants.sh result for this diff; run bash .specify/extensions/landspec/scripts/mutants.sh after the last commit" "$p" fix "feat(search): add search" "$TMP/body.md"'
 "$SCRIPTS/mutants.sh" >/dev/null; scanned
-check "when mutants.sh ran on this diff, then the PR opens" '"$p" fix "feat(search): add search" "$TMP/body.md" | grep -q "^PR="'
+check "when mutants.sh ran on this diff, then the PR opens" '"$p" fix "feat(search): add search" "$TMP/body.md" | gq "^PR="'
 echo 'export const more = 2' >> src/search.ts; git commit --quiet -am "feat: more"; reviewed; rm -f "$GH_PR"
 check "when a commit follows the mutants.sh run, then it refuses again" \
   'fails_with "no mutants.sh result for this diff" "$p" fix "feat(search): add search" "$TMP/body.md"'
@@ -220,16 +220,16 @@ check "when mutants.sh found survivors and Evidence does not mention them, then 
   'fails_with "mutants.sh found surviving mutants; say in '"'"'## Evidence'"'"' why each changes nothing, or add the test that kills it" "$p" fix "feat(search): add search" "$TMP/body.md"'
 printf 'Adds search.\n\n## Review\n\nready: no findings\n\n## Evidence\n\nOne survivor, in a log line: it changes nothing observable.\n' > "$TMP/survivor.md"
 check "when Evidence says why the survivor changes nothing, then the PR opens" \
-  '"$p" fix "feat(search): add search" "$TMP/survivor.md" | grep -q "^PR="'
+  '"$p" fix "feat(search): add search" "$TMP/survivor.md" | gq "^PR="'
 { cat "$TMP/survivor.md"; seq 1 20000; } > "$TMP/long.md"; rm -f "$GH_PR"
 check "when Evidence explains the survivor and runs on past the pipe buffer, then the PR opens" \
-  '"$p" fix "feat(search): add search" "$TMP/long.md" | grep -q "^PR="'
+  '"$p" fix "feat(search): add search" "$TMP/long.md" | gq "^PR="'
 mutate no-such-mutator; "$SCRIPTS/mutants.sh" >/dev/null; rm -f "$GH_PR"
 check "when the mutate command could not run, then it refuses naming it, whatever Evidence says of survivors" \
   'fails_with "the mutate command could not run (no-such-mutator)" "$p" fix "feat(search): add search" "$TMP/survivor.md"'
 rm .specify/memory/constitution.md; rm -f "$GH_PR"; : > "$GH_LOG"
 check "when there is no mutate command, then the body says mutation testing was not run" \
-  '"$p" fix "feat(search): add search" "$TMP/body.md" | grep -q "^PR=" && grep -qxF "Mutation testing: not run (no mutate command in the constitution)" "$GH_LOG"'
+  '"$p" fix "feat(search): add search" "$TMP/body.md" | gq "^PR=" && grep -qxF "Mutation testing: not run (no mutate command in the constitution)" "$GH_LOG"'
 
 # ── FR-030–FR-033: the review block carries the record's facts: model, warning, both risk maps ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
@@ -245,7 +245,7 @@ CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 "$SCRIPTS/review.sh" record --delta "$TMP/rev
 scanned; "$p" fix "feat: drop" "$TMP/body.md" >/dev/null 2>&1 || true
 body="$(sed -n "/^pr create/,\$p" "$GH_LOG")"
 check "after a delta, then the PR body lists both labeled risk maps, as paths" \
-  'grep -A1 -xF "Risk map (round 1)" <<<"$body" | grep -qxF -- "- deep: db/migrations/002_drop.sql" && grep -A1 -xF "Risk map (fix round)" <<<"$body" | grep -qxF -- "- deep: db/migrations/002_drop.sql"'
+  'grep -A1 -xF "Risk map (round 1)" <<<"$body" | gq -xF -- "- deep: db/migrations/002_drop.sql" && grep -A1 -xF "Risk map (fix round)" <<<"$body" | gq -xF -- "- deep: db/migrations/002_drop.sql"'
 check "when the record was made with CLAUDE_CODE_SUBAGENT_MODEL_FORCE set, then the PR body has the model and the warning, though pr.sh ran without it" \
   'grep -qxF "Model: claude-sonnet-4-7" <<<"$body" && grep -qxF "warning: CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set; the review did not run on the configured model" <<<"$body"'
 check "then no risk-map prose reaches the PR body" '[[ -n "$body" ]] && ! grep -q PROSE "$GH_LOG"'
@@ -531,7 +531,7 @@ st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" "$(th 4 true false
 check "when Copilot reviewed and nothing is left, then COPILOT=clean" '[[ "$(line COPILOT)" == COPILOT=clean ]]'
 st MERGEABLE null "" "$(rev octocat "" 2026-01-01T00:00:00Z)" "$(com octocat hi 2026-01-01T00:00:00Z)"
 check "when no Copilot request, review or comment exists, then COPILOT=none" '[[ "$(line COPILOT)" == COPILOT=none ]]'
-check "when given the PR's URL, then it reads that PR" '"$p" state https://github.com/acme/app/pull/12 | grep -qx COPILOT=none'
+check "when given the PR's URL, then it reads that PR" '"$p" state https://github.com/acme/app/pull/12 | gq -x COPILOT=none'
 
 st MERGEABLE null "" "$(rev $cop "" 2026-01-01T00:00:00Z)" "" \
   "$(th 1 false false 10 9 $cop),$(th 3 false false 5 5 $cop octocat),$(th 4 true false 6 6 $cop),$(th 5 false false 8 8 octocat)"
@@ -540,10 +540,10 @@ posted() { grep -q replies "$GH_LOG" || grep -q resolveReviewThread "$GH_LOG"; }
 : > "$GH_LOG"; out="$("$p" state 12 --reply PRRT_1 "$TMP/answer.md")"
 check "when --reply answers an unreplied Copilot thread, then it posts the file to its first comment's replies, then resolves it" \
   '[[ "$out" == REPLIED=PRRT_1 ]] && grep -qxF "api repos/{owner}/{repo}/pulls/12/comments/100/replies -F body=@$TMP/answer.md" "$GH_LOG" \
-   && grep resolveReviewThread "$GH_LOG" | grep -q -- "-F id=PRRT_1 " && [[ "$(grep -n replies "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n resolveReviewThread "$GH_LOG" | cut -d: -f1)" ]]'
+   && grep resolveReviewThread "$GH_LOG" | gq -- "-F id=PRRT_1 " && [[ "$(grep -n replies "$GH_LOG" | cut -d: -f1)" -lt "$(grep -n resolveReviewThread "$GH_LOG" | cut -d: -f1)" ]]'
 : > "$GH_LOG"; out="$("$p" state 12 --reply PRRT_3 "$TMP/answer.md")"
 check "when --reply names a thread already replied to, then it only resolves it and posts nothing" \
-  '[[ "$out" == RESOLVED=PRRT_3 ]] && ! grep -q replies "$GH_LOG" && grep resolveReviewThread "$GH_LOG" | grep -q -- "-F id=PRRT_3 "'
+  '[[ "$out" == RESOLVED=PRRT_3 ]] && ! grep -q replies "$GH_LOG" && grep resolveReviewThread "$GH_LOG" | gq -- "-F id=PRRT_3 "'
 : > "$GH_LOG"
 check "when --reply names a user's thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_5 was not opened by Copilot" "$p" state 12 --reply PRRT_5 "$TMP/answer.md" && ! posted'
 check "when --reply names a resolved thread, then it is refused and nothing is posted" 'one_refusal "thread PRRT_4 is already resolved" "$p" state 12 --reply PRRT_4 "$TMP/answer.md" && ! posted'

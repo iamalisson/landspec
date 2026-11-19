@@ -127,7 +127,7 @@ OLD_MARKER="# jit-speckit: managed file. /jit-speckit:level re-creates it while 
 # Files releases before the marker (1.0.0-1.3.1) wrote byte for byte: "<sha256> <path> <versions> <replace|name>".
 OLD_FILES="$LANDSPEC_EXT_DIR/scripts/old-files.sha256"; old_hook=""
 put() { # put <dest> [generated] (content on stdin): write only if missing, ours (the marker in its first lines) or an old release's hook
-  if [[ -e "$1" ]] && ! head -2 "$1" | grep -qxF -e "$MARKER" -e "$OLD_MARKER"; then
+  if [[ -e "$1" ]] && ! head -2 "$1" | grep -xF -e "$MARKER" -e "$OLD_MARKER" >/dev/null; then
     local old; old="$(awk -v h="$(sha256 < "$1")" -v p="$1" '$1 == h && $2 == p { print $3, $4 }' "$OLD_FILES")"
     if [[ "$old" == *" replace" ]]; then old_hook="${old% *}" # an old hook: rewritten below, now marked
     else
@@ -170,7 +170,7 @@ pr_gate() {
   local f
   for f in .github/workflows/*.y*ml; do
     [[ -f "$f" ]] || continue
-    if head -2 "$f" | grep -qxF -e "$MARKER" -e "$OLD_MARKER"; then continue; fi
+    if head -2 "$f" | grep -xF -e "$MARKER" -e "$OLD_MARKER" >/dev/null; then continue; fi
     if grep -qE '^[[:space:]]*pull_request:' "$f"; then echo "$f"; fi
   done
   return 0

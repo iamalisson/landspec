@@ -67,7 +67,7 @@ echo 'terraform {}' > terraform/envs/prod/main.tf
 check "when a Dockerfile and Terraform exist, then the security CI scans them with checksum-verified trivy" \
   'grep -q "trivy config --exit-code 1 --severity HIGH,CRITICAL" .github/workflows/security.yml && grep -q "sha256sum -c" .github/workflows/security.yml'
 check "then Dependabot updates every folder with a Dockerfile, and every folder with Terraform" \
-  '[[ "$(grep -A1 "package-ecosystem: docker" .github/dependabot.yml | grep -c "directory:")" == 2 ]] && grep -q "directory: \"/\"" .github/dependabot.yml && grep -q "directory: \"/services/api\"" .github/dependabot.yml && grep -A1 "package-ecosystem: terraform" .github/dependabot.yml | grep -q "directory: \"/terraform/envs/prod\""'
+  '[[ "$(grep -A1 "package-ecosystem: docker" .github/dependabot.yml | grep -c "directory:")" == 2 ]] && grep -q "directory: \"/\"" .github/dependabot.yml && grep -q "directory: \"/services/api\"" .github/dependabot.yml && grep -A1 "package-ecosystem: terraform" .github/dependabot.yml | gq "directory: \"/terraform/envs/prod\""'
 rm -rf Dockerfile services terraform
 
 "$l" full >/dev/null
@@ -175,7 +175,7 @@ ci_repo
 printf '{"scripts":{"test":"x"}}\n' > package.json; : > pnpm-lock.yaml
 "$l" standard --no-branches >/dev/null
 check "when a pnpm project has no packageManager field, then CI gives pnpm/action-setup a version" \
-  'grep -A2 "pnpm/action-setup@" $ci_yml | grep -q "^          version: latest$"'
+  'grep -A2 "pnpm/action-setup@" $ci_yml | gq "^          version: latest$"'
 printf '{"packageManager" : "pnpm@9.0.0","scripts":{"test":"x"}}\n' > package.json; rm $ci_yml
 "$l" standard --no-branches >/dev/null
 check "when packageManager names pnpm, then CI gives no version (the action refuses two)" \
@@ -241,7 +241,7 @@ out="$("$l" full)"
 check "when level.sh creates the base branch, then it says the setup goes there and the default branch gets it at the next promotion" \
   'git ls-remote --exit-code origin develop && grep -qF "open its PR with --base develop" <<<"$out" && grep -qF "main gets it at the next promotion" <<<"$out"'
 check "then it says so once, for the base branch and not for staging" '[[ "$(grep -c -- "--base" <<<"$out")" == 1 ]]'
-check "when the branch already exists, then it says nothing" '! "$l" full | grep -q -- "--base"'
+check "when the branch already exists, then it says nothing" '! "$l" full | gq -- "--base"'
 
 # ── Hooks in repos that already use the pre-commit framework or husky ──
 rm -rf "$TMP/repo" "$TMP/origin.git"; cd "$TMP"
@@ -361,10 +361,10 @@ check "when core.hooksPath does not reach .husky, then it prints not active in t
   'grep -q "not active in this clone yet" <<<"$out" && ! grep -q "enabled" <<<"$out"'
 git config core.hooksPath .husky/_
 check "when core.hooksPath names a .husky folder that does not exist, then it is not active either" \
-  '"$l" lite --no-branches | grep -q "not active in this clone yet"'
+  '"$l" lite --no-branches | gq "not active in this clone yet"'
 git config --unset core.hooksPath
 check "when a machine-wide core.hooksPath is in charge, then husky is not active either" \
-  'wide "$l" lite --no-branches | grep -q "not active in this clone yet"'
+  'wide "$l" lite --no-branches | gq "not active in this clone yet"'
 git config core.hooksPath .husky
 out="$("$l" lite --no-branches)"
 check "when core.hooksPath reaches .husky, then it says added, with no not-active line, and appends nothing twice" \
@@ -431,7 +431,7 @@ printf 'version: 2\nupdates: []\n' > .github/dependabot.yml
 echo "my own hook" > .githooks/pre-push
 out="$("$l" standard --no-branches)"
 check "when .githooks/pre-commit is v1.3.0's exact file, then level.sh replaces it and it carries the marker" \
-  'head -2 .githooks/pre-commit | grep -q "^# landspec: managed file" && grep -qxF "updated: .githooks/pre-commit" <<<"$out"'
+  'head -2 .githooks/pre-commit | gq "^# landspec: managed file" && grep -qxF "updated: .githooks/pre-commit" <<<"$out"'
 check "when close-linked-issues.yml is v1.3.1's, then it is kept and named with its versions" \
   'cmp -s "$ROOT/tests/fixtures/v1.3.1-close-linked-issues.yml" .github/workflows/close-linked-issues.yml && grep -qF "kept (written by landspec 1.0.0,1.2.0,1.3.0,1.3.1, no marker): .github/workflows/close-linked-issues.yml — delete it to get the current one" <<<"$out"'
 check "when an old hook matched, then a generated file without the marker is named as possibly an old release's" \

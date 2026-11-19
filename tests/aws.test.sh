@@ -31,7 +31,7 @@ check "then aws_agent_role is landspec-agent" 'grep -qx "aws_agent_role: landspe
 check "then a deploy line names CAPABILITY_NAMED_IAM and Access=read for prod, and dev builds on standard" \
   'grep -qxF "$deploy_prod" <<<"$out" && grep -qxF "$deploy_dev" <<<"$out" && [[ "$(grep -c "^deploy: " <<<"$out")" == 2 ]]'
 check "then the ~/.aws/config profile lines are printed for each account" \
-  'grep -A3 -xF "add to ~/.aws/config:" <<<"$out" | grep -qxF "[profile landspec-agent-prod]" && grep -qxF "role_arn = arn:aws:iam::<dev account id>:role/landspec-agent" <<<"$out" && grep -qxF "source_profile = <your sso profile>" <<<"$out"'
+  'grep -A3 -xF "add to ~/.aws/config:" <<<"$out" | gq -xF "[profile landspec-agent-prod]" && grep -qxF "role_arn = arn:aws:iam::<dev account id>:role/landspec-agent" <<<"$out" && grep -qxF "source_profile = <your sso profile>" <<<"$out"'
 check "then infra_dir is the folder with the most *.tf files" 'grep -qx "infra_dir: infra/envs/prod" "$cfgf"'
 check "then level.sh wrote .mcp.json and the Cloud access text, with no pin or add-to-.mcp.json line" \
   'grep -qxF "created: .mcp.json" <<<"$out" && grep -q "Cloud access" .specify/memory/constitution.md && ! grep -qE "^(pin:|add to .mcp.json)" <<<"$out"'
