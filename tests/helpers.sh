@@ -8,6 +8,9 @@ SCRIPTS="$ROOT/extension/scripts"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 FAIL=0
+# gq <grep args>: grep -q at the end of a pipe, reading all its input. Under pipefail, a pipe into the quiet grep
+# fails now and then: grep quits at its first match and x dies of SIGPIPE.
+gq() { grep "$@" >/dev/null; }
 # A session that forces one subagent model would add a warning to every review record.
 unset CLAUDE_CODE_SUBAGENT_MODEL_FORCE
 

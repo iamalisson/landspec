@@ -30,7 +30,7 @@ no_scanners; rm -f "$TMP/none/specify"
 check "when REQUIRE_SPECIFY is set and specify is missing, then setup.test.sh fails" \
   'PATH="$TMP/none" REQUIRE_SPECIFY=1 fails_with "REQUIRE_SPECIFY" bash tests/setup.test.sh'
 check "when it is not set, then setup.test.sh skips the rest and says so" \
-  'PATH="$TMP/none" REQUIRE_SPECIFY= bash tests/setup.test.sh | grep -q "^skip - the rest needs the specify CLI"'
+  'PATH="$TMP/none" REQUIRE_SPECIFY= bash tests/setup.test.sh | gq "^skip - the rest needs the specify CLI"'
 
 # The Bash guard stays registered. The bash 3.2 job has no python3: there, the entry is read with sed.
 check "when hooks.json is read, then it runs guard-git.sh on the Bash tool with onFailure block" \
@@ -83,7 +83,7 @@ old="$(sed -nE 's/^PIN_CHECKOUT="actions\/checkout@([0-9a-f]{40}).*/\1/p' extens
 new=1111111111111111111111111111111111111111
 find "$copy/.github/workflows" -name '*.yml' -exec sed -i.bak "s/checkout@$old # v[0-9.]*/checkout@$new # v9.9.9/" {} +
 check "when Dependabot bumped an action in every workflow, then sync-pins copies it into pins.sh" \
-  '"$copy/bin/sync-pins.sh" | grep -q "SYNCED=1" && grep -qx "PIN_CHECKOUT=\"actions/checkout@$new # v9.9.9\"" "$copy/extension/scripts/pins.sh"'
+  '"$copy/bin/sync-pins.sh" | gq "SYNCED=1" && grep -qx "PIN_CHECKOUT=\"actions/checkout@$new # v9.9.9\"" "$copy/extension/scripts/pins.sh"'
 check "then sync-pins keeps pins.sh executable (it rewrites in place)" '[[ -x "$copy/extension/scripts/pins.sh" ]]'
 check "then sync-pins also updates the scaffold workflows Dependabot doesn't see" \
   'grep -q "uses: actions/checkout@$new # v9.9.9" "$copy/extension/scaffold/full/.github/workflows/release.yml" && ! grep -rq "checkout@$old" "$copy/extension/scaffold"'
@@ -144,24 +144,24 @@ check "then a --paginate lookup of the advisories comes before the -X POST" \
 
 # F4.5: Semgrep's rules are not in the extension (their license forbids it): the docs say where they come from.
 check "when the README CI row and the security doc's CI row are read, then they say the rules come from the Semgrep registry" \
-  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -q "Semgrep registry" && grep -E "^\| Every PR, push and week \|" docs/security.md | grep -q "Semgrep registry"'
+  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | gq "Semgrep registry" && grep -E "^\| Every PR, push and week \|" docs/security.md | gq "Semgrep registry"'
 
 # F4.4/#41: init offers the free GitHub settings on every level, and the docs say what lite lacks.
 # init's calls are made by the model, so these are plain reads of the prompt (said, not faked).
 init_gh="$(sed -n '/^4\. \*\*GitHub settings\*\* (every level)/,/^5\. /p' skills/init/SKILL.md | sed '$d')"
 check "when init's step 4 is read, then it is for every level and offers allow_rebase_merge=false, and on lite allow_merge_commit=false" \
-  '[[ -n "$init_gh" ]] && ! grep -q "(standard and full)" <<<"$init_gh" && grep -q "allow_rebase_merge=false" <<<"$init_gh" && grep -A3 "On lite" <<<"$init_gh" | grep -q "allow_merge_commit=false"'
+  '[[ -n "$init_gh" ]] && ! grep -q "(standard and full)" <<<"$init_gh" && grep -q "allow_rebase_merge=false" <<<"$init_gh" && grep -A3 "On lite" <<<"$init_gh" | gq "allow_merge_commit=false"'
 check "then for a PUBLIC repo it offers secret scanning with push protection and private vulnerability reporting, and branch protection is step 5 (standard and full)" \
   'grep -q "PUBLIC" <<<"$init_gh" && grep -q "secret_scanning_push_protection" <<<"$init_gh" && grep -q "private-vulnerability-reporting" <<<"$init_gh" && grep -q "^5\. \*\*Branch protection\*\* (standard and full)" skills/init/SKILL.md'
 check "when the docs are read, then the README CI row names (standard and full), the security doc says lite has no CI gate, and the design doc ties the one-revert promise to one landing commit per task" \
-  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -qF "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One branch and one PR per feature/,/^## /p" docs/design.md | grep "one landing commit per task" >/dev/null'
+  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | gq -F "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One branch and one PR per feature/,/^## /p" docs/design.md | grep "one landing commit per task" >/dev/null'
 
 # Generated CI's first run: required jobs must have a way out, and a new advisory must not stop unrelated PRs.
 init_bp="$(sed -n '/^5\. \*\*Branch protection\*\*/,/^6\. /p' skills/init/SKILL.md)"
 check "when init's step 5 is read, then protection waits for green checks, and running init again offers it" \
-  'tr "\n" " " <<<"$init_bp" | grep -qE "Offer it only once .*green" && grep -qF "gh run list --branch <base branch>" <<<"$init_bp" && tr "\n" " " <<<"$init_bp" | grep -qF "/landspec:init\` again"'
+  'tr "\n" " " <<<"$init_bp" | gq -E "Offer it only once .*green" && grep -qF "gh run list --branch <base branch>" <<<"$init_bp" && tr "\n" " " <<<"$init_bp" | gq -F "/landspec:init\` again"'
 check "then the osv-scanner job is left out of the required checks, and the security doc says so" \
-  'tr "\n" " " <<<"$init_bp" | grep -qE "Leave +\`Dependencies \(osv-scanner\)\` +out" && grep -qF "OSV-Scanner is not a required check" docs/security.md'
+  'tr "\n" " " <<<"$init_bp" | gq -E "Leave +\`Dependencies \(osv-scanner\)\` +out" && grep -qF "OSV-Scanner is not a required check" docs/security.md'
 gate_doc="$(sed -n '/^## When a gate is red/,/^## /p' docs/security.md)"
 check "when the security doc is read, then it says how to accept what each gate already finds" \
   'for f in .gitleaksignore osv-scanner.toml zizmor.yml .trivyignore .semgrepignore; do grep -qF "\`$f\`" <<<"$gate_doc"; done'
@@ -172,12 +172,12 @@ check "when init's summary is read, then it repeats level.sh's warning that a ke
   'grep -qF "never runs on the feature PR" <<<"$(sed -n "/^7\. Summarize/,/^8\. /p" skills/init/SKILL.md)" && grep -qF "never runs on the feature PR into" extension/scripts/level.sh && grep -qF "never runs on the feature PR into <base>" docs/reference.md'
 
 check "when init is read, then it sets up one PR per feature: no task PR, no issue step" \
-  'grep -qF "one feature = one branch = one PR" skills/init/SKILL.md && ! sed "s/no GitHub issues//" skills/init/SKILL.md | grep -qiE "task PR|issue"'
+  'grep -qF "one feature = one branch = one PR" skills/init/SKILL.md && ! sed "s/no GitHub issues//" skills/init/SKILL.md | gq -iE "task PR|issue"'
 
 # The setup commit has to reach the base branch: task branches start there, and scripts read the level from the tree.
 init_commit="$(sed -n '/^8\. \*\*Offer to commit it/,$p' skills/init/SKILL.md)"
 check "when init's step 8 is read, then the setup branch starts from origin/<base> and the PR names that base, on yes and on no" \
-  'grep -qF "git switch -c <branch> origin/<base>" <<<"$init_commit" && grep -qF "pr.sh fix \"chore: landspec <version> (level <level>)\" <body-file>" <<<"$init_commit" && grep -qF "opens it into \`<base>\`" <<<"$init_commit" && tr "\n" " " <<<"$init_commit" | grep -qE "On no: .*into +\`<base>\`" && grep -q "next promotion" <<<"$init_commit"'
+  'grep -qF "git switch -c <branch> origin/<base>" <<<"$init_commit" && grep -qF "pr.sh fix \"chore: landspec <version> (level <level>)\" <body-file>" <<<"$init_commit" && grep -qF "opens it into \`<base>\`" <<<"$init_commit" && tr "\n" " " <<<"$init_commit" | gq -E "On no: .*into +\`<base>\`" && grep -q "next promotion" <<<"$init_commit"'
 check "when the level skill is read, then a level change goes to the base branch too" \
   'grep -qF "opens it into \`<base branch>\`" skills/level/SKILL.md'
 check "when the level skill is read, then going up from lite offers merge commits on, and going down offers squash-only" \
@@ -188,7 +188,7 @@ check "when the docs say what the scan proves, then it ran, never that it passed
   'grep -qF "refuses the PR until \`security-scan.sh --changed\` ran" docs/security.md && grep -qF "the PR is refused until they ran" README.md && grep -qF "one fast pass on the diff" docs/security.md && ! grep -qF "one mutation" docs/security.md'
 # FR-013/#258: the plan gate is a layer of the security model, with what it checks and how far it holds.
 check "when the security layers table is read, then a Before a PR opens, with row names tfplan.sh gate and its Skipped line" \
-  'grep -E "^\| Before a PR opens, with " docs/security.md | grep -F "tfplan.sh gate" | grep -qF "Skipped"'
+  'grep -E "^\| Before a PR opens, with " docs/security.md | grep -F "tfplan.sh gate" | gq -F "Skipped"'
 check "when the example describes the build, then /landspec:implement starts the startable tasks at once, a dependent one waits, and next makes no parallel offer" \
   'grep -qF "starts T001 and T003 at once" examples/README.md && grep -qF "so it waits" examples/README.md && ! grep -qE "parallel. line|claude --worktree" examples/README.md'
 check "when the docs are read, then the README Start and the reference Update say the setup goes to the base branch" \
@@ -197,7 +197,7 @@ check "when the docs are read, then the README Start and the reference Update sa
 # A new project needs a GitHub repo before the foundation spec, and develop after its first push.
 new_landspec="$(sed -n '/^7\. \*\*Set up landspec/,$p' skills/new/SKILL.md)"
 check "when new's steps 7 and 8 are read, then it offers gh repo create before setup, and the next step is commit, push and level, before the spec" \
-  'tr "\n" " " <<<"$new_landspec" | grep -qE "gh repo create .*--source \. --remote origin.*bin/setup\.sh" && tr "\n" " " <<<"$new_landspec" | grep -qE "commit the setup.*git push -u origin.*/landspec:level <level>.*/speckit-specify"'
+  'tr "\n" " " <<<"$new_landspec" | gq -E "gh repo create .*--source \. --remote origin.*bin/setup\.sh" && tr "\n" " " <<<"$new_landspec" | gq -E "commit the setup.*git push -u origin.*/landspec:level <level>.*/speckit-specify"'
 check "when init's step 1 is read, then it checks for a GitHub repository and offers to create one" \
   'grep -qE "gh repo view.*gh repo create .*--source \. --remote origin" <<<"$(sed -n "/^1\. \*\*Tools/,/^2\. /p" skills/init/SKILL.md | tr "\n" " ")"'
 
@@ -218,7 +218,7 @@ check "then the plugin ships no fast-model checker agent and plugin.json has no 
   '[[ ! -e agents/checker.md ]] && ! grep -q "\"agents\"" .claude-plugin/plugin.json'
 check "when review.md, pr.md and plan-review.md launch the reviewer, then each names landspec:reviewer and pr.md and plan-review.md no longer launch a general-purpose subagent" \
   'grep -qF "landspec:reviewer" extension/commands/review.md && grep -qF "landspec:reviewer" extension/commands/pr.md && grep -qF "landspec:reviewer" extension/commands/plan-review.md \
-   && ! tr "\n" " " < extension/commands/pr.md | grep -qE "general-purpose +subagent" && ! tr "\n" " " < extension/commands/plan-review.md | grep -qE "general-purpose +subagent"'
+   && ! tr "\n" " " < extension/commands/pr.md | gq -E "general-purpose +subagent" && ! tr "\n" " " < extension/commands/plan-review.md | gq -E "general-purpose +subagent"'
 check "when review.md sets the reviewer model, then the call's model is opus, it names no review_model, and it keeps the general-purpose fallback and the sentinel line" \
   'f=extension/commands/review.md; grep -qF "call'"'"'s \`model\`: \`opus\`" $f && ! grep -qF "review_model" $f \
    && grep -qF "general-purpose" $f && grep -qF "landspec review: independent reviewer" $f'
@@ -251,14 +251,14 @@ check "when review.md is read, then a delta has no 20-line limit and a conflict 
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; ! grep -qF "20 lines" extension/commands/review.md \
    && [[ "$f" == *"reads the merge'"'"'s resolution (\`git show --remerge-diff <merge>\`) and the commits after it"* ]]'
 check "when review.md's delta is read, then a bug it notices outside its fix commits is not counted on the Findings: line" \
-  'tr "\n" " " < extension/commands/review.md | tr -s " " | grep -qF "is reported at its true severity, is not counted on the \`Findings:\` line and does not change the assessment"'
+  'tr "\n" " " < extension/commands/review.md | tr -s " " | gq -F "is reported at its true severity, is not counted on the \`Findings:\` line and does not change the assessment"'
 check "when review.md's plan review is read, then only a High failing row or open earlier finding blocks a ready" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"refuses a \`ready\` with a failing row only when the report counts a High finding"* \
    && "$f" == *"and a \`ready\` with an \`open\` row only when it counts a High finding"* ]]'
 check "when review.md is read, then the plan review has no Simplify section: it names no ## Simplify:, simplify: fact or SIMPLIFY= line" \
   '! grep -qiE "## Simplify:|simplify: <|SIMPLIFY=" extension/commands/review.md'
 check "when the Impact rule is read, then the tasks template and plan-review step 1 also search what a task changes the behaviour of" \
-  'grep -qF "changes the behaviour of" extension/commands/plan-review.md && tr "\n" " " < preset/templates/tasks-template.md | tr -s " " | grep -qF "removes or changes the behaviour of"'
+  'grep -qF "changes the behaviour of" extension/commands/plan-review.md && tr "\n" " " < preset/templates/tasks-template.md | tr -s " " | gq -F "removes or changes the behaviour of"'
 check "when review.md lists the bugs to look for, then it names data reaching a log inside a helper, says to open each helper, and ranks a faked asserted component" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"reaches a log, including inside a helper the changed lines call with it"* \
    && "$f" == *"Open each helper a changed line passes personal data or a secret to"* && "$f" == *"names the helper'"'"'s own \`file:line\` that writes the log"* && "$f" == *"a test that fakes the component whose behavior it asserts"* \
@@ -276,7 +276,7 @@ check "when docs/design.md is read, then the per-task sections are gone and one 
   '! grep -qE "^## (One task = one issue|The spec is its own PR|Parallel tasks, stacked PRs)" docs/design.md && grep -q "^## One branch and one PR per feature" docs/design.md'
 check "when the security layers table is read, then Before a PR opens runs the scan and mutants once on the feature diff before ready, a high finding blocks, and the review hook row is Opus only" \
   'r="$(grep -E "^\| Before a PR opens \|" docs/security.md)"; grep -qF "once, on the whole feature diff" <<<"$r" && grep -qF "pr.sh feature --ready" <<<"$r" && grep -qF "findings high" <<<"$r" \
-   && grep -E "^\| Every review Claude launches \|" docs/security.md | grep -qF "Opus only"'
+   && grep -E "^\| Every review Claude launches \|" docs/security.md | gq -F "Opus only"'
 check "when docs/GUIDELINES.md is read, then parallel work is tasks on the one feature branch, not a branch and PR per task" \
   '! grep -qF "Each gets its own branch and PR" docs/GUIDELINES.md && ! grep -qF "tasks, issues, reviewed PRs" docs/GUIDELINES.md && grep -qF "/landspec:implement" docs/GUIDELINES.md'
 # FR-001/FR-008: the passes review.md asks for are the ones review.sh checks, in the same order, and its Report names them.
@@ -339,6 +339,10 @@ for f in extension/commands/*.md; do
   [[ -f ".specify/extensions/landspec/$s" && "$(body "$f")" == "$(body ".specify/extensions/landspec/$s")" ]] || stale+="$s "
 done
 check "every extension command and script equals its .specify/extensions/landspec copy${stale:+ — stale: $stale(fix: specify extension add --dev extension --force)}" '[[ -z "$stale" ]]'
+
+# Under pipefail a pipe into grep -q fails now and then (grep quits first, the writer gets SIGPIPE).
+piped="$(grep -nE '[^|]\| *grep -[a-zA-Z]*q' extension/scripts/*.sh bin/*.sh hooks/*.sh tests/*.sh | grep -v -e 'tests/static.test.sh:.*piped=' -e 'mutmut results' -e '# not | grep -q' || true)"
+check "no script or test pipes into grep -q: scripts end the pipe in grep … >/dev/null, tests in gq${piped:+ — $piped}" '[[ -z "$piped" ]]'
 
 # A link copied from the README into docs/ keeps its docs/ prefix and breaks; every relative link
 # in a markdown file must point at a file that exists next to it.
@@ -542,7 +546,7 @@ check "then the release starts on status's MERGED= (or branch.sh's merged refusa
    && [[ "$f" == *"When it refuses with \`the feature PR #<n> is merged\`, go to \"The release\""* ]] && ! grep -qF "every task is \`merged\`" skills/implement/SKILL.md \
    && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run audits it and makes the release"* ]]'
 check "then landspec's own config names its four version files and docs/releases" \
-  'c=.specify/extensions/landspec/landspec-config.yml; for f in .claude-plugin/plugin.json extension/extension.yml preset/preset.yml .specify/extensions/landspec/extension.yml; do grep "^version_files:" $c | grep -qF "$f" || exit 1; done; grep -qx "release_notes: docs/releases" $c'
+  'c=.specify/extensions/landspec/landspec-config.yml; for f in .claude-plugin/plugin.json extension/extension.yml preset/preset.yml .specify/extensions/landspec/extension.yml; do grep "^version_files:" $c | gq -F "$f" || exit 1; done; grep -qx "release_notes: docs/releases" $c'
 
 # The run report (spec 004 T013): why a task waits, and how to free a locked worktree.
 check "when the run ends, then the report gives each waiting task's reason and the unlock and remove commands for a locked worktree" \
@@ -637,11 +641,11 @@ check "when agent-role.yaml is checked against contracts/template.md, then nothi
 check "then its Deny holds the 26 actions of denied-actions.txt and its read deny the 23 of denied-read-actions.txt" \
   '[[ "$(statements '"$role"' | grep -c "^DenyListed Deny [^@]")" == 26 && "$(statements '"$role"' | grep -c "^DenyReadData Deny [^@]")" == 23 && "$(wc -l < extension/aws/denied-actions.txt)" -eq 26 ]]'
 check "then the read deny exists only when Access=read" \
-  'grep -B2 -- "- Sid: DenyReadData" '"$role"' | grep -q -- "- IsRead"'
+  'grep -B2 -- "- Sid: DenyReadData" '"$role"' | gq -- "- IsRead"'
 # The failure paths: a broken copy is named.
 broken() { # broken <expected problem> <awk program applied to the template> [<awk program applied to denied-actions.txt>]
   mkdir -p "$TMP/role"; awk "$2" "$role" > "$TMP/role/t.yaml"; awk "${3:-1}" extension/aws/denied-actions.txt > "$TMP/role/d.txt"
-  role_problems "$TMP/role/t.yaml" "$TMP/role/d.txt" extension/aws/denied-read-actions.txt | grep -qF -- "$1"
+  role_problems "$TMP/role/t.yaml" "$TMP/role/d.txt" extension/aws/denied-read-actions.txt | gq -F -- "$1"
 }
 check "when an allow also grants iam:CreateRole, then the check names it" \
   'broken "an allow grants iam:CreateRole (ReadIam)" "{print} /- iam:SimulatePrincipalPolicy/{print \"                  - iam:CreateRole\"}"'
@@ -703,7 +707,7 @@ scp_problems() {
 problems="$(scp_problems "$scp" extension/aws/denied-actions.txt | tr "\n" ";")"
 check "when scp-agent.json is checked against contracts/template.md, then nothing is wrong${problems:+ — $problems}" '[[ -z "$problems" ]]'
 check "then its two listed denies hold the 26 actions each, and the MCP one is the second" \
-  '[[ "$(grep -c "^        \"" '"$scp"')" == 64 ]] && grep -A33 "\"Sid\": \"DenyListedViaMcp\"" '"$scp"' | grep -q "aws:ViaAWSMCPService"'
+  '[[ "$(grep -c "^        \"" '"$scp"')" == 64 ]] && grep -A33 "\"Sid\": \"DenyListedViaMcp\"" '"$scp"' | gq "aws:ViaAWSMCPService"'
 scp_broken() { # scp_broken <expected problem> <awk program applied to the SCP> [<awk program applied to denied-actions.txt>]
   mkdir -p "$TMP/scp"; awk "$2" "$scp" > "$TMP/scp/p.json"; awk "${3:-1}" extension/aws/denied-actions.txt > "$TMP/scp/d.txt"
   [[ "$(scp_problems "$TMP/scp/p.json" "$TMP/scp/d.txt")" == *"$1"* ]] # not | grep -q: a match before the last line is a SIGPIPE under pipefail

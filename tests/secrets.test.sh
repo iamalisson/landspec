@@ -139,7 +139,7 @@ mkdir -p .specify/extensions/landspec && ln -s "$SCRIPTS" .specify/extensions/la
 printf 'level: standard\n' > .specify/extensions/landspec/landspec-config.yml
 echo setup > README.md; git add README.md; git commit --quiet --no-verify -m setup
 check "when the first push of a new repo goes to its empty remote, then main is allowed once and says so" \
-  'bash "$SCRIPTS/prepush.sh" origin "$TMP/empty.git" <<<"refs/heads/main $(git rev-parse HEAD) refs/heads/main $zero" 2>&1 | grep -q "first push to an empty repository"'
+  'bash "$SCRIPTS/prepush.sh" origin "$TMP/empty.git" <<<"refs/heads/main $(git rev-parse HEAD) refs/heads/main $zero" 2>&1 | gq "first push to an empty repository"'
 printf 'k = "sk_live_%s"\n' "$(printf 'd%.0s' {1..24})" > boot.rb; git add boot.rb; git commit --quiet --no-verify -m leak
 check "then that first push is still scanned: a secret in it is refused" \
   'fails_with "boot.rb:1: possible Stripe live key" bash "$SCRIPTS/prepush.sh" origin "$TMP/empty.git" <<<"refs/heads/main $(git rev-parse HEAD) refs/heads/main $zero"'

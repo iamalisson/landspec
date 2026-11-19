@@ -53,7 +53,7 @@ out="$("$s")"
 check "when a feature has plan rounds, an issues run and outside counts, then its PLAN line gives the rounds, the ready ones, each round's findings (? with no count) and the outside sum, with no first->issues" \
   '[[ "$out" == "$(printf "%s\n" "$p7" "PRS=0 MEDIAN_START_TO_PR=?m MEAN_ROUNDS=? READY_FIRST=0/0")" ]]'
 echo "17200 1970-01-01T04:46Z main issues feature=007-x created=1" >> "$ev"
-check "when issues.sh of the per-task flow runs again, then the PLAN line still has no first->issues" '"$s" | grep -qxF "$p7"'
+check "when issues.sh of the per-task flow runs again, then the PLAN line still has no first->issues" '"$s" | gq -xF "$p7"'
 echo "18000 1970-01-01T05:00Z main review round=plan verdict=ready feature=008-y h=0 m=0 l=0" >> "$ev"
 check "when a second feature has a plan round, then it gets its own line, after the first" \
   'out="$("$s")"; [[ "$(grep "^PLAN " <<<"$out")" == "$(printf "%s\n" "$p7" "PLAN 008-y rounds 1 (1 ready) | findings 0/0/0 | outside 0")" ]]'

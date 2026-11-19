@@ -92,9 +92,9 @@ sed -i.bak 's/\[PROJECT_NAME\]/App/' .specify/memory/constitution.md; rm -f .spe
 sed -i.bak 1d .github/workflows/ci.yml; rm -f .github/workflows/ci.yml.bak # the user took ci.yml over (marker gone)
 remove .
 check "when removed, then nothing of landspec is left in the tree (extension, preset, skills, scaffold)" \
-  '! git status --porcelain --untracked-files=all | grep -v "landspec-files.sha256" | grep -qi landspec && [[ ! -e .githooks && ! -e .github/workflows/security.yml && ! -e .github/dependabot.yml && ! -e .claude/settings.json ]]'
+  '! git status --porcelain --untracked-files=all | grep -v "landspec-files.sha256" | gq -i landspec && [[ ! -e .githooks && ! -e .github/workflows/security.yml && ! -e .github/dependabot.yml && ! -e .claude/settings.json ]]'
 check "then spec-kit's templates and implement command are its own again" \
-  'specify preset resolve tasks-template | grep -q "from: core" && ! grep -q "Do not mark tasks" .claude/skills/speckit-implement/SKILL.md'
+  'specify preset resolve tasks-template | gq "from: core" && ! grep -q "Do not mark tasks" .claude/skills/speckit-implement/SKILL.md'
 check "then the git hooks setting is unset and a file the user took over is kept" '[[ -z "$(git config core.hooksPath)" && -f .github/workflows/ci.yml ]]'
 check "then the constitution keeps the user's text without the landspec block" \
   '! grep -q "<!-- landspec:start" .specify/memory/constitution.md && grep -q "^# App Constitution" .specify/memory/constitution.md && grep -q "^## Governance" .specify/memory/constitution.md'
@@ -137,6 +137,6 @@ check "then a file with the old marker is re-created under the new name" \
 printf 'level: lite\nreview_model: fable\n' > .specify/landspec-config.moving
 check "when a run failed after saving the settings, then the next one still restores them" \
   '"$ROOT/bin/setup.sh" . >/dev/null 2>&1 && grep -qx "review_model: fable" .specify/extensions/landspec/landspec-config.yml && [[ ! -e .specify/landspec-config.moving ]]'
-check "when setup runs again, then there is nothing left to move" '! "$ROOT/bin/setup.sh" . 2>&1 | grep -q "^renamed:"'
+check "when setup runs again, then there is nothing left to move" '! "$ROOT/bin/setup.sh" . 2>&1 | gq "^renamed:"'
 
 exit "$FAIL"
