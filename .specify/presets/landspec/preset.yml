@@ -3,8 +3,8 @@ schema_version: "1.0"
 preset:
   id: landspec
   name: "landspec"
-  version: "2.6.0"
-  description: "Constitution with level-sized defaults, and tasks sized as one issue and one PR each"
+  version: "2.10.0"
+  description: "Constitution with level-sized defaults, and tasks sized as one reviewable vertical slice each"
   author: iamalisson
   repository: https://github.com/iamalisson/landspec
   license: MIT
@@ -22,12 +22,12 @@ provides:
     - type: template
       name: tasks-template
       file: templates/tasks-template.md
-      description: "Tasks sized as one issue and one PR, with Comes from / Completed when"
+      description: "Tasks sized as one reviewable vertical slice, with Comes from / Completed when"
       replaces: tasks-template
     - type: command
       name: speckit.implement
       file: commands/speckit.implement.md
-      description: "Appended to implement: one task per run, no [X] ticks (the issue closing is done)"
+      description: "Appended to implement: builds the feature as /landspec:implement does; only implement.sh land ticks [X]"
       strategy: append
 
 tags: ["best-practices", "github", "workflow"]
