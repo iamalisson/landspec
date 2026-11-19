@@ -32,7 +32,7 @@ missing() { report "$1" missing "install: $2"; }
 found() {
   if grep -qE "$3" "$2" 2>/dev/null; then report "$1" findings "high $2"; else report "$1" findings "$2"; fi
 }
-# With --changed, the summary lines become this diff's record, which pr.sh task requires. Copied
+# With --changed, the summary lines become this diff's record, which pr.sh fix and pr.sh feature --ready require. Copied
 # only once the scan is done, so an interrupted scan records nothing.
 finish() { if $changed; then cp "$summary" "$rec"; fi; echo "REPORT_DIR=$dir"; exit 0; }
 

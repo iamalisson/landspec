@@ -1,32 +1,23 @@
 #!/usr/bin/env bash
 # Push the current work and open (or reuse) its pull request.
-#   pr.sh task T003 "feat(api): add price search" [body-file]
-#       On the task's branch, with the work already committed. Adds "Closes #N".
-#       Every level requires a "## Review" section in the body and a recorded independent review
-#       that said "ready" for this exact diff (review.sh), whose recorded facts it adds to the
-#       body, folded: patch id, Assessment line, model, any warning and the risk maps as paths;
-#       "full" also requires "## Evidence".
-#       Runs the constitution's test command before the push and refuses when it fails.
-#       On an open PR, replaces its body from body-file.
 #   pr.sh feature "feat(api): price search" <body-file>
 #       On the feature's branch: the gates of a fix PR on the whole diff from the base, except the
 #       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
 #       [X] with no landing commit, and needs no scan or mutants record (the draft opens after the
 #       first landing; they run once on the whole diff). Adds a "## Tasks" table, "## Low findings" (the
 #       landing commits' Low: lines) and "## End check" from the feature's end-check record when there
-#       is one; closes no issue. Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
+#       is one. Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
 #   pr.sh feature "feat(api): price search" <body-file> --ready
 #       Also refuses a task not done, a failing review.sh check --feature, and no scan or (with a mutate
 #       command) mutants record of the whole feature diff; a "findings high" scan line refuses; other
 #       findings, missing scanners and unavailable mutants are listed. Then gh pr ready; PR=<url> READY=yes.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
-#       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch: the same
-#       review, mutants, scan and test gate as a task, without an issue.
-#   pr.sh spec ["<title>"]
-#       Stops without a current plan review. Commits the active feature's spec folder on
-#       spec/<feature> and opens a docs PR, or updates the open one (its generated body too, so a
-#       new task issue shows). The title, in the project's language, names the commit and a new PR;
-#       without one, the commit says "add" on a new spec PR and "update" on an open one.
+#       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch. Every level
+#       requires a "## Review" section in the body and a recorded independent review that said "ready"
+#       for this exact diff (review.sh), whose recorded facts it adds to the body, folded: patch id,
+#       Assessment line, model, any warning and the risk maps as paths; "full" also requires "## Evidence".
+#       Runs the constitution's test command before the push and refuses when it fails.
+#       On an open PR, replaces its body from body-file.
 #   pr.sh state <pr>
 #       Reads the PR (no feature needed, nothing requested, nothing waited for) and prints
 #       CONFLICT=no|yes|unknown, CI=pass|pending|fail <name> (<conclusion>),…|none and
@@ -42,22 +33,21 @@ source "$(dirname "$0")/lib.sh"
 
 landspec_cd_root
 command -v gh >/dev/null || die "the GitHub CLI (gh) is required: https://cli.github.com"
-fdir=""; [[ "${1:-}" == fix || "${1:-}" == state ]] || fdir="$(feature_dir)" # a fix PR, or any PR's state, belongs to no feature
+fdir=""; [[ "${1:-}" != feature ]] || fdir="$(feature_dir)" # a fix PR, or any PR's state, belongs to no feature
 base="$(base_branch)"
 mode="${1:-}"
 
-# With a body file (a task PR, whose body must describe the new diff), an open PR's body is replaced.
+# With a body file (whose body must describe the new diff), an open PR's body is replaced.
 open_pr() { # open_pr <title> <body> [body-file]
   local url err
   url="$(gh pr list --head "$(git branch --show-current)" --state open --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')" \
     || die "could not check for an open PR"
   if [[ -z "$url" ]]; then
-    # A stacked PR opens as a draft: GitHub cannot merge a draft, so it never lands in its parent.
-    if [[ -n "${parent:-}" || "${draft:-}" == true ]]; then
+    # The feature PR opens as a draft: GitHub cannot merge a draft before pr.sh feature --ready.
+    if [[ "${draft:-}" == true ]]; then
       local ef; ef="$(mktemp)"
       if ! url="$(gh pr create --draft --base "$base" --head "$(git branch --show-current)" --title "$1" --body "$2" 2>"$ef")"; then
         grep -qi draft "$ef" || { cat "$ef" >&2; die "could not open the PR"; }
-        [[ -n "${nodraft:-}" ]] || nodraft="merge #$parent_pr first, and only after this PR's review is current"
         echo "landspec: warning: drafts are not available: $nodraft" >&2
         url="$(gh pr create --base "$base" --head "$(git branch --show-current)" --title "$1" --body "$2")"
       fi
@@ -110,10 +100,10 @@ feature_sections() {
 }
 
 case "$mode" in
-  feature|task|fix) # guard.sh knows a pr.sh with pr.sh fix by the text "task|fix)"
-    # fix: any PR that is not a task (a small fix, a dependency bump, landspec's own setup) gets the
-    # same gate, so no PR opens without a recorded review at any level; only "Closes #N" is task-only.
-    branch="$(git branch --show-current)"; issue=""
+  feature|fix) # guard.sh knows a pr.sh with pr.sh fix by the text "|fix)"
+    # fix: any PR that is not the feature's (a small fix, a dependency bump, landspec's own setup) gets
+    # the same gate, so no PR opens without a recorded review at any level.
+    branch="$(git branch --show-current)"
     # What feature mode changes, set here once: no branch-wide review (research R9), a draft, the generated sections.
     need_review=true; need_scan=true; draft=false; nodraft=""; ready=""; extra=""
     if [[ "$mode" == feature ]]; then
@@ -126,15 +116,6 @@ case "$mode" in
       if [[ -n "${4:-}" ]]; then ready=yes; need_scan=true; fi
       feature_sections
       [[ "$ready" != yes ]] || bash "$LANDSPEC_EXT_DIR/scripts/review.sh" check --feature >/dev/null
-    elif [[ "$mode" == task ]]; then
-      task="${2:-}"; title="${3:-}"; body_file="${4:-}"
-      [[ "$task" =~ ^T[0-9]{3,}$ && -n "$title" ]] || die 'usage: pr.sh task T003 "type(scope): summary" [body-file]'
-      line="$(task_line "$fdir" "$task")"
-      issue="$(task_issue "$line")"
-      [[ -n "$issue" ]] || die "$task has no issue"
-      num="$(feature_key "$fdir")"
-      [[ "$branch" == */"$num-$(tr '[:upper:]' '[:lower:]' <<<"$task")-"* ]] \
-        || die "not on $task's branch for feature $num (on '$branch'); run /speckit-implement $task"
     else
       title="${2:-}"; body_file="${3:-}"
       [[ -n "$title" && -n "$body_file" ]] || die 'usage: pr.sh fix "type(scope): summary" <body-file>'
@@ -144,23 +125,10 @@ case "$mode" in
     # A reviewer's copy (Claude Code puts it under .claude/worktrees) is not the author's work.
     dirty="$(git status --porcelain -- . ':(exclude).claude/worktrees' | awk 'NR <= 5 { printf "%s ", substr($0, 4) }')" # awk reads it all: head would SIGPIPE git under pipefail
     [[ -z "$dirty" ]] || die "uncommitted changes; commit the work first (or git-ignore what the tests create): $dirty"
-    # A task stacked on another task's branch (branch.sh --from) opens its PR into that branch.
-    parent=""; parent_pr=""
-    if [[ "$mode" == task ]]; then parent="$(git config --get "branch.$branch.landspec-parent" || true)"; fi
-    if [[ -n "$parent" ]]; then
-      parent_pr="$(gh pr list --head "$parent" --state all --json url,state,isCrossRepository --jq '[.[] | select(.state != "CLOSED") | select(.isCrossRepository | not)][0].url // empty')" \
-        || die "could not look up the PR of $parent"
-      [[ -n "$parent_pr" ]] || die "open the PR of $parent first"
-      parent_pr="${parent_pr##*/}"; base="$parent"
-      for w in .github/workflows/*.y*ml; do
-        [[ -f "$w" ]] && grep -qE '^[[:space:]]*pull_request:' "$w" || continue
-        if pr_skips_base "$w" "$parent"; then echo "landspec: warning: $w never runs on a PR into $parent: its pull_request branches filter it out" >&2; fi
-      done
-    fi
     git fetch --quiet origin "$base" 2>/dev/null || true
     [[ -n "$(git log --oneline "$(base_ref)..HEAD" 2>/dev/null || git log --oneline -1)" ]] || die "no commits ahead of $base"
 
-    body=""; [[ -n "$body_file" ]] && body="$(cat "$body_file")"
+    body="$(cat "$body_file")"
     if [[ "$(landspec_level)" == full ]] && ! grep -qE '^## Evidence' <<<"$body"; then
       die "level 'full' requires an '## Evidence' section in the PR body (test output, screenshots, run links)"
     fi
@@ -230,63 +198,9 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
       echo "landspec: tests not run before the PR (no test command in the constitution)" >&2
     fi
     if $need_review; then body+=$'\n\n<details><summary>Independent review</summary>\n\n'"$review"$'\n\n</details>'; fi
-    if [[ -n "$parent_pr" ]]; then body+=$'\n\n'"Stacked on #$parent_pr (merge it first)"; fi
     body+="$extra"
-    if [[ -n "$issue" ]] && ! grep -qiE "(close[sd]?|fix(e[sd])?|resolve[sd]?) #$issue([^0-9]|$)" <<<"$body"; then body+=$'\n\n'"Closes #$issue"; fi
     git push --quiet -u origin "$branch"
     open_pr "$title" "$body" "$body_file"
-    ;;
-  spec)
-    bash "$LANDSPEC_EXT_DIR/scripts/review.sh" check --plan >/dev/null
-    # A file tasks.md names that is only untracked here never reaches the base: whoever starts the
-    # task from a clean clone has nothing to read.
-    missing=""
-    while IFS= read -r f; do
-      [[ -n "$f" && "$f" != "$fdir"/* ]] || continue
-      if grep -qF -- "\`$f\`" "$fdir/tasks.md"; then missing+=" $f"; fi # a path the tasks name, in backticks
-    done < <(git ls-files --others --exclude-standard)
-    [[ -z "$missing" ]] || die "tasks.md names files that are not in git:$missing. Move each into $fdir/ (it lands with the spec) or write what the task needs into the task, then run again"
-    feature="$(basename "$fdir")"
-    branch="spec/$feature"
-    # An open spec PR is updated in place. Otherwise (first time, or a later run such as after
-    # /speckit-converge, when the old spec PR may have been squash-merged) the branch starts
-    # fresh from the base, so the new PR shows only what changed. A failed lookup stops here: taken
-    # for "none open", the fresh start would overwrite the open PR's branch, teammates' commits too.
-    open="$(gh pr list --head "$branch" --state open --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')" \
-      || die "could not check for an open spec PR"
-    fresh=false
-    if [[ "$(git branch --show-current)" != "$branch" || -z "$open" ]]; then
-      ref="$(base_ref "")" # the base itself, never a parent task branch: a spec PR carries no task code
-      # The spec folder's current content travels with us; nothing else is touched.
-      if [[ -n "$open" ]]; then carry_switch "$fdir" "$branch" "$branch"; else carry_switch "$fdir" "$branch" --no-track -C "$branch" "$ref"; fresh=true; fi
-    fi
-    git add -- "$fdir"
-    # "update" once the spec exists anywhere: an open PR, or a squash-merged one already on the base.
-    title="${2:-}"; verb=add
-    if [[ -n "$open" ]] || git cat-file -e "$(base_ref):$fdir" 2>/dev/null; then verb=update; fi
-    git diff --cached --quiet || git commit --quiet -m "${title:-docs(specs): $verb $feature spec, plan and tasks}"
-    # A fresh branch may replace a stale one left by a merged PR (no PR is open on it); the lease
-    # still refuses if someone pushed to it since we last fetched.
-    if $fresh; then git push --quiet --force-with-lease -u origin "$branch"; else git push --quiet -u origin "$branch"; fi
-    issues="$(grep -oE ' — #[0-9]+$' "$fdir/tasks.md" | grep -oE '#[0-9]+' | tr '\n' ' ')"
-    # The plan review's model warning, from its record (issues.sh refuses a missing or stale one).
-    warn="$(bash "$LANDSPEC_EXT_DIR/scripts/review.sh" report --plan 2>/dev/null | sed -n 's/^warning: /**Plan review:** /p' || true)"
-    [[ -z "$warn" ]] || warn=$'\n\n'"$warn"
-    # The body is generated, so an open spec PR gets it again: the third argument says to replace it.
-    open_pr "${title:-docs(specs): $feature}" "Spec, plan and tasks for \`$feature\`.
-
-**Task issues:** ${issues:-none yet}$warn
-
-Merge this before starting tasks: \`/speckit-implement Tnnn\` branches from \`$base\`, so it needs \`tasks.md\` there.
-
-<details>
-<summary>Why is the spec its own PR?</summary>
-
-- Every task branch starts from \`$base\` and reads its issue from \`tasks.md\` there.
-- Each task PR then stays small, independent and closes exactly one issue.
-- The design gets reviewed before any code is written, while changing it is still cheap.
-
-</details>" "the generated spec body"
     ;;
   state)
     # One read of the PR, shaped by gh's own --jq (no jq binary). Copilot is any login matching "copilot".
@@ -356,5 +270,5 @@ Merge this before starting tasks: \`/speckit-implement Tnnn\` branches from \`$b
     else die "$usage"
     fi
     ;;
-  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh feature \"type(scope): summary\" <body-file> [--ready] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
+  *) die "usage: pr.sh feature \"type(scope): summary\" <body-file> [--ready] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
 esac
