@@ -75,12 +75,12 @@ feature_sections() {
     c="$(git log -1 --format=%h --grep="^Landspec-Task: $(feature_key "$fdir")/$t\$" HEAD --)" # as task_done reads it, with the commit
     rv=""; st=pending
     if [[ -n "$c" ]]; then
-      st=done; rv="$(git log -1 --format=%B "$c" | sed -nE 's/^Landspec-Review: ([a-z ]*[a-z]) ([0-9a-f]{12}).*/\1 (patch id \2)/p')"
+      st="done"; rv="$(git log -1 --format=%B "$c" | sed -nE 's/^Landspec-Review: ([a-z ]*[a-z]) ([0-9a-f]{12}).*/\1 (patch id \2)/p')"
       lows+="$(git log -1 --format=%B "$c" | sed -nE "s/^Low: (.*)/- $t: \1/p")"$'\n' # implement.sh land writes one per low finding
     elif grep -qE '^- \[[xX]\]' <<<"$line"; then die "$t is ticked but was never landed: untick it or run /landspec:implement"
     elif grep -q '^failed=.' "$(git rev-parse --git-common-dir)/landspec-run/$(basename "$fdir")/$t" 2>/dev/null; then st=failed
     fi
-    [[ "$st" == done || "$ready" != yes ]] || die "$t is $st: every task is done before pr.sh feature --ready"
+    [[ "$st" == "done" || "$ready" != yes ]] || die "$t is $st: every task is done before pr.sh feature --ready"
     sum="$(task_summary "$line" | sed 's/|/\\|/g')"
     extra+=$'\n'"| $t | $sum | $st | ${c:--} | ${rv:--} |"
   done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$fdir/tasks.md" || true)

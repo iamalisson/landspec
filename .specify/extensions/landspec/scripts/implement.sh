@@ -116,7 +116,7 @@ feature_status() {
     r="$(task_ref "$t")"; rh=""; w=""; why=""
     if git show-ref --verify --quiet "refs/heads/$r"; then rh="$(git rev-parse "refs/heads/$r")"; w="$(ref_wt "$r")"; fi
     f="$(rec "$t" failed)"; fh="$(rec "$t" head)"; phase="$(rec "$t" phase)"; round="$(rec "$t" round)"
-    if task_done "$fdir" "$t"; then st=done; done_n=$((done_n + 1))
+    if task_done "$fdir" "$t"; then st="done"; done_n=$((done_n + 1))
     elif [[ -n "$f" && ( -z "$fh" || "$fh" == "$rh" ) ]]; then st=failed; why="$f"
     elif [[ "$running_list" == *" $t "* ]]; then st=building; fly=$((fly + 1))
     elif [[ "$w" == *$'\t'1 ]]; then st=waiting; why="locked worktree ${w%%$'\t'*}"
@@ -131,7 +131,7 @@ feature_status() {
       else st=pending
       fi
     fi
-    out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == done ]] || out+=" ROUND=$round"
+    out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == "done" ]] || out+=" ROUND=$round"
     out+="${why:+ REASON=$why}"$'\n'
     case "$st" in
       built) acts+="REVIEW=$t"$'\n' ;; review) acts+="LAND=$t"$'\n' ;;

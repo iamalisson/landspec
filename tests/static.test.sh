@@ -148,7 +148,7 @@ check "when init's step 4 is read, then it is for every level and offers allow_r
 check "then for a PUBLIC repo it offers secret scanning with push protection and private vulnerability reporting, and branch protection is step 5 (standard and full)" \
   'grep -q "PUBLIC" <<<"$init_gh" && grep -q "secret_scanning_push_protection" <<<"$init_gh" && grep -q "private-vulnerability-reporting" <<<"$init_gh" && grep -q "^5\. \*\*Branch protection\*\* (standard and full)" skills/init/SKILL.md'
 check "when the docs are read, then the README CI row names (standard and full), the security doc says lite has no CI gate, and the design doc ties the one-revert promise to one landing commit per task" \
-  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -qF "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One branch and one PR per feature/,/^## /p" docs/design.md | grep -q "one landing commit per task"'
+  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -qF "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One branch and one PR per feature/,/^## /p" docs/design.md | grep "one landing commit per task" >/dev/null'
 
 # Generated CI's first run: required jobs must have a way out, and a new advisory must not stop unrelated PRs.
 init_bp="$(sed -n '/^5\. \*\*Branch protection\*\*/,/^6\. /p' skills/init/SKILL.md)"

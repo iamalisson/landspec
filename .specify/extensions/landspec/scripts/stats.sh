@@ -29,7 +29,7 @@ awk '
   }
   # First pass: the feature PRs branches, so that a task ref counts on its feature PR line.
   NR == FNR { if ($4 == "pr" && f["mode"] == "feature") fbr[++nf] = br; next }
-  br ~ /^landspec[/].+-t[0-9]+-task$/ {
+  br ~ "^landspec/.+-t[0-9]+-task$" {
     k = br; sub("^landspec/", "", k); sub("-t[0-9]+-task$", "", k)
     for (i = 1; i <= nf; i++) { s = fbr[i]; sub("^[^/]*/", "", s); if (index(s, k "-") == 1) br = fbr[i] }
   }
