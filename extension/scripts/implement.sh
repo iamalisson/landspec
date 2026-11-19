@@ -35,7 +35,8 @@
 #   implement.sh [feature] check-result red|green   the outcome of the test command in the check copy
 #   implement.sh [feature] release-plan
 #       The release's one next step, from git and GitHub (V: the version in the first of version_files:
-#       on origin/<base>; M: the merge commit of the feature's last merged task PR): RELEASE=done V,
+#       on origin/<base>; M: the merge commit of the feature's last merged feature PR, head <branch_prefix>/<NNN>-,
+#       or of a legacy feature's last merged task PR; no issue is read but a legacy feature's): RELEASE=done V,
 #       RELEASE=publish V NOTES=<path on origin/<base>|pr:<n> (the release PR, whose body holds the notes)>, RELEASE=tag V COMMIT=<sha>, RELEASE=pending X.Y.Z PR=<n>,
 #       RELEASE=bump X.Y.Z FILES=<a,b> NOTES=<path|-> PRS=<n,m>, or RELEASE=none (no version_files:).
 #   implement.sh [feature] release-bump X.Y.Z   rewrites the version line of each of version_files:
@@ -549,10 +550,20 @@ case "$action" in
     prs="$(gh pr list --state all --limit 500 --json number,title,headRefName,state,mergeCommit,mergedAt,isCrossRepository \
       --jq '.[] | select(.isCrossRepository | not) | [.number, .title, .headRefName, .state, (.mergeCommit.oid // ""), (.mergedAt // "")] | @tsv')" \
       || die "cannot list the pull requests; fix gh's error above"
-    key="/$num-t"
-    tprs="$(awk -F'\t' -v k="$key" '$4 == "MERGED" && index($3, k) { print $6 "\t" $1 "\t" $5 }' <<<"$prs" | sort)"
+    # tprs: "<merged at>\t<n>\t<merge commit>\t<title>" of the PRs this release is for, oldest first.
+    if legacy_feature "$fdir"; then # started under the per-task flow: its task PRs, as before (research R11)
+      tprs="$(awk -F'\t' -v k="/$num-t" '$4 == "MERGED" && index($3, k) { print $6 "\t" $1 "\t" $5 "\t" $2 }' <<<"$prs" | sort)"
+      [[ -n "$tprs" ]] || die "no task PR of $(basename "$fdir") is merged yet"
+    else # the feature PR: head <branch_prefix>/<NNN>-<name>, never a task branch <NNN>-t<nnn>-
+      fprs="$(awk -F'\t' -v k="$(cfg branch_prefix feat)/$num-" 'index($3, k) == 1 && substr($3, length(k) + 1) !~ /^t[0-9][0-9][0-9]+-/' <<<"$prs")"
+      tprs="$(awk -F'\t' '$4 == "MERGED" { print $6 "\t" $1 "\t" $5 "\t" $2 }' <<<"$fprs" | sort)"
+      if [[ -z "$tprs" ]]; then
+        op="$(awk -F'\t' '$4 == "OPEN" { print "#" $1 }' <<<"$fprs" | paste -sd, -)"
+        [[ -z "$op" ]] || die "the feature PR $op of $(basename "$fdir") is not merged yet: nothing to release until it is"
+        die "no feature PR of $(basename "$fdir") is merged yet"
+      fi
+    fi
     m="$(tail -1 <<<"$tprs" | cut -f3)"
-    [[ -n "$m" ]] || die "no task PR of $(basename "$fdir") is merged yet"
     tag="$(git ls-remote origin "refs/tags/v$v" "refs/tags/v$v^{}" | awk '{ print $1 }' | tail -1)" \
       || die "cannot read origin's tags; fix git's error above"
     if [[ -n "$tag" ]]; then # the commit tag v$v points to (peeled), fetched with the tags above
@@ -571,18 +582,23 @@ case "$action" in
     fi
     op="$(awk -F'\t' '$4 == "OPEN" && $2 ~ /^chore[(]release[)]: [0-9]+[.][0-9]+[.][0-9]+$/ { print $1 "\t" substr($2, 17); exit }' <<<"$prs")"
     if [[ -n "$op" ]]; then echo "RELEASE=pending $(cut -f2 <<<"$op") PR=$(cut -f1 <<<"$op")"; exit 0; fi
-    closed="$(closed_issues "$fdir")" || die "cannot read the state of $(basename "$fdir")'s task issues; fix gh's error above"
-    # The tasks come from the base's tasks.md, as in status: this checkout's copy may be behind it.
-    tasks="$(git show "origin/$base:$fdir/tasks.md" 2>/dev/null | grep -E '^- \[.\] T[0-9]{3,} ' || true)"
-    [[ -n "$tasks" ]] || die "$fdir/tasks.md on '$base' has no tasks"
-    while IFS= read -r l; do
-      n="$(task_issue "$l")"; [[ -n "$n" ]] || continue
-      [[ "$closed" == *" $n "* ]] || die "$(sed -E 's/^- \[.\] (T[0-9]+).*/\1/' <<<"$l") (#$n) is still open: merge its PR first"
-    done <<<"$tasks"
+    if legacy_feature "$fdir"; then
+      closed="$(closed_issues "$fdir")" || die "cannot read the state of $(basename "$fdir")'s task issues; fix gh's error above"
+      # The tasks come from the base's tasks.md, as in status: this checkout's copy may be behind it.
+      tasks="$(git show "origin/$base:$fdir/tasks.md" 2>/dev/null | grep -E '^- \[.\] T[0-9]{3,} ' || true)"
+      [[ -n "$tasks" ]] || die "$fdir/tasks.md on '$base' has no tasks"
+      while IFS= read -r l; do
+        n="$(task_issue "$l")"; [[ -n "$n" ]] || continue
+        [[ "$closed" == *" $n "* ]] || die "$(sed -E 's/^- \[.\] (T[0-9]+).*/\1/' <<<"$l") (#$n) is still open: merge its PR first"
+      done <<<"$tasks"
+      # A patch only when every task is a fix (its description, after the id and any [tags], starts with Fix).
+      descs="$(sed -E 's/^- \[.\] T[0-9]+ (\[[^]]*\] )*//' <<<"$tasks")" # a variable, not a pipe into grep -q (SIGPIPE under pipefail)
+      fix='^Fix'
+    else # a patch only when every merged feature PR's title starts with fix
+      descs="$(cut -f4 <<<"$tprs")"; fix='^fix'
+    fi
     IFS=. read -r ma mi pa <<<"$v"
-    # A patch only when every task is a fix (its description, after the id and any [tags], starts with Fix).
-    descs="$(sed -E 's/^- \[.\] T[0-9]+ (\[[^]]*\] )*//' <<<"$tasks")" # a variable, not a pipe into grep -q (SIGPIPE under pipefail)
-    if grep -qv '^Fix' <<<"$descs"; then
+    if grep -qv "$fix" <<<"$descs"; then
       nv="$ma.$((mi + 1)).0"; else nv="$ma.$mi.$((pa + 1))"; fi
     rn="$(cfg release_notes "")"; notes="-"; [[ -z "$rn" ]] || notes="${rn%/}/$nv.md"
     echo "RELEASE=bump $nv FILES=$(paste -sd, - <<<"$vf") NOTES=$notes PRS=$(cut -f2 <<<"$tprs" | sort -n | paste -sd, -)" ;;

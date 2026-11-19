@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Per-PR numbers from the local event log (.git/landspec-events, written by lib.sh event()).
 #   stats.sh
-# Prints one line per branch that opened a task or fix PR (timed to its first pr event; spec PRs are left out):
+# Prints one line per branch that opened a feature or fix PR (or a task PR of the per-task flow), timed to its
+# first pr event; spec PRs are left out. A feature PR's line also counts its tasks' refs (landspec/<NNN>-t<nnn>-task):
 #   <branch> start->pr <m>m | reviews <f> full + <d> delta | first <verdict> | tests <s>s x<n> | H+M <n>
 # H+M: high and medium findings over the branch's reviews, "?" when no report carried the count line.
 # then one line per feature with plan events (2.7.0's, which name no feature, under "?"):
-#   PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> ... | first->issues <m>m | outside <n>
-# findings: one per plan round, "?" when its report had no count line; first->issues: from the first plan round to
-# the first issues event ("?" when none); outside: the real findings the spec PR's outside reviewers found.
+#   PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> ... | outside <n>
+# findings: one per plan round, "?" when its report had no count line; outside: the real findings the spec PR's
+# outside reviewers found.
 # then: PRS=<n> MEDIAN_START_TO_PR=<m>m MEAN_ROUNDS=<x> READY_FIRST=<k>/<n>
 # Nothing leaves .git: the log is never pushed and never reaches a PR body.
 set -euo pipefail
@@ -26,13 +27,18 @@ awk '
     if (f["branch"] != "") br = f["branch"]
     ft = (f["feature"] != "") ? f["feature"] : "?"
   }
+  # First pass: the feature PRs branches, so that a task ref counts on its feature PR line.
+  NR == FNR { if ($4 == "pr" && f["mode"] == "feature") fbr[++nf] = br; next }
+  br ~ /^landspec[/].+-t[0-9]+-task$/ {
+    k = br; sub("^landspec/", "", k); sub("-t[0-9]+-task$", "", k)
+    for (i = 1; i <= nf; i++) { s = fbr[i]; sub("^[^/]*/", "", s); if (index(s, k "-") == 1) br = fbr[i] }
+  }
   # Plan events belong to a feature, not a branch, so they are read before the detached ones are skipped.
   $4 == "review" && f["round"] == "plan" {
-    if (!(ft in pn)) { pf[++np] = ft; p0[ft] = $1 }
+    if (!(ft in pn)) pf[++np] = ft
     pn[ft]++; if (f["verdict"] == "ready") pr[ft]++
     pc[ft] = pc[ft] " " ((f["h"] != "") ? f["h"] "/" f["m"] "/" f["l"] : "?")
   }
-  $4 == "issues" && !(ft in it) { it[ft] = $1 }
   $4 == "outside" { po[ft] += f["n"] }
   br == "-" { next }
   $4 == "start" && !(br in st) { st[br] = $1 }
@@ -54,10 +60,10 @@ awk '
     }
     for (i = 1; i <= np; i++) {
       p = pf[i]
-      printf "PLAN %s rounds %d (%d ready) | findings%s | first->issues %s | outside %d\n", p, pn[p], pr[p], pc[p], (p in it) ? int((it[p] - p0[p]) / 60) "m" : "?", po[p]
+      printf "PLAN %s rounds %d (%d ready) | findings%s | outside %d\n", p, pn[p], pr[p], pc[p], po[p]
     }
     for (i = 2; i <= m; i++) { x = d[i]; for (j = i - 1; j >= 1 && d[j] > x; j--) d[j + 1] = d[j]; d[j + 1] = x }
     med = "?"; if (m) med = (m % 2) ? d[(m + 1) / 2] : int((d[m / 2] + d[m / 2 + 1]) / 2)
     printf "PRS=%d MEDIAN_START_TO_PR=%sm MEAN_ROUNDS=%s READY_FIRST=%d/%d\n", n, med, n ? sprintf("%.1f", rsum / n) : "?", ready, n
   }
-' "$log"
+' "$log" "$log"

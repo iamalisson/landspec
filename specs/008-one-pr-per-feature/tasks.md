@@ -426,7 +426,7 @@ diff.
     findings` without `high`, any gitleaks finding gives `findings high`, a missing scanner stays
     `missing`; `tests/run.sh` passes.
 
-- [ ] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
+- [X] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
   - Comes from: FR-013, FR-015, US5 scenario 4, SC-004; research R10, R11
   - What: `release-plan`: PRs merged whose head starts with `<branch_prefix>/<NNN>-` (not
     `/<NNN>-t`), the merge commit of the feature PR as `M`; no issue read; a legacy feature
