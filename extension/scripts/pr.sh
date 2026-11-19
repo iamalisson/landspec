@@ -109,6 +109,7 @@ case "$mode" in
     if [[ "$mode" == feature ]]; then
       title="${2:-}"; body_file="${3:-}"
       [[ -n "$title" && -n "$body_file" && "${4:---ready}" == --ready ]] || die 'usage: pr.sh feature "type(scope): summary" <body-file> [--ready]'
+      refuse_merged "$fdir" # after the squash merge, a push would bring the deleted branch back and open a second PR
       [[ "$branch" == "$(feature_branch "$fdir")" ]] \
         || die "not on the feature's branch $(feature_branch "$fdir") (on '${branch:-a detached HEAD}'); run branch.sh $(basename "$fdir")"
       need_review=false; need_scan=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"

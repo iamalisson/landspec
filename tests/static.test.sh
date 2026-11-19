@@ -520,6 +520,8 @@ check "when the skill makes the release, then it acts on the one RELEASE= line, 
    && for k in bump tag publish pending done none; do grep -qF -- "- \`RELEASE=$k" <<<"$rl" || exit 1; done'
 check "then the bump goes through pr.sh fix in the run worktree, which is detached after" \
   'grep -qF "<repo>-<feature>-run" <<<"$rl" && grep -qF "pr.sh fix \"chore(release): X.Y.Z\"" <<<"$rl" && grep -qF "git switch --detach origin/<base>\` there" <<<"$rl"'
+check "then the release makes its worktree <repo>-<feature>-run when it is missing, and the audit works in that one (spec 008 T024)" \
+  'grep -qF "when it is missing, \`git worktree add --detach <repo>-<feature>-run origin/<base>\`" <<<"$rl" && grep -qF "\`AUDIT=needed COMMIT=<sha>\`: in the run'"'"'s worktree \`<repo>-<feature>-run\`" <<<"$rl"'
 check "then publish reads the notes from the base, or from the release PR's body cut at the first ## Evidence or ## Review, never --generate-notes" \
   'grep -qF "git show origin/<base>:<path>" <<<"$rl" && grep -qF "gh pr view <n> --json body -q .body" <<<"$rl" \
    && grep -qF "before the first line that is exactly \`## Evidence\` or \`## Review\`, whichever comes first" <<<"$rl" && grep -qF "stop and say the release PR has no notes" <<<"$rl" \
