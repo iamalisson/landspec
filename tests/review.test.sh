@@ -694,7 +694,10 @@ fh="$(git rev-parse HEAD)"; fr="$(git rev-parse --git-common-dir)/landspec-revie
 printf -- '- met: FR-001 — search.ts searches\nCopy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\n\nAssessment: ready\n' "$(git rev-parse origin/develop)" "$fh" > "$TMP/feature.md"
 check "when there is no check ref, then record --feature refuses and says to run implement.sh check" \
   'fails_with "no check ref for 001-demo: run implement.sh check first" "$r" record --feature "$TMP/feature.md"'
-git update-ref refs/landspec/check/001-demo "$fh"; printf 'head: %s\nheads: %s\ntests: green\n' "$fh" "$fh" > "$fr"
+git update-ref refs/landspec/check/001-demo "$fh"; rm -f "$fr"
+check "when the check ref is there but no end check was recorded, then record --feature refuses, says to run implement.sh check and writes no record" \
+  'fails_with "no end check recorded for 001-demo: run implement.sh check" "$r" record --feature "$TMP/feature.md" && [[ ! -e "$fr" ]]'
+printf 'head: %s\nheads: %s\ntests: green\n' "$fh" "$fh" > "$fr"
 check "when the check ref points at the head and no check copy exists, then record --feature adds verdict:, reviewed: and the lines to the end-check record" \
   '"$r" record --feature "$TMP/feature.md" 2>/dev/null | grep -qx "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
    && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | grep -q -- "-check "'
