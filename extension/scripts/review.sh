@@ -4,6 +4,8 @@
 #   review.sh record --delta <report-file>  fix round: reviews <last reviewed>..HEAD, after any recorded round
 #   review.sh record --plan <report-file>   plan review: tied to every file of the feature folder (issue numbers aside);
 #                                           keeps the folder it recorded as plan-<feature>.reviewed
+#   review.sh record --plan --delta <report-file>  plan delta: after a ready plan review, the edits since it
+#                                           (review.sh diff --plan); its report names "Delta from: <that state>"
 #   review.sh record --feature <report-file>  feature review: the check ref (the feature head) against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
 #   review.sh check|report --feature        exit 0 when the end-check record's head and reviewed: are the feature
@@ -41,7 +43,7 @@ if $feat && { $plan || $delta || [[ -n "$bopt" ]] || ! [[ "$action" =~ ^(record|
   die "a feature review is recorded alone: review.sh record|check|report --feature (no --plan, --delta or --branch)"
 fi
 if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, not a branch: drop --branch"; fi
-if $plan && $delta; then die "a plan review is always full: review.sh record --plan <report-file>"; fi
+if $plan && $delta && [[ "$action" != record ]]; then die "a plan delta is only recorded: review.sh record --plan --delta <report-file>"; fi
 if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review has none"; fi
 if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
 if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
@@ -339,7 +341,17 @@ case "$action" in
       # The state the reviewer hashed from the files it read (review.sh state --plan <its copies>).
       [[ "$(field 'plan state')" =~ ^[0-9a-f]{64}$ ]] || die "the report has no Plan state line: run the review again (this landspec version records it)"
       [[ "${BASH_REMATCH[0]}" == "$st" ]] || die "the plan changed since this review: run the review again"
-      pass_tables
+      df="$(field 'delta from')"
+      if $delta; then
+        # A plan delta reads only review.sh diff --plan: the edits since a ready round (its Lows), nothing else.
+        [[ -f "$record" && "$(hdr assessment)" == ready ]] \
+          || die "a plan delta follows a ready plan review: run the full plan review, then record it with review.sh record --plan <report-file>"
+        [[ "$df" == "$(hdr state)" ]] || die "a plan delta report names the state it started from: Delta from: $(hdr state); run the delta again"
+        [[ "$st" != "$(hdr state)" ]] || die "the plan has not changed since the last plan review: nothing to record"
+      else
+        [[ -z "$df" ]] || die "this is a plan delta report: record it with review.sh record --plan --delta <report-file>"
+        pass_tables
+      fi
     else
       head="$(git rev-parse "$tip")"; df="$(field 'delta from')"
       rf=""; rh=""; rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'

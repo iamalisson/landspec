@@ -248,6 +248,15 @@ findings (its `Findings:` total above 0), and a `ready` with an `open` row only 
 High finding. When that report
 counted no findings (`Findings: 0 high, 0 medium, 0 low`), leave the table out.
 
+**Plan delta** (after a `ready` plan review, to apply its Low findings without a new full round):
+the author passes the last round's report and the output of `review.sh diff --plan` (the reviewed
+copy against the current folder). Read only that diff and the lines around it: for each changed
+hunk, the Low it applies, or a finding when it changes anything a Low did not ask for (a rule, a
+task, a dependency, a requirement). Run no passes. The report has `Delta from: <the last round's
+Plan state>` beside its `Plan state:`, a `Findings:` line and `Assessment: ready` unless a change
+needs a High; record it with `review.sh record --plan --delta <file>`, which refuses it after a
+`changes needed` round. A real change to the plan needs the full plan review.
+
 ## Report
 
 Written for the author, who fixes it, and for the human who merges:
