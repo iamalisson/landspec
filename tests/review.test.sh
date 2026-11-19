@@ -794,6 +794,19 @@ check "when a finding's category is not one of the fixed ones, or it has no file
    && srep ready "0 critical, 0 high, 1 medium, 0 low" "- confirmed: medium injection — the query is logged" && fails_with "this finding line is not" "$r" record --security "$TMP/sec.md"'
 srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak 's/^Coverage: .*//' "$TMP/sec.md"
 check "when the report has no Coverage: line, then record --security refuses it" 'fails_with "the report has no line '"'"'Coverage:" "$r" record --security "$TMP/sec.md"'
+cov() { srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak "s|^Coverage: .*|Coverage: $1|" "$TMP/sec.md"; }
+check "when the Coverage: line carries a file:line, a sentence or a group that is no category, then record --security refuses it naming the rule" \
+  'for c in "scanners run: gitleaks; missing: none; groups: injection (src/db.ts:9 query unescaped)" "scanners run: gitleaks, the login route is open; missing: none; groups: injection" \
+     "scanners run: gitleaks; missing: none; groups: sqli-in-login" "gitleaks ran"; do cov "$c"; fails_with "each list none or comma-separated words of [a-z0-9-]" "$r" record --security "$TMP/sec.md" || exit 1; done \
+   && [[ "$(cat "$sr")" == "$kept" ]] && cov "scanners run: none; missing: gitleaks, osv-scanner; groups: injection, access-control" && "$r" record --security "$TMP/sec.md" 2>/dev/null | gq -x "SECURITY=ready" \
+   && cov "scanners run: gitleaks; missing: none; groups: none" && "$r" record --security "$TMP/sec.md" >/dev/null 2>&1'
+kept="$(cat "$sr")" # the two accepted Coverage lines above recorded
+for bad in '- **confirmed**: high injection — src/db.ts:9 the query reaches the SQL string' '* confirmed: high injection — src/db.ts:9 the query reaches the SQL string' \
+  '- Confirmed: high injection — src/db.ts:9 the query reaches the SQL string' '- **Plausible:** high injection — src/db.ts:9 the query reaches the SQL string'; do
+  srep ready "0 critical, 0 high, 0 medium, 0 low" "$bad"
+  check "when a finding is spelled '${bad%% high*}', then record --security refuses the line: it never records ready past the count" \
+    'fails_with "this finding line is not" "$r" record --security "$TMP/sec.md" && [[ "$(cat "$sr")" == "$kept" ]]'
+done
 srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak 's/^Copy: .*/Copy: none (running in the checkout)/' "$TMP/sec.md"
 check "when the reviewer could not verify (Copy: none), then record --security refuses it and the record is unchanged" \
   'fails_with "could not verify the diff (Copy: none)" "$r" record --security "$TMP/sec.md" && [[ "$(cat "$sr")" == "$kept" ]]'

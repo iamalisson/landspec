@@ -193,8 +193,10 @@ On `RELEASE=bump` and on `RELEASE=none`, before anything else, run `I audit-plan
 prints. The base is audited once per commit: a later run reuses the recorded result.
 
 - `AUDIT=reviewed (security review of <sha>)`: the feature's security review, recorded in the end
-  check for the head the PR was made ready on, stands in for the audit: it read this feature's
-  whole diff, and nothing else was merged with it. Go on with the bump (or, on `RELEASE=none`, the
+  check, is of the merged PR's own head commit (`audit-plan` asks GitHub for it), so it stands in
+  for the audit: it read this feature's whole diff, and nothing else was merged with it. A PR whose
+  head moved after the review (an "Update branch", a committed suggestion), or one gh cannot
+  read, never gets this line: `audit-plan` then prints `AUDIT=needed` or `AUDIT=skipped`. Go on with the bump (or, on `RELEASE=none`, the
   notes); run no `/code-review`, no `/security-review` and no audit subagent, and never call
   `audit-record`. The notes get no "Known issues" and no "Not audited" section: the PR's `##
   Security review` already shows what the review found. `/landspec:security` stays the whole-repository

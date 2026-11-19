@@ -35,8 +35,9 @@
 #   implement.sh [feature] release-bump X.Y.Z   rewrites the version line of each of version_files:
 #   implement.sh [feature] audit-plan
 #       The security audit before the bump. AUDIT=reviewed (security review of <head short sha>) when the feature's
-#       security review (review.sh record --security) passed, and is of the feature branch's head while this clone
-#       or origin still has the branch: the whole-repository audit does not run. Otherwise, once per origin/<base>
+#       security review (review.sh record --security) passed and is of the merged feature PR's own head commit, as
+#       GitHub gives it (never this clone's branch, which may be behind the PR or gone): the whole-repository audit
+#       does not run. When gh cannot say, or the heads differ, the record is not taken. Otherwise, once per origin/<base>
 #       commit: AUDIT=needed COMMIT=<sha>, or, for an audit recorded for that commit, AUDIT=done|hold COMMIT=<sha>
 #       REPORT=<path> HOLD=<n> (hold: n > 0); with release_audit: off (default on), AUDIT=skipped (release_audit: off),
 #       nothing fetched and no audit record read.
@@ -416,9 +417,12 @@ case "$action" in
     if [[ -f "$sr" ]]; then
       sfield() { awk -v k="$1: " '/^$/ { exit } index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$sr"; }
       sh="$(sfield head)"; read -r sc shi _ <<<"$(sfield counts)"
-      fh="$(git rev-parse --verify --quiet "$(feature_ref "$fdir")^{commit}" || true)" # gone once merged and deleted: the record stands
-      if [[ "$sh" =~ ^[0-9a-f]{40}$ && "$(sfield assessment)" == ready && "${sc:-1}" == 0 && "${shi:-1}" == 0 && ( -z "$fh" || "$fh" == "$sh" ) ]]; then
-        echo "AUDIT=reviewed (security review of ${sh:0:7})"; exit 0
+      if [[ "$sh" =~ ^[0-9a-f]{40}$ && "$(sfield assessment)" == ready && "${sc:-1}" == 0 && "${shi:-1}" == 0 ]]; then
+        # What was merged is the PR's head on GitHub: a commit added there after --ready was never reviewed. The last
+        # merged PR of the branch, forks aside (as merged_pr); a failed call reads as no answer, so the audit decides.
+        mh="$(gh pr list --head "$fb" --state merged --json headRefOid,mergedAt,isCrossRepository \
+          --jq '[.[] | select(.isCrossRepository | not)] | sort_by(.mergedAt) | last | .headRefOid // empty' 2>/dev/null || true)"
+        if [[ "$mh" == "$sh" ]]; then echo "AUDIT=reviewed (security review of ${sh:0:7})"; exit 0; fi
       fi
     fi
     [[ "$ra" == on ]] || { echo "AUDIT=skipped (release_audit: off)"; exit 0; } # no fetch, no record read

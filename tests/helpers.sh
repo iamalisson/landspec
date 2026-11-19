@@ -84,6 +84,7 @@ case "$1 $2" in
              if [[ "$*" == *mergeCommit* ]]; then cat "$GH_REL" 2>/dev/null # implement.sh release-plan: "<n>\t<title>\t<head>\t<state>\t<merge sha>\t<merged at>"
              elif [[ "$*" == *headRefName* && "$*" == *"--state all"* ]]; then cat "$GH_ALL" 2>/dev/null # implement.sh release-plan (a legacy feature): every PR, with its state
              elif [[ "$*" == *headRefName* ]]; then cat "$GH_OPEN" 2>/dev/null
+             elif [[ "$*" == *"--state merged"* && "$*" == *headRefOid* ]]; then echo "${GH_MERGED_HEAD:-}" # implement.sh audit-plan: the merged PR's head
              elif [[ "$*" == *"--state merged"* ]]; then : # no merged PR unless GH_PR_JSON lists one
              elif [[ -n "$h" ]]; then if [[ -f "$GH_PR" && "$(cat "$GH_PR.head" 2>/dev/null)" == "$h" ]]; then cat "$GH_PR"; fi
              elif [[ -f "$GH_PR" ]]; then cat "$GH_PR"; fi; exit 0 ;;

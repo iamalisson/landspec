@@ -144,12 +144,14 @@ category is one of `access-control`, `injection`, `authentication`, `cryptograph
 `supply-chain`, `ai` (the groups of step 3): a neutral word a public PR can show. The sentence says
 what is affected, never how to exploit it; the path from source to sink, the fix and the test that
 proves it go under the line, indented, and stay in the local record. Then one line `Coverage:
-scanners run: <names>; missing: <names>; groups: <the groups checked>` (names only: the PR shows
-this line as it is), then `Copy:`, `Reviewed: <git merge-base <commit> <base>>..<commit>` and
+scanners run: <names>; missing: <names>; groups: <the groups checked>` (each list `none` or
+comma-separated names of `[a-z0-9-]`, the groups from the categories above, and nothing else: the
+PR shows this line as it is, and `record --security` refuses any other shape), then `Copy:`, `Reviewed: <git merge-base <commit> <base>>..<commit>` and
 `Model:`, the count line, exactly `Security: <n> critical, <n> high, <n> medium, <n> low`, counting
 `confirmed` findings only, and `Assessment: ready` unless a finding is `confirmed` critical or
 high. `review.sh record --security <file>` refuses a report of another commit than the check ref,
-a finding line of another shape or category, a report without its `Coverage:` or `Security:` line,
+a finding line of another shape or category (however it is spelled: `- **confirmed**:`, `* confirmed:`
+and `- Confirmed:` are refused, never skipped), a report without its `Coverage:` or `Security:` line,
 a count that is not the confirmed lines' own, and a `Copy: none`; a confirmed critical or high is
 "changes needed" whatever the last line says, and prints `HOLD=<n> REPORT=<the record>`. The
 feature PR shows the counts, each finding's status, severity and category and the coverage line;

@@ -188,16 +188,26 @@ check "when release_audit is neither on nor off, then audit-plan refuses naming 
 ra ""
 # The feature's own security review (review.sh record --security) stands in for the audit.
 srec() { mkdir -p "$(git rev-parse --git-common-dir)/landspec-review"; printf 'head: %s\nassessment: %s\ncounts: %s\nmodel: claude-opus-5-5\ncoverage: x\n\nthe report\n' "$@" > "$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; }
-git branch --quiet -f feat/001-demo "$c1"; srec "$c1" ready "0 0 1 0"; ap
-check "when a ready security review of the feature branch's head is recorded, then audit-plan prints AUDIT=reviewed with its short sha" '[[ "$out" == "AUDIT=reviewed (security review of ${c1:0:7})" ]]'
+# It counts only for the merged feature PR's own head, asked from GitHub: this clone's branch may be behind it, or gone.
+export GH_MERGED_HEAD="$c1"; git branch --quiet -f feat/001-demo "$c1"; srec "$c1" ready "0 0 1 0"; : > "$GH_LOG"; ap
+check "when the merged feature PR's head is the ready security review's head, then audit-plan prints AUDIT=reviewed with its short sha, having asked gh for the merged PR of the feature branch" \
+  '[[ "$out" == "AUDIT=reviewed (security review of ${c1:0:7})" ]] && grep -q "^pr list --head feat/001-demo --state merged --json headRefOid" "$GH_LOG"'
 ra off; ap; ra ""
 check "when release_audit is off and that record is there, then audit-plan still prints AUDIT=reviewed" '[[ "$out" == "AUDIT=reviewed (security review of ${c1:0:7})" ]]'
 srec "$c1" "changes needed" "0 1 0 0"; ap
 check "when the security review did not pass, then audit-plan says needed" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
-srec "$c0" ready "0 0 0 0"; ap
-check "when the ready security review is of another commit than the feature branch's head, then audit-plan says needed" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
-git branch --quiet -D feat/001-demo; git update-ref -d refs/remotes/origin/feat/001-demo 2>/dev/null || true; ap
-check "when the feature branch is gone from this clone (merged and deleted), then the ready record alone gives AUDIT=reviewed" '[[ "$out" == "AUDIT=reviewed (security review of ${c0:0:7})" ]]'
+# The PR head moved on GitHub after --ready (Update branch, a committed suggestion): the clone's branch still is the reviewed head.
+git branch --quiet -f feat/001-demo "$c0"; srec "$c0" ready "0 0 0 0"; ap; o1="$out"; ra off; ap; ra ""
+check "when the merged PR's head is another commit than the reviewed one, though this clone's branch is the reviewed one, then audit-plan says needed, and skipped with release_audit off" \
+  '[[ "$o1" == "AUDIT=needed COMMIT=$c1" && "$out" == "AUDIT=skipped (release_audit: off)" ]]'
+git branch --quiet -D feat/001-demo; git update-ref -d refs/remotes/origin/feat/001-demo 2>/dev/null || true; ap; o1="$out"; ra off; ap; ra ""
+check "when the feature branch is gone from this clone and the merged PR's head is not the reviewed one, then audit-plan says needed, and skipped with release_audit off" \
+  '[[ "$o1" == "AUDIT=needed COMMIT=$c1" && "$out" == "AUDIT=skipped (release_audit: off)" ]]'
+srec "$c1" ready "0 0 0 0"; out="$(GH_FAIL_PR_LIST=1 "$I" audit-plan 2>&1)" || true; o1="$out"; ra off; out="$(GH_FAIL_PR_LIST=1 "$I" audit-plan 2>&1)" || true; ra ""
+check "when gh cannot answer, then the record is not taken: audit-plan says exactly needed, and skipped with release_audit off" \
+  '[[ "$o1" == "AUDIT=needed COMMIT=$c1" && "$out" == "AUDIT=skipped (release_audit: off)" ]]'
+unset GH_MERGED_HEAD; ap
+check "when gh lists no merged PR of the feature branch, then audit-plan says needed" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
 rm -f "$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; ra off; ap; ra ""
 check "when no security review is recorded and release_audit is off, then audit-plan prints the skipped line" '[[ "$out" == "AUDIT=skipped (release_audit: off)" ]]'
 check "when audit-record gets a short sha, a missing report or a hold that is not a number, then it refuses" \

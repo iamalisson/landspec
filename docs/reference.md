@@ -238,7 +238,7 @@ run, read each time from git and GitHub (`implement.sh release-plan`, which find
 its branch): a release PR `chore(release): X.Y.Z` with the bump (`release-bump`) and the notes,
 through `pr.sh fix` and its review; once you merge it, the tag `vX.Y.Z` on its merge commit; then
 the published release with those notes. It never merges. When the feature's security review is
-recorded and passed (`implement.sh audit-plan` prints `AUDIT=reviewed (security review of <sha>)`),
+recorded, passed, and is of the merged PR's own head commit as GitHub gives it (`implement.sh audit-plan` prints `AUDIT=reviewed (security review of <sha>)`; a head that moved on GitHub after the review, or a failed `gh` call, never does),
 the release goes on at once: that review read the feature's whole diff before the PR was ready, so
 the whole repository is not audited again, and the notes get no "Not audited" section. Without that
 record (another clone, a feature finished before this version, `security_review: off`), before the

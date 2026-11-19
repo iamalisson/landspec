@@ -554,8 +554,9 @@ check "then the bump goes through pr.sh fix in the run worktree, which is detach
 check "then the release makes its worktree <repo>-<feature>-run when it is missing, before release-plan and the audit use it (spec 008 T024)" \
   'm="$(grep -nF "when it is missing, \`git worktree add --detach <repo>-<feature>-run origin/<base>\`" <<<"$rl" | cut -d: -f1 | head -1)"; r="$(grep -nF "I release-plan" <<<"$rl" | cut -d: -f1 | head -1)" \
    && a="$(grep -nF "\`AUDIT=needed COMMIT=<sha>\`: in the run'"'"'s worktree \`<repo>-<feature>-run\`" <<<"$rl" | cut -d: -f1)"; [[ -n "$m" && -n "$r" && -n "$a" ]] && ((m <= r && m < a))'
-check "then pr.md sends a merged feature PR to /landspec:implement, which audits it and makes the release (spec 008 T024)" \
-  '[[ "$(flat < extension/commands/pr.md)" == *"When it refuses with \`the feature PR #<n> is merged\`, run \`/landspec:implement <feature>\`, which audits it and makes the release, and stop."* ]]'
+check "then pr.md sends a merged feature PR to /landspec:implement, which makes the release on the feature's security review, the full audit only without one (spec 008 T024)" \
+  '[[ "$(flat < extension/commands/pr.md)" == *"When it refuses with \`the feature PR #<n> is merged\`, run \`/landspec:implement <feature>\`, which makes the release, and stop: the release reuses the feature'"'"'s security review, and the whole-repository audit runs first only when there is none and \`release_audit\` is not \`off\`."* ]] \
+   && ! grep -qF "audits it and makes the release" extension/commands/pr.md skills/next/SKILL.md'
 check "then publish reads the notes from the base, or from the release PR's body cut at the first ## Evidence or ## Review, never --generate-notes" \
   'grep -qF "git show origin/<base>:<path>" <<<"$rl" && grep -qF "gh pr view <n> --json body -q .body" <<<"$rl" \
    && grep -qF "before the first line that is exactly \`## Evidence\` or \`## Review\`, whichever comes first" <<<"$rl" && grep -qF "stop and say the release PR has no notes" <<<"$rl" \
@@ -565,7 +566,7 @@ check "then the release starts on status's MERGED= (or branch.sh's merged refusa
   'f="$(flat < skills/implement/SKILL.md)"; [[ "$(flat <<<"$rl")" == *"When \`status\` prints \`MERGED=<n>\` (or \`branch.sh\` refused naming the merged feature PR #<n>), and only then, run \`I release-plan\`"* ]] \
    && [[ "$f" == *"When it prints \`MERGED=<n>\` (alone: the developer merged the feature PR), the loop and the end check do not run: go to \"The release\""* ]] \
    && [[ "$f" == *"When it refuses with \`the feature PR #<n> is merged\`, go to \"The release\""* ]] && ! grep -qF "every task is \`merged\`" skills/implement/SKILL.md \
-   && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run audits it and makes the release"* ]]'
+   && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run makes the release: it reuses the feature'"'"'s security review, and the whole-repository audit runs first only when there is none and \`release_audit\` is not \`off\`"* ]]'
 check "then landspec's own config names its four version files and docs/releases" \
   'c=.specify/extensions/landspec/landspec-config.yml; for f in .claude-plugin/plugin.json extension/extension.yml preset/preset.yml .specify/extensions/landspec/extension.yml; do grep "^version_files:" $c | gq -F "$f" || exit 1; done; grep -qx "release_notes: docs/releases" $c'
 
@@ -604,7 +605,7 @@ check "then /landspec:security has the unattended mode (steps 1 to 6, HOLD=) and
   'grep -qF "**Unattended**" skills/security/SKILL.md && grep -qF "steps 1 to 6 only" skills/security/SKILL.md && grep -qF "\`HOLD=<n>\`" skills/security/SKILL.md \
    && grep -qF "Read it, show its summary as step 6 says, then step 7" skills/security/SKILL.md'
 check "then /landspec:next and README point to /landspec:implement once every task is merged, never to /speckit-converge" \
-  'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "audits it and makes the release" skills/next/SKILL.md \
+  'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "the next run makes the release" skills/next/SKILL.md \
    && grep -qF "however the tasks were done: it checks the" README.md && grep -qF "audits the base" README.md \
    && ! grep -qF "speckit-converge" skills/next/SKILL.md && ! grep -qF "/speckit-converge" README.md'
 check "then the release runs no whole-feature check on the base: the end check ran on the branch before the PR was ready" \

@@ -326,10 +326,17 @@ if $sec; then
     die "the security review could not verify the diff (Copy: none): run it again in its own copy"
   fi
   shape="^- (confirmed|plausible): (critical|high|medium|low) (${SEC_CATS// /|}) — [^ ]+:[0-9]+(-[0-9]+)? [^ ].*\$"
-  bad="$(grep -E '^- (confirmed|plausible):' "$report" | grep -vE "$shape" | head -1 || true)"
+  # Anything that reads as a finding line, however it is spelled (a bullet, then confirmed or plausible, any case,
+  # bold or not, then a colon), has the exact shape: a line the count below would not see is refused, never skipped.
+  bad="$(grep -iE '^[[:space:]]*[-*][[:space:]]*[*_`]*(confirmed|plausible)[*_`]*[[:space:]]*:' "$report" | grep -vE "$shape" | head -1 || true)"
   [[ -z "$bad" ]] || die "this finding line is not '- confirmed|plausible: <critical|high|medium|low> <category> — <file:line> <one sentence>', its category one of $SEC_CATS: $bad"
   cov="$(grep -E '^Coverage: [^[:space:]]' "$report" | tail -1 || true)"
   [[ -n "$cov" ]] || die "the report has no line 'Coverage: <scanners run, missing, groups checked>': run the security review again"
+  # The PR shows this line as it is, on a public repository too: names only, no prose and no path.
+  names='(none|[a-z0-9-]+(, [a-z0-9-]+)*)'; groups="(none|(${SEC_CATS// /|})(, (${SEC_CATS// /|}))*)"
+  cre="^Coverage: scanners run: $names; missing: $names; groups: $groups\$"
+  [[ "$cov" =~ $cre ]] \
+    || die "the Coverage: line must be exactly 'Coverage: scanners run: <names>; missing: <names>; groups: <names>', each list none or comma-separated words of [a-z0-9-], the groups from $SEC_CATS: run the security review again"
   said="$(grep -iE '^\**security\**:\** *[0-9]+ critical, *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$report" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + 0, $2 + 0, $3 + 0, $4 + 0 }' || true)"
   [[ -n "$said" ]] || die "the report has no line 'Security: <n> critical, <n> high, <n> medium, <n> low': run the security review again"
   counts="$(awk '/^- confirmed: / { n[$3]++ } END { print n["critical"] + 0, n["high"] + 0, n["medium"] + 0, n["low"] + 0 }' "$report")"
