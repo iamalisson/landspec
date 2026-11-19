@@ -36,9 +36,9 @@ Ran gitleaks, osv-scanner and semgrep on the feature diff: 0 findings.
 
 | Task | Summary | State | Landing commit | Review |
 |---|---|---|---|---|
-| T001 | Add the price query and its index in `src/products/search.ts` | done | 3f2a9c1 | ready (patch id 8c41d0e2b7a5) |
-| T002 | Add `GET /products?maxPrice=` with input validation in `src/products/routes.ts` (depends on T001) | done | 9b07e4d | ready (patch id e12f6a93c0d4) |
-| T003 | Add the "max price" field to the product list in `src/web/ProductList.tsx` | done | 5d6e1a8 | ready (patch id 47b9c2e1f3a6) |
+| T001 | Add the price query and its index | done | 3f2a9c1 | ready (patch id 8c41d0e2b7a5) |
+| T002 | Add `GET /products?maxPrice=` with input validation | done | 9b07e4d | ready (patch id e12f6a93c0d4) |
+| T003 | Add the "max price" field to the product list | done | 5d6e1a8 | ready (patch id 47b9c2e1f3a6) |
 
 ## Low findings
 

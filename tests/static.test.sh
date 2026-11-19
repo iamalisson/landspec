@@ -711,7 +711,7 @@ check "when the policy holds 5121 characters, then the check names it, and at ex
   'scp_broken "longer than the 5120 characters" "$(pad 5121)" && ! scp_broken "longer than the 5120 characters" "$(pad 5120)" && [[ "$(wc -c < "$TMP/scp/p.json")" -eq 5120 ]]'
 
 # Spec 008 T016 (FR-016): no shipped file names a per-task mode or the issue step. One allow-list.
-per_task='pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|speckit-implement T(nnn|[0-9])|restack|check-copy|review_model|issues\.sh|landspec[.-]issues|issue_labels|SIMPLIFY|Simplify|answer --plan|task PR|spec PR|one task = one issue|task = issue|one issue per (task|feature)|one issue and one PR|feature issue|one task per run|(before|after) (the )?issues'
+per_task='pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|speckit-implement T(nnn|[0-9])|restack|check-copy|review_model|issues\.sh|landspec[.-]issues|issue_labels|SIMPLIFY|Simplify|answer --plan|task PR|spec PR|one task = one issue|task = issue|one issue per (task|feature)|one issue and one PR|feature issue|one task per run|(before|after) (the )?issues|gets an issue'
 per_task_ok=(
   '^docs/releases/'                                              # release notes: what earlier versions did
   "^docs/GUARDRAILS\.md:[0-9]+:.*landspec's own"                 # evidence rows: incidents from landspec's own past use
@@ -721,7 +721,7 @@ per_task_ok=(
 per_task_leftovers() { # per_task_leftovers <path>...: "file:line" of each match outside the allow-list
   grep -rnIE "$per_task" "$@" | grep -vE "$(IFS='|'; echo "${per_task_ok[*]}")" | cut -d: -f1,2 | tr "\n" " " || true
 }
-left="$(per_task_leftovers README.md docs skills agents extension preset hooks examples .specify/extensions/landspec)"
+left="$(per_task_leftovers README.md docs skills agents extension preset hooks examples bin .claude-plugin .specify/extensions/landspec)"
 check "no shipped file names a per-task mode or the issue step${left:+ — found: $left}" '[[ -z "$left" ]]'
 mkdir -p "$TMP/neg/docs" "$TMP/neg/scripts"
 echo "Merge the spec PR, then run /speckit-implement T001." > "$TMP/neg/docs/old.md"
