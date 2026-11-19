@@ -19,7 +19,9 @@ own `ready` review, and the scan and mutation testing run once, on the whole fea
 refuses a task ticked `[X]` with no landing commit, adds a `## Tasks` table and `## End check` from
 the feature's end-check record when there is one, closes no issue, and opens a draft PR, or
 replaces the open one's body (`PR=<url> READY=no`). When it refuses with `the feature PR #<n> is
-merged`, run `/landspec:implement <feature>`, which audits it and makes the release, and stop.
+merged`, run `/landspec:implement <feature>`, which makes the release, and stop: the release
+reuses the feature's security review, and the whole-repository audit runs first only when there is
+none and `release_audit` is not `off`.
 
 **Any other PR** (a small fix, a dependency bump, landspec's own setup or level change): steps 1 to
 7 at every level, on its own branch. The reviewer gets one line on what the change does and why. A

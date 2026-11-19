@@ -753,4 +753,73 @@ endcheck "$nh" green ready "$fh"
 check "when the ready review is of an older head, with green tests on the new head, then check --feature fails" \
   'fails_with "the feature review is of $fh, not of $nh: run the feature review again" "$r" check --feature'
 
+# The security review of the end check: one record per feature, of the check ref, gating on confirmed critical or high.
+sr="$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; git update-ref refs/landspec/check/001-demo "$nh"
+# srep <verdict> <count line> [<finding line>...]: a security report of the check ref at $TMP/sec.md.
+srep() {
+  local v="$1" n="$2"; shift 2
+  { echo 'Map: one new route.'; [[ $# == 0 ]] || printf '%s\n' "$@"; echo 'Coverage: scanners run: gitleaks; missing: semgrep; groups: injection'
+    echo "Copy: $TMP/gone"; echo "Reviewed: $(git rev-parse origin/develop)..${SREF:-$nh}"; echo 'Model: claude-opus-5-5'
+    [[ -z "$n" ]] || echo "Security: $n"; echo; echo "Assessment: $v"; } > "$TMP/sec.md"
+}
+ph='- plausible: high access-control — src/api.ts:12 the owner check depends on a proxy header'
+cm='- confirmed: medium injection — src/log.ts:4-6 the query reaches the log line unescaped'
+chi='- confirmed: high injection — src/db.ts:9 the query reaches the SQL string'
+check "when no security review is recorded, then check --security fails and names record --security" \
+  'fails_with "no security review recorded for 001-demo" "$r" check --security && fails_with "review.sh record --security <report-file>" "$r" report --security'
+srep ready "0 critical, 0 high, 0 medium, 0 low"
+check "when a security report of the check ref has no finding, then record --security prints SECURITY=ready alone, check passes and report prints its facts" \
+  '[[ "$("$r" record --security "$TMP/sec.md" 2>/dev/null)" == SECURITY=ready && "$("$r" check --security)" == SECURITY=ready ]] \
+   && [[ "$("$r" report --security)" == "$(printf "Security review: ready for %s\nSecurity: 0 critical, 0 high, 0 medium, 0 low\nCoverage: scanners run: gitleaks; missing: semgrep; groups: injection\nModel: claude-opus-5-5" "$nh")" ]] \
+   && grep -qE " review round=security verdict=ready c=0 h=0 m=0 l=0$" "$(git rev-parse --git-common-dir)/landspec-events"'
+srep ready "0 critical, 0 high, 1 medium, 0 low" "$ph" "$cm"
+check "when the report has a plausible high and a confirmed medium, then it records ready (only confirmed findings count) and check passes" \
+  '[[ "$("$r" record --security "$TMP/sec.md" 2>/dev/null)" == SECURITY=ready ]] && grep -qx "counts: 0 0 1 0" "$sr" && "$r" check --security >/dev/null && grep -qxF -- "$ph" "$sr"'
+srep ready "0 critical, 1 high, 1 medium, 0 low" "$chi" "$cm"
+check "when the report has a confirmed high, then it records changes needed whatever its last line says, prints HOLD=1 REPORT=<record>, and check fails" \
+  '[[ "$("$r" record --security "$TMP/sec.md" 2>/dev/null)" == "$(printf "SECURITY=changes needed\nHOLD=1 REPORT=%s" "$sr")" ]] \
+   && fails_with "the security review confirmed 0 critical and 1 high finding(s) on $nh" "$r" check --security && fails_with "confirmed 0 critical" "$r" report --security'
+srep ready "0 critical, 0 high, 0 medium, 0 low"; "$r" record --security "$TMP/sec.md" >/dev/null 2>&1; kept="$(cat "$sr")"
+SREF="$fh" srep ready "0 critical, 0 high, 0 medium, 0 low"
+check "when the report is of another commit than the check ref, then record --security refuses it and keeps the record" \
+  'fails_with "the report must state Reviewed: <base>..$nh" "$r" record --security "$TMP/sec.md" && [[ "$(cat "$sr")" == "$kept" ]]'
+srep ready ""
+check "when the report has no Security: line, then record --security refuses it" 'fails_with "the report has no line '"'"'Security: <n> critical, <n> high, <n> medium, <n> low'"'"'" "$r" record --security "$TMP/sec.md"'
+srep ready "0 critical, 0 high, 0 medium, 0 low" "$cm"
+check "when the Security: line disagrees with the confirmed lines, then record --security refuses it naming both counts" \
+  'fails_with "the Security: line counts 0 0 0 0 (critical high medium low) but the report'"'"'s '"'"'- confirmed:'"'"' lines count 0 0 1 0" "$r" record --security "$TMP/sec.md"'
+srep ready "0 critical, 0 high, 1 medium, 0 low" '- confirmed: medium sqli-in-login — src/log.ts:4 x'
+check "when a finding's category is not one of the fixed ones, or it has no file:line, then record --security refuses the line" \
+  'fails_with "its category one of access-control injection" "$r" record --security "$TMP/sec.md" \
+   && srep ready "0 critical, 0 high, 1 medium, 0 low" "- confirmed: medium injection — the query is logged" && fails_with "this finding line is not" "$r" record --security "$TMP/sec.md"'
+srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak 's/^Coverage: .*//' "$TMP/sec.md"
+check "when the report has no Coverage: line, then record --security refuses it" 'fails_with "the report has no line '"'"'Coverage:" "$r" record --security "$TMP/sec.md"'
+cov() { srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak "s|^Coverage: .*|Coverage: $1|" "$TMP/sec.md"; }
+check "when the Coverage: line carries a file:line, a sentence or a group that is no category, then record --security refuses it naming the rule" \
+  'for c in "scanners run: gitleaks; missing: none; groups: injection (src/db.ts:9 query unescaped)" "scanners run: gitleaks, the login route is open; missing: none; groups: injection" \
+     "scanners run: gitleaks; missing: none; groups: sqli-in-login" "gitleaks ran"; do cov "$c"; fails_with "each list none or comma-separated words of [a-z0-9-]" "$r" record --security "$TMP/sec.md" || exit 1; done \
+   && [[ "$(cat "$sr")" == "$kept" ]] && cov "scanners run: none; missing: gitleaks, osv-scanner; groups: injection, access-control" && "$r" record --security "$TMP/sec.md" 2>/dev/null | gq -x "SECURITY=ready" \
+   && cov "scanners run: gitleaks; missing: none; groups: none" && "$r" record --security "$TMP/sec.md" >/dev/null 2>&1'
+kept="$(cat "$sr")" # the two accepted Coverage lines above recorded
+for bad in '- **confirmed**: high injection — src/db.ts:9 the query reaches the SQL string' '* confirmed: high injection — src/db.ts:9 the query reaches the SQL string' \
+  '- Confirmed: high injection — src/db.ts:9 the query reaches the SQL string' '- **Plausible:** high injection — src/db.ts:9 the query reaches the SQL string'; do
+  srep ready "0 critical, 0 high, 0 medium, 0 low" "$bad"
+  check "when a finding is spelled '${bad%% high*}', then record --security refuses the line: it never records ready past the count" \
+    'fails_with "this finding line is not" "$r" record --security "$TMP/sec.md" && [[ "$(cat "$sr")" == "$kept" ]]'
+done
+srep ready "0 critical, 0 high, 0 medium, 0 low"; sed -i.bak 's/^Copy: .*/Copy: none (running in the checkout)/' "$TMP/sec.md"
+check "when the reviewer could not verify (Copy: none), then record --security refuses it and the record is unchanged" \
+  'fails_with "could not verify the diff (Copy: none)" "$r" record --security "$TMP/sec.md" && [[ "$(cat "$sr")" == "$kept" ]]'
+check "when --security comes with --feature, --plan or --branch, or with an action that is not record, check or report, then it is refused" \
+  'fails_with "a security review is recorded alone" "$r" record --security --feature "$TMP/sec.md" && fails_with "a security review is recorded alone" "$r" check --security --branch "$P" \
+   && fails_with "a security review is recorded alone" "$r" risk --security'
+echo later > later.txt; git add later.txt; git commit --quiet -m "feat: later"; lh="$(git rev-parse HEAD)"
+check "when a commit lands on the feature branch after the security review, then check --security fails as stale" \
+  'fails_with "the security review is of $nh, and the feature branch is now at $lh: run the end check again" "$r" check --security'
+echo "security_review: off" >> .specify/extensions/landspec/landspec-config.yml
+check "when security_review is off, then check --security passes with the skipped line and report says it is turned off, whatever the record" \
+  '[[ "$("$r" check --security)" == "SECURITY=skipped (security_review: off)" && "$("$r" report --security)" == "Security review: turned off (security_review: off)" ]]'
+sed -i.bak 's/^security_review: .*/security_review: maybe/' .specify/extensions/landspec/landspec-config.yml
+check "when security_review is neither on nor off, then check --security refuses naming the key" 'fails_with "security_review must be on or off" "$r" check --security'
+
 exit "$FAIL"

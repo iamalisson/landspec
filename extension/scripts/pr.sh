@@ -5,10 +5,13 @@
 #       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
 #       [X] with no landing commit, and needs no scan or mutants record (the draft opens after the
 #       first landing; they run once on the whole diff). Adds a "## Tasks" table, "## Low findings" (the
-#       landing commits' Low: lines) and "## End check" from the feature's end-check record when there
-#       is one. Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
+#       landing commits' Low: lines), "## End check" from the feature's end-check record when there
+#       is one, and "## Security review" from its security record (review.sh record --security): on a
+#       private or internal repository each finding's line; on a public one (or when gh cannot tell)
+#       only the counts and each finding's category, and no section while a confirmed critical or high
+#       holds the PR. Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
 #   pr.sh feature "feat(api): price search" <body-file> --ready
-#       Also refuses a task not done, a failing review.sh check --feature, and no scan or (with a mutate
+#       Also refuses a task not done, a failing review.sh check --feature or check --security, and no scan or (with a mutate
 #       command) mutants record of the whole feature diff; a "findings high" scan line refuses; other
 #       findings, missing scanners and unavailable mutants are listed. Then gh pr ready; PR=<url> READY=yes.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
@@ -99,6 +102,27 @@ feature_sections() {
   [[ "$r" == "$h" ]] || extra+=$'\n\n'"checked at $r; the branch is now at $h"
 }
 
+# security_section: the feature PR's "## Security review", from the security record, into $extra.
+# Visibility decides what a finding shows: anything but PRIVATE or INTERNAL (a failed gh call too) is read as public.
+security_section() {
+  local sr vis c hi m l hd h line
+  if [[ "$(cfg security_review on)" == off ]]; then extra+=$'\n\n## Security review\n\nTurned off for this project (security_review: off).'; return 0; fi
+  sr="$(git rev-parse --git-common-dir)/landspec-review/security-$(basename "$fdir")"
+  [[ -f "$sr" ]] || return 0
+  sfield() { awk -v k="$1: " '/^$/ { exit } index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$sr"; }
+  hd="$(sfield head)"; read -r c hi m l <<<"$(sfield counts)"
+  [[ -n "$hd" && -n "$l" ]] || return 0
+  vis="$(origin_slug)"; vis="$(gh repo view ${vis:+"$vis"} --json visibility --jq .visibility 2>/dev/null || true)" # origin's, as repo_slug says
+  if [[ "$vis" != PRIVATE && "$vis" != INTERNAL ]]; then vis=PUBLIC; ((c + hi == 0)) || return 0; fi # a held finding is not announced in public
+  extra+=$'\n\n## Security review\n\n'"Security: $c critical, $hi high, $m medium, $l low (confirmed), reviewed at ${hd:0:12}"$'\n'
+  while IFS= read -r line; do
+    [[ "$vis" != PUBLIC ]] || line="${line%% — *}" # the status, severity and category: no file:line, no sentence
+    extra+=$'\n'"$line"
+  done < <(sed '1,/^$/d' "$sr" | grep -E '^- (confirmed|plausible): ' || true)
+  extra+=$'\n'"Coverage: $(sfield coverage)"
+  h="$(git rev-parse HEAD)"; [[ "$hd" == "$h" ]] || extra+=$'\n\n'"reviewed at $hd; the branch is now at $h"
+}
+
 case "$mode" in
   feature|fix) # guard.sh knows a pr.sh with pr.sh fix by the text "|fix)"
     # fix: any PR that is not the feature's (a small fix, a dependency bump, landspec's own setup) gets
@@ -115,8 +139,9 @@ case "$mode" in
       need_review=false; need_scan=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
       # --ready: every task done, the end check passed for this head, one scan and mutation run of the whole diff (research R15).
       if [[ -n "${4:-}" ]]; then ready=yes; need_scan=true; fi
-      feature_sections
+      feature_sections; security_section
       [[ "$ready" != yes ]] || bash "$LANDSPEC_EXT_DIR/scripts/review.sh" check --feature >/dev/null
+      [[ "$ready" != yes ]] || bash "$LANDSPEC_EXT_DIR/scripts/review.sh" check --security >/dev/null
     else
       title="${2:-}"; body_file="${3:-}"
       [[ -n "$title" && -n "$body_file" ]] || die 'usage: pr.sh fix "type(scope): summary" <body-file>'

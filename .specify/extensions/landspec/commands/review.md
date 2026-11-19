@@ -22,9 +22,10 @@ fork.
 Wait for its report. The reviewer writes it to a file itself and names it on its first line,
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:
 `bash .specify/extensions/landspec/scripts/review.sh record <file>` (`record --plan <file>` for a plan
-review, `record --plan --delta <file>` for a plan delta, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
+review, `record --plan --delta <file>` for a plan delta, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review, `record --security <file>` for a security review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
 go on without a recorded review of the current state that passes its gate (no High
-finding in a plan review, no High or Medium in a task review), at every level,
+finding in a plan review, no High or Medium in a task review, no confirmed critical or high in a
+security review), at every level,
 so a commit after the review means another review. Recording removes the reviewer's copy (its
 `Copy:` line) once it is safe to.
 
@@ -59,6 +60,12 @@ Facts the author passes:
 - for a feature review: "feature review", the feature folder, `commit:` the check ref
   (`refs/landspec/check/<feature>`, the feature branch's head, a local ref your copy can reach), `base:` `origin/<base>`, and the
   test command's output on that commit;
+- for a security review: "security review", the feature folder, `commit:` the check ref and `base:`
+  `origin/<base>` (as for a feature review), the report folder `security-scan.sh --changed` printed
+  (`REPORT_DIR=<dir>`) with its lines for the scanners that are `missing` or `failed`, and the path
+  of the plugin's `skills/security/SKILL.md`; for the one that confirms: "security review: confirm",
+  each confirmed critical or high finding's `file:line` and one-sentence claim, the first report's
+  other finding lines and its `Coverage:` line, and nothing else of that report;
 - the task's line from `tasks.md` with its sub-bullets, "plan review", or, for a PR that is not a
   task (`pr.sh fix`), one line on what it changes and why;
 - the path of the PR body draft, if there is one;
@@ -98,6 +105,65 @@ findings, one line per item, exactly:
 it would take. Then `Copy:`, `Reviewed: <git merge-base <commit> <base>>..<commit>` and `Model:`, and
 `Assessment: ready` only when no line is `not met` (`record --feature` makes any `not met` "changes
 needed" whatever the last line says). It is kept per feature, not per branch; `pr.sh` does not read it.
+
+**A security review** reads the whole feature once, in the end check, for what an attacker can do
+with it: one reviewer, at the same time as the feature review and on the same commit. It is scoped
+to the diff and staged, so it stays fast: `git diff <base>...<commit>` of the whole feature and the
+code it touches (what the changed lines call with untrusted data, and what calls them), never the
+whole repository. Read the rules (Method step 1); then, in place of steps 2 and 3:
+
+- **Stage 1, map.** What the diff newly exposes: entry points (routes, commands, queue and webhook
+  consumers, jobs, uploads, prompts that take user text), trust boundaries crossed, data and secrets
+  handled. A diff that exposes nothing (documentation, tests, an internal refactor with no input
+  path) ends here with no findings: say so in one line, and go to the report's last lines.
+- **Stage 2, hunt.** Only the category groups of `skills/security/SKILL.md` step 3 that the map
+  makes relevant; follow each input from its source to its sink. The scanners' output is a list of
+  leads, never a verdict: read the reports in the folder the facts name, and judge each scanner
+  finding **reachable** here, or a **false positive** with the reason (dead code, a test fixture,
+  input no user controls). A scanner the facts list as missing or failed is named under coverage.
+- **Stage 3, verify.** For every finding, try to disprove it: look for the validation, middleware,
+  constraint or framework default that stops it. Keep only what survives, each as `confirmed`, or
+  as `plausible` (the path exists but depends on deployment or config you cannot see).
+
+**Never reported** (hard exclusions): denial of service and resource exhaustion; missing rate
+limits; missing hardening with no exploit path; findings only in test files or documentation;
+outdated dependencies (the scanners own those).
+
+Its report has, in place of the risk map, the claims and the findings: the map, three lines at
+most, then one line per finding that survived, exactly:
+
+```
+- confirmed: high injection — src/api/search.ts:41 the q parameter reaches the SQL string unescaped
+- plausible: medium access-control — src/api/orders.ts:17 the owner check trusts a header the proxy may not strip
+```
+
+`- <confirmed|plausible>: <severity> <category> — <file:line> <one sentence>`. The severity is
+`critical`, `high`, `medium` or `low`, ranked as `skills/security/SKILL.md` step 6 says. The
+category is one of `access-control`, `injection`, `authentication`, `cryptography`,
+`business-logic`, `concurrency`, `input-handling`, `errors-logging`, `configuration`,
+`supply-chain`, `ai` (the groups of step 3): a neutral word a public PR can show. The sentence says
+what is affected, never how to exploit it; the path from source to sink, the fix and the test that
+proves it go under the line, indented, and stay in the local record. Then one line `Coverage:
+scanners run: <names>; missing: <names>; groups: <the groups checked>` (each list `none` or
+comma-separated names of `[a-z0-9-]`, the groups from the categories above, and nothing else: the
+PR shows this line as it is, and `record --security` refuses any other shape), then `Copy:`, `Reviewed: <git merge-base <commit> <base>>..<commit>` and
+`Model:`, the count line, exactly `Security: <n> critical, <n> high, <n> medium, <n> low`, counting
+`confirmed` findings only, and `Assessment: ready` unless a finding is `confirmed` critical or
+high. `review.sh record --security <file>` refuses a report of another commit than the check ref,
+a finding line of another shape or category (however it is spelled: `- **confirmed**:`, `* confirmed:`
+and `- Confirmed:` are refused, never skipped), a report without its `Coverage:` or `Security:` line,
+a count that is not the confirmed lines' own, and a `Copy: none`; a confirmed critical or high is
+"changes needed" whatever the last line says, and prints `HOLD=<n> REPORT=<the record>`. The
+feature PR shows the counts, each finding's status, severity and category and the coverage line;
+each finding's `file:line` and sentence too on a private or internal repository only.
+
+**No second agent by default.** Only when the report counts a confirmed critical or high, the
+author's session does not record it and launches ONE more fresh security review, limited to those
+findings ("security review: confirm"): it is given each one's `file:line` and one-sentence claim,
+never the first reviewer's reasoning, and the first report's other finding lines and `Coverage:`
+line, which it copies as they are. It runs stage 3 alone on each claim, keeps it `confirmed`,
+lowers it to `plausible` or drops it with the line that stops it, and writes a report of the same
+shape: that second report is the one recorded.
 
 ## Installed skills and MCP servers
 
@@ -156,7 +222,7 @@ step 2 allows.
    lines to its result. A claim that breaks is a finding, with that counterexample as its scenario.
    One that holds names the `file:line` that stops it. In a delta, the claims are the previous
    findings: follow each one's own scenario through the fix. A plan review or a feature review
-   skips this step.
+   skips this step; a security review runs its three stages in place of steps 2 and 3.
 
 **Plan review** (before any task is built): review the copy of the feature folder
 hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text

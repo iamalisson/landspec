@@ -98,33 +98,64 @@ checked, across runs).
 1. `I check`. It refuses while a task is not done, and first merges `origin/<base>` into the branch
    and pushes it (a conflict stops it, naming the files: report them, and stop). It prints one of:
    - `CHECK=<head> ROUND=<n>`: go on.
-   - `UNCHANGED=<n>`: this head's own tests or its own feature review already failed (the gap tasks
-     changed nothing, or a test is flaky); `ROUNDS_EXHAUSTED=<n>`: `feature_rounds:` heads were
+   - `UNCHANGED=<n>`: this head's own tests, its own feature review or its own security review
+     already failed (the gap tasks changed nothing, or a test is flaky); `ROUNDS_EXHAUSTED=<n>`: `feature_rounds:` heads were
      checked. Either way, stop: the PR stays a draft, its body keeps the record's `not met` lines
      (update it, as "The draft PR" says), and ask the developer at the end.
 2. The tests on `<head>`: `git worktree add --detach <repo>-<feature>-check <head>`, there `bash -c
    'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'` (a tree already
    green is not run again), then `git worktree remove <repo>-<feature>-check`. Then `I check-result
-   green` or `I check-result red`.
-3. The **feature review**, as `review.md` says (its feature review mode): one `landspec:reviewer`
-   with `model: opus` and `isolation: "worktree"`, with the facts: `feature review`, the feature
-   folder, `commit:` `<head>`, `base:` `origin/<base>`, the test command and its result. Record it
-   with `review.sh record --feature <report>`; its `not met` lines go into the run report.
-4. **The gaps**, when the review has `not met` lines or the tests were red: here, on the feature
+   green` or `I check-result red`. Then the scanners, here, on the feature branch (it is at
+   `<head>`), once, on the whole feature diff: `bash
+   .specify/extensions/landspec/scripts/security-scan.sh --changed`. Keep its lines and its
+   `REPORT_DIR=<dir>`: they feed the security review, and it is the scan `pr.sh feature --ready`
+   asks for.
+3. The **feature review** and the **security review**, launched in the same message, in parallel,
+   on the same commit, as `review.md` says (its feature review and security review modes): two
+   `landspec:reviewer` agents, each with `model: opus` and `isolation: "worktree"`.
+   - The feature review's facts: `feature review`, the feature folder, `commit:` `<head>`, `base:`
+     `origin/<base>`, the test command and its result. Record it with
+     `review.sh record --feature <report>`; its `not met` lines go into the run report.
+   - The security review's facts: `security review`, the feature folder, `commit:` `<head>`,
+     `base:` `origin/<base>`, the scan's `REPORT_DIR=<dir>` and its `missing` and `failed` lines,
+     and the path `${CLAUDE_PLUGIN_ROOT}/skills/security/SKILL.md`. One agent, no second one by
+     default: record its report with `review.sh record --security <report>` (it prints
+     `SECURITY=ready`). Only when its `Security:` line counts a confirmed critical or high, do not
+     record it: launch ONE more fresh security review limited to those findings (`security review:
+     confirm`, the same `commit:` and `base:`, each such finding's `file:line` and one-sentence
+     claim, the first report's other finding lines and its `Coverage:` line, and nothing of the
+     first reviewer's reasoning), and record that second report instead.
+   - With `security_review: off` in `landspec-config.yml` (`review.sh check --security` prints
+     `SECURITY=skipped (security_review: off)`), launch the feature review alone.
+4. **The gaps**, when the review has `not met` lines, the tests were red, or the security record
+   printed `SECURITY=changes needed` with `HOLD=<n> REPORT=<path>` (a confirmed critical or high:
+   the PR stays a draft). For the security findings, first the repository's visibility (`gh repo
+   view --json visibility -q .visibility`; a failed call counts as public):
+   - on a `PUBLIC` repository, nothing about them is written to `tasks.md`, the PR or any issue,
+     and the draft's body is not updated: stop the run here, report only `<n>` and `<path>`, never
+     what the findings are, and name `/landspec:security <path>`, which fixes them without
+     disclosing them; the fix commits make a new head, and the next run checks it again;
+   - on a private or internal one, each confirmed critical or high becomes a gap task like a `not
+     met` line: a neutral title (its category and what is affected, never how to exploit it), the
+     detail in the task's sub-bullets.
+
+   Then here, on the feature
    branch, append to the feature's `tasks.md` one task per `not met` line, and one task for the red
-   tests, with the next free ids, in the format of the others (`- [ ] Tnnn <what> in <files>`, then
+   tests (and those security tasks), with the next free ids, in the format of the others (`- [ ] Tnnn <what> in <files>`, then
    the sub-bullets `Comes from:` the line (or the failing test), `What`, `Completed when`). Then one
    plan review pass of the new lines, as `plan-review.md` step 2 says, recorded with `review.sh
    record --plan <file>`; on a high finding, fix the lines and one more pass, as it says (every round
    is read cold); a high left after it blocks the plan: show it and stop. Commit `tasks.md`
    (`docs(specs): file the end check's gaps`), push the branch, and go back to the loop: the gap
    tasks are built, reviewed and landed like the others, then the end check runs again.
-5. **A pass** (tests green, no `not met` line): here, once, on the whole feature diff, `bash
-   .specify/extensions/landspec/scripts/security-scan.sh --changed` and `bash
-   .specify/extensions/landspec/scripts/mutants.sh`, as `pr.md` says; then write the body as "The
-   draft PR" says, with their results in `## Evidence`, and `pr.sh feature "<title>" <body-file>
-   --ready`. It marks the PR ready and prints `PR=<url> READY=yes`; when it refuses, report its
-   message.
+5. **A pass** (tests green, no `not met` line, and `SECURITY=ready` or `SECURITY=skipped`): here,
+   once, on the whole feature diff, `bash .specify/extensions/landspec/scripts/mutants.sh`, as
+   `pr.md` says (the scan of step 2 is still this diff's: nothing was committed since); then write
+   the body as "The draft PR" says, with the scan's and the mutation testing's results in `##
+   Evidence`, and `pr.sh feature "<title>" <body-file> --ready`. It refuses without a ready
+   `review.sh check --security`, adds the `## Security review` section from the record itself
+   (never write one by hand), marks the PR ready and prints `PR=<url> READY=yes`; when it refuses,
+   report its message.
 
 ## The release
 
@@ -135,11 +166,11 @@ When `status` prints `MERGED=<n>` (or `branch.sh` refused naming the merged feat
 then, run `I release-plan` and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
 next run reads where it stands from git and GitHub:
 
-- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
+- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, `AUDIT=reviewed` or `AUDIT=skipped`, in the run's worktree `<repo>-<feature>-run`
   (`git fetch origin`, then `git switch -c chore/release-X.Y.Z origin/<base>` as its own command): `I release-bump X.Y.Z`
   there, then write the notes to `<path>`: grouped by user story, one line per PR in `PRS=` (its
   title and number), an "Upgrading" section when a task changed a config key or a command, and the
-  "Known issues" of the audit (below). Commit
+  "Known issues" of the audit (below), or "Not audited" when it is turned off (neither on `AUDIT=reviewed`). Commit
   them by name (`chore(release): X.Y.Z`), push, then the review and `pr.sh fix "chore(release): X.Y.Z"
   <body>` as `pr.md` says for a PR that is not a task, then `git switch --detach origin/<base>` there.
   `NOTES=-` (no `release_notes:`): put the notes first in the release PR's body, before its
@@ -153,7 +184,7 @@ next run reads where it stands from git and GitHub:
   `mktemp` file, then `gh release create vV --title "<project> V" --notes-file <that file>`.
 - `RELEASE=pending X.Y.Z PR=<n>`: the release PR waits for its merge; say so.
 - `RELEASE=done V`: the feature is released; say so.
-- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
+- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done`, `AUDIT=reviewed` or `AUDIT=skipped`, write the notes to a `mktemp` file and say the project has no
   release convention (`version_files:` and `release_notes:` in `landspec-config.yml` set one).
 
 ## The audit before the bump
@@ -161,6 +192,15 @@ next run reads where it stands from git and GitHub:
 On `RELEASE=bump` and on `RELEASE=none`, before anything else, run `I audit-plan` and act on the **one** `AUDIT=` line it
 prints. The base is audited once per commit: a later run reuses the recorded result.
 
+- `AUDIT=reviewed (security review of <sha>)`: the feature's security review, recorded in the end
+  check, is of the merged PR's own head commit (`audit-plan` asks GitHub for it), so it stands in
+  for the audit: it read this feature's whole diff, and nothing else was merged with it. A PR whose
+  head moved after the review (an "Update branch", a committed suggestion), or one gh cannot
+  read, never gets this line: `audit-plan` then prints `AUDIT=needed` or `AUDIT=skipped`. Go on with the bump (or, on `RELEASE=none`, the
+  notes); run no `/code-review`, no `/security-review` and no audit subagent, and never call
+  `audit-record`. The notes get no "Known issues" and no "Not audited" section: the PR's `##
+  Security review` already shows what the review found. `/landspec:security` stays the whole-repository
+  audit, on demand.
 - `AUDIT=needed COMMIT=<sha>`: in the run's worktree `<repo>-<feature>-run`, `git switch --detach <sha>`.
   There the main session runs `/code-review high` and `/security-review` (a subagent cannot run them)
   and writes each one's output to a `mktemp` file; one that is not available here gets a file saying so.
@@ -178,6 +218,12 @@ prints. The base is audited once per commit: a later run reuses the recorded res
   confirmed medium or low and each plausible finding, with its title and category, the title
   rewritten if it carries more than what is affected. Never an exploit detail, a `file:line` or a
   request, on either. No findings: no section.
+- `AUDIT=skipped (release_audit: off)`: no security review is recorded for the feature in this
+  clone, and the project turned the release audit off. Go on with the bump
+  (or, on `RELEASE=none`, the notes); run no `/code-review`, no `/security-review` and no audit
+  subagent. The notes get a section "## Not audited" with one line: the release audit is turned off
+  for this project (`release_audit: off`). Never write "Known issues" from an audit that did not
+  run, and never call `audit-record`.
 - `AUDIT=hold COMMIT=… REPORT=<path> HOLD=<n>`: the release **holds**: no bump, no release PR, and
   nothing filed or posted about the findings (no issue, advisory, PR or comment: the run report gives
   only their count and the report's path, never what they are). `/landspec:security <path>` tracks
@@ -221,14 +267,17 @@ then only what is left for the developer:
 - each `failed` task with its reason and, when its review rounds failed it, the findings of its last report
   (`landspec-run/<feature dir name>/<task>.report`); `I retry <task>` lifts it, and the next run starts it
   again from the feature head;
-- the end check: its round, the test result, and each `not met` line of the feature review;
+- the end check: its round, the test result, each `not met` line of the feature review, and the
+  security review's `Security:` count line with the scanners its coverage names as missing (on a
+  hold, only the count and the record's path);
 - the gap tasks appended to `tasks.md`;
 - the release: the `RELEASE=` line and what was done for it (the release PR to merge, the tag, the
   published release), and the `AUDIT=` line when there was one, with the scanners and reviews the
   report's coverage names as missing (they do not hold the release; installing them widens the next audit).
 
 Last line, when the end check stopped on `UNCHANGED=` or `ROUNDS_EXHAUSTED=`: `the PR stays a draft:
-fix what is not met, then run /landspec:implement again`. When the release holds: `release held: <n> confirmed critical or high; run /landspec:security
+fix what is not met, then run /landspec:implement again`. When the security review holds the PR on a public repository: `security
+review held: <n> confirmed critical or high; run /landspec:security <report path>`. When the release holds: `release held: <n> confirmed critical or high; run /landspec:security
 <report path>`. When the release is done or was published by this run: `/speckit-specify` for the next
 feature. Otherwise, while a task is not done: "run `/landspec:implement` again" (after `I retry` for a
 failed one). Nothing else is left for the developer to run by hand: the end check stands in for

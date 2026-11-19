@@ -10,6 +10,13 @@
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
 #   review.sh check|report --feature        exit 0 when the end-check record's head and reviewed: are the feature
 #                                           branch's head, its tests green and its verdict ready (report prints them)
+#   review.sh record --security <report-file>  security review of the feature diff (review.md "Security review"): the
+#                                           check ref, one "- confirmed|plausible: <severity> <category> — <file:line>
+#                                           <one sentence>" line per finding, "Coverage: …" and "Security: <n> critical,
+#                                           <n> high, <n> medium, <n> low" (confirmed only). Prints SECURITY=<verdict>,
+#                                           and HOLD=<n> REPORT=<record> with a confirmed critical or high
+#   review.sh check|report --security       exit 0 when that record is of the feature branch's head and counts no
+#                                           confirmed critical or high; security_review: off: SECURITY=skipped (…)
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
@@ -32,15 +39,18 @@ start="$PWD" # state --plan <dir> resolves a relative <dir> from where it was ca
 landspec_cd_root
 
 action="${1:-}"; shift || true
-plan=false; delta=false; bopt=""; feat=false
-while [[ "${1:-}" == --plan || "${1:-}" == --delta || "${1:-}" == --branch || "${1:-}" == --feature ]]; do
+plan=false; delta=false; bopt=""; feat=false; sec=false
+while [[ "${1:-}" == --plan || "${1:-}" == --delta || "${1:-}" == --branch || "${1:-}" == --feature || "${1:-}" == --security ]]; do
   case "$1" in
-    --plan) plan=true ;; --delta) delta=true ;; --feature) feat=true ;;
+    --plan) plan=true ;; --delta) delta=true ;; --feature) feat=true ;; --security) sec=true ;;
     --branch) bopt="${2:-}"; [[ -n "$bopt" ]] || die "usage: review.sh <action> --branch <branch> ..."; shift ;;
   esac; shift
 done
 if $feat && { $plan || $delta || [[ -n "$bopt" ]] || ! [[ "$action" =~ ^(record|check|report)$ ]]; }; then
   die "a feature review is recorded alone: review.sh record|check|report --feature (no --plan, --delta or --branch)"
+fi
+if $sec && { $plan || $delta || $feat || [[ -n "$bopt" ]] || ! [[ "$action" =~ ^(record|check|report)$ ]]; }; then
+  die "a security review is recorded alone: review.sh record|check|report --security (no --plan, --delta, --feature or --branch)"
 fi
 if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, not a branch: drop --branch"; fi
 if $plan && $delta && [[ "$action" != record ]]; then die "a plan delta is only recorded: review.sh record --plan --delta <report-file>"; fi
@@ -79,7 +89,7 @@ if $plan; then
     rc=0; (cd "$t" && git diff --no-index -- reviewed current) || rc=$?
     ((rc <= 1)) || die "git diff --no-index failed ($rc)"; exit 0
   fi
-elif [[ "$action" != risk ]] && ! $feat; then # risk reads only the diff, and a feature review no branch, so neither needs one
+elif [[ "$action" != risk ]] && ! $feat && ! $sec; then # risk reads only the diff, and a feature or security review no branch, so none needs one
   branch="${bopt:-$(git branch --show-current)}"; [[ -n "$branch" ]] || die "not on a branch (detached HEAD); switch to the task's branch first"
   # --branch <b> reads <b> by name, from any HEAD: its tip, not this checkout, is what is reviewed.
   if [[ -n "$bopt" ]]; then
@@ -281,6 +291,73 @@ remove_copy() {
   fi
 }
 
+# The security review: one record per feature, security-<feature>, for the commit at refs/landspec/check/<feature>.
+# Its header: head:, assessment:, counts: (confirmed critical high medium low), model:, coverage:; then the report.
+# A finding's category is one of these, so the line pr.sh shows on a public repository carries nothing else.
+SEC_CATS="access-control injection authentication cryptography business-logic concurrency input-handling errors-logging configuration supply-chain ai"
+if $sec; then
+  fdir="$(feature_dir)"; fname="$(basename "$fdir")"; sr="$dir/security-$fname"
+  on="$(cfg security_review on)"; [[ "$on" == on || "$on" == off ]] || die "security_review must be on or off"
+  if [[ "$action" != record ]]; then
+    if [[ "$on" == off ]]; then
+      if [[ "$action" == check ]]; then echo "SECURITY=skipped (security_review: off)"; else echo "Security review: turned off (security_review: off)"; fi
+      exit 0
+    fi
+    [[ -f "$sr" ]] || die "no security review recorded for $fname: run the end check's security review, then review.sh record --security <report-file>"
+    h="$(commit "$(feature_ref "$fdir")")"; [[ -n "$h" ]] || die "no feature branch $(feature_branch "$fdir") here or on origin"
+    rh="$(hdr head "$sr")"
+    [[ "$rh" == "$h" ]] || die "the security review is of ${rh:-no commit}, and the feature branch is now at $h: run the end check again"
+    read -r c hi m l <<<"$(hdr counts "$sr")"
+    ((c + hi == 0)) || die "the security review confirmed $c critical and $hi high finding(s) on $h: fix them, then run the end check again"
+    [[ "$(hdr assessment "$sr")" == ready ]] || die "the security review said 'changes needed' on $h: run the end check again"
+    if [[ "$action" == check ]]; then echo "SECURITY=ready"; exit 0; fi
+    echo "Security review: ready for $h"
+    echo "Security: $c critical, $hi high, $m medium, $l low"
+    echo "Coverage: $(hdr coverage "$sr")"
+    m="$(hdr model "$sr")"; [[ -z "$m" ]] || echo "Model: $m"
+    exit 0
+  fi
+  report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --security <report-file>"
+  [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
+  c="$(git rev-parse --verify --quiet "refs/landspec/check/$fname^{commit}" || true)"
+  [[ -n "$c" ]] || die "no check ref for $fname: run implement.sh check first"
+  # A reviewer that could not verify (review.md step 0) says so on its Copy: line; "no findings" from it proves nothing.
+  if [[ "$(sed -nE 's/^\**Copy\**: *//p' "$report" | tail -1)" == none* ]]; then
+    die "the security review could not verify the diff (Copy: none): run it again in its own copy"
+  fi
+  shape="^- (confirmed|plausible): (critical|high|medium|low) (${SEC_CATS// /|}) — [^ ]+:[0-9]+(-[0-9]+)? [^ ].*\$"
+  # Anything that reads as a finding line, however it is spelled (a bullet, then confirmed or plausible, any case,
+  # bold or not, then a colon), has the exact shape: a line the count below would not see is refused, never skipped.
+  bad="$(grep -iE '^[[:space:]]*[-*][[:space:]]*[*_`]*(confirmed|plausible)[*_`]*[[:space:]]*:' "$report" | grep -vE "$shape" | head -1 || true)"
+  [[ -z "$bad" ]] || die "this finding line is not '- confirmed|plausible: <critical|high|medium|low> <category> — <file:line> <one sentence>', its category one of $SEC_CATS: $bad"
+  cov="$(grep -E '^Coverage: [^[:space:]]' "$report" | tail -1 || true)"
+  [[ -n "$cov" ]] || die "the report has no line 'Coverage: <scanners run, missing, groups checked>': run the security review again"
+  # The PR shows this line as it is, on a public repository too: names only, no prose and no path.
+  names='(none|[a-z0-9-]+(, [a-z0-9-]+)*)'; groups="(none|(${SEC_CATS// /|})(, (${SEC_CATS// /|}))*)"
+  cre="^Coverage: scanners run: $names; missing: $names; groups: $groups\$"
+  [[ "$cov" =~ $cre ]] \
+    || die "the Coverage: line must be exactly 'Coverage: scanners run: <names>; missing: <names>; groups: <names>', each list none or comma-separated words of [a-z0-9-], the groups from $SEC_CATS: run the security review again"
+  said="$(grep -iE '^\**security\**:\** *[0-9]+ critical, *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$report" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + 0, $2 + 0, $3 + 0, $4 + 0 }' || true)"
+  [[ -n "$said" ]] || die "the report has no line 'Security: <n> critical, <n> high, <n> medium, <n> low': run the security review again"
+  counts="$(awk '/^- confirmed: / { n[$3]++ } END { print n["critical"] + 0, n["high"] + 0, n["medium"] + 0, n["low"] + 0 }' "$report")"
+  [[ "$said" == "$counts" ]] || die "the Security: line counts $said (critical high medium low) but the report's '- confirmed:' lines count $counts: run the security review again"
+  verdict="$(grep -iE '^\**assessment\**: *(ready|changes needed)\**\.?$' "$report" | tail -1 | grep -oiE 'changes needed|ready' | tr '[:upper:]' '[:lower:]' || true)"
+  [[ -n "$verdict" ]] || die "the report has no line that is exactly 'Assessment: ready' or 'Assessment: changes needed'"
+  read -r cc ch _ <<<"$counts"
+  if ((cc + ch > 0)); then verdict="changes needed"; fi
+  rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
+  [[ "$(field reviewed)" =~ $rre && "$(commit "${BASH_REMATCH[2]}")" == "$c" ]] \
+    || die "the report must state Reviewed: <base>..$c (the commit at refs/landspec/check/$fname): run the security review again"
+  model="$(field model)"; [[ -n "$model" ]] || die "the report must state Model: <id>: run the security review again"
+  { echo "head: $c"; echo "assessment: $verdict"; echo "counts: $counts"; echo "model: $model"; echo "coverage: ${cov#Coverage: }"; echo; cat "$report"; } > "$sr.tmp"
+  mv "$sr.tmp" "$sr"
+  remove_copy "$report" "$c"
+  # shellcheck disable=SC2046 # four key=value words
+  event review round=security verdict="${verdict// /-}" $(awk '{ print "c=" $1, "h=" $2, "m=" $3, "l=" $4 }' <<<"$counts")
+  echo "SECURITY=$verdict"
+  if ((cc + ch > 0)); then echo "HOLD=$((cc + ch)) REPORT=$sr"; fi
+  exit 0
+fi
 # The feature review: one record per feature, for the commit at refs/landspec/check/<feature> (the feature
 # branch's head after implement.sh check). Its verdict comes from its lines: any "not met" is "changes needed".
 # It adds verdict:, reviewed: and the lines to the end-check record implement.sh check wrote, and deletes nothing.
@@ -456,5 +533,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan|--feature] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan|--feature] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh outside --plan <n> | review.sh risk [<from>] | review.sh record|check|report --security [<report-file>]" ;;
 esac

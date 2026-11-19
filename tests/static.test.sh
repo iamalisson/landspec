@@ -478,9 +478,26 @@ check "then the feature review is Opus, with commit: the head and base: origin/<
 check "then each not met line and red tests become tasks on the branch, given one review.sh record --plan pass, committed and pushed, back to the loop" \
   '[[ "$ecf" == *"one task per \`not met\` line, and one task for the red tests"* && "$ecf" == *"\`Comes from:\` the line"* && "$ecf" == *"review.sh record --plan <file>"* \
      && "$ecf" == *"push the branch, and go back to the loop"* ]]'
-check "then on a pass security-scan.sh --changed and mutants.sh run before pr.sh feature --ready" \
-  '[[ "$ecf" == *"security-scan.sh --changed\` and \`bash .specify/extensions/landspec/scripts/mutants.sh\`"* ]] \
-   && a="${ecf%%security-scan.sh --changed*}" && [[ "$a" != "$ecf" && "${ecf#"$a"}" == *"--ready"* && "$a" != *"--ready"* ]]'
+check "then security-scan.sh --changed runs with the tests, before the two reviews, and on a pass mutants.sh runs before pr.sh feature --ready" \
+  'a="${ecf%%security-scan.sh --changed*}" && [[ "$a" != "$ecf" && "$a" == *"I check-result red"* && "$a" != *"**feature review**"* && "$a" != *"--ready"* ]] \
+   && b="${ecf%%scripts/mutants.sh*}" && [[ "$b" != "$ecf" && "$b" == *"security-scan.sh --changed"* && "${b##*5. }" != *"--ready"* && "${ecf#"$b"}" == *"--ready"* ]]'
+check "then the feature review and the security review start in the same message, in parallel, both recorded, the security review alone unless it confirms a critical or high" \
+  '[[ "$ecf" == *"The **feature review** and the **security review**, launched in the same message, in parallel, on the same commit"* \
+     && "$ecf" == *"review.sh record --security <report>"* && "$ecf" == *"One agent, no second one by default"* \
+     && "$ecf" == *"launch ONE more fresh security review limited to those findings"* && "$ecf" == *"nothing of the first reviewer'"'"'s reasoning"* \
+     && "$ecf" == *"and record that second report instead"* && "$ecf" == *"\`SECURITY=skipped (security_review: off)\`), launch the feature review alone"* ]]'
+check "then a confirmed critical or high keeps the PR a draft: a gap task on a private repository, nothing written on a public one, which names /landspec:security" \
+  '[[ "$ecf" == *"on a \`PUBLIC\` repository, nothing about them is written to \`tasks.md\`, the PR or any issue"* && "$ecf" == *"name \`/landspec:security <path>\`"* \
+     && "$ecf" == *"on a private or internal one, each confirmed critical or high becomes a gap task like a \`not met\` line: a neutral title"* ]] \
+   && grep -qF "security review held: <n> confirmed critical or high; run /landspec:security <report path>" <<<"$(flat < skills/implement/SKILL.md)"'
+check "when review.md describes the security review, then it has the diff scope, the three stages, the exclusions, the line shape, the count line and the one confirming review" \
+  'v="$(flat < extension/commands/review.md)"; for k in "**Stage 1, map.**" "**Stage 2, hunt.**" "**Stage 3, verify.**" "never the whole repository" \
+     "ends here with no findings: say so in one line" "**reachable** here, or a **false positive** with the reason" "each as \`confirmed\`, or as \`plausible\`" \
+     "denial of service and resource exhaustion; missing rate limits; missing hardening with no exploit path; findings only in test files or documentation; outdated dependencies (the scanners own those)" \
+     "- <confirmed|plausible>: <severity> <category> — <file:line> <one sentence>" "\`Security: <n> critical, <n> high, <n> medium, <n> low\`, counting \`confirmed\` findings only" \
+     "\`Assessment: ready\` unless a finding is \`confirmed\` critical or high" "record --security <file>" "**No second agent by default.**" "never the first reviewer'"'"'s reasoning" \
+     "that second report is the one recorded"; do [[ "$v" == *"$k"* ]] || { echo "missing: $k"; exit 1; }; done \
+   && for c in $(sed -n "s/^SEC_CATS=\"\(.*\)\"$/\1/p" extension/scripts/review.sh); do [[ "$v" == *"\`$c\`"* ]] || exit 1; done'
 check "then UNCHANGED= and ROUNDS_EXHAUSTED= stop with the PR a draft keeping the not met lines" \
   '[[ "$ecf" == *"\`UNCHANGED=<n>\`"* && "$ecf" == *"\`ROUNDS_EXHAUSTED=<n>\`"* && "$ecf" == *"the PR stays a draft, its body keeps the record'"'"'s \`not met\` lines"* ]]'
 check "when plan-review.md ends, then it names /landspec:implement <feature> for the whole feature" \
@@ -537,8 +554,9 @@ check "then the bump goes through pr.sh fix in the run worktree, which is detach
 check "then the release makes its worktree <repo>-<feature>-run when it is missing, before release-plan and the audit use it (spec 008 T024)" \
   'm="$(grep -nF "when it is missing, \`git worktree add --detach <repo>-<feature>-run origin/<base>\`" <<<"$rl" | cut -d: -f1 | head -1)"; r="$(grep -nF "I release-plan" <<<"$rl" | cut -d: -f1 | head -1)" \
    && a="$(grep -nF "\`AUDIT=needed COMMIT=<sha>\`: in the run'"'"'s worktree \`<repo>-<feature>-run\`" <<<"$rl" | cut -d: -f1)"; [[ -n "$m" && -n "$r" && -n "$a" ]] && ((m <= r && m < a))'
-check "then pr.md sends a merged feature PR to /landspec:implement, which audits it and makes the release (spec 008 T024)" \
-  '[[ "$(flat < extension/commands/pr.md)" == *"When it refuses with \`the feature PR #<n> is merged\`, run \`/landspec:implement <feature>\`, which audits it and makes the release, and stop."* ]]'
+check "then pr.md sends a merged feature PR to /landspec:implement, which makes the release on the feature's security review, the full audit only without one (spec 008 T024)" \
+  '[[ "$(flat < extension/commands/pr.md)" == *"When it refuses with \`the feature PR #<n> is merged\`, run \`/landspec:implement <feature>\`, which makes the release, and stop: the release reuses the feature'"'"'s security review, and the whole-repository audit runs first only when there is none and \`release_audit\` is not \`off\`."* ]] \
+   && ! grep -qF "audits it and makes the release" extension/commands/pr.md skills/next/SKILL.md'
 check "then publish reads the notes from the base, or from the release PR's body cut at the first ## Evidence or ## Review, never --generate-notes" \
   'grep -qF "git show origin/<base>:<path>" <<<"$rl" && grep -qF "gh pr view <n> --json body -q .body" <<<"$rl" \
    && grep -qF "before the first line that is exactly \`## Evidence\` or \`## Review\`, whichever comes first" <<<"$rl" && grep -qF "stop and say the release PR has no notes" <<<"$rl" \
@@ -548,7 +566,7 @@ check "then the release starts on status's MERGED= (or branch.sh's merged refusa
   'f="$(flat < skills/implement/SKILL.md)"; [[ "$(flat <<<"$rl")" == *"When \`status\` prints \`MERGED=<n>\` (or \`branch.sh\` refused naming the merged feature PR #<n>), and only then, run \`I release-plan\`"* ]] \
    && [[ "$f" == *"When it prints \`MERGED=<n>\` (alone: the developer merged the feature PR), the loop and the end check do not run: go to \"The release\""* ]] \
    && [[ "$f" == *"When it refuses with \`the feature PR #<n> is merged\`, go to \"The release\""* ]] && ! grep -qF "every task is \`merged\`" skills/implement/SKILL.md \
-   && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run audits it and makes the release"* ]]'
+   && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run makes the release: it reuses the feature'"'"'s security review, and the whole-repository audit runs first only when there is none and \`release_audit\` is not \`off\`"* ]]'
 check "then landspec's own config names its four version files and docs/releases" \
   'c=.specify/extensions/landspec/landspec-config.yml; for f in .claude-plugin/plugin.json extension/extension.yml preset/preset.yml .specify/extensions/landspec/extension.yml; do grep "^version_files:" $c | gq -F "$f" || exit 1; done; grep -qx "release_notes: docs/releases" $c'
 
@@ -572,13 +590,22 @@ check "then with HOLD=0 the notes get Known issues by visibility, counts only on
    && grep -qF "on a \`PUBLIC\` one, only a count per severity" <<<"$au" && grep -qF "on a private or internal one, each" <<<"$au" \
    && grep -qF "confirmed medium or low and each plausible finding, with its title and category" <<<"$au" && grep -qF "the title" <<<"$au" && grep -qF "rewritten if it carries more than what is affected. Never an exploit detail" <<<"$au" && grep -qF "<code-review file>" <<<"$au" && grep -qF "<security-review file>" <<<"$au" \
    && grep -qF "\"Known issues\" of the audit (below)" skills/implement/SKILL.md'
+check "then with release_audit: off the skill runs no audit, never calls audit-record, and the notes say Not audited" \
+  'grep -qF -- "- \`AUDIT=skipped (release_audit: off)\`" <<<"$au" && grep -qF "\"## Not audited\"" <<<"$au" && grep -qF "never call \`audit-record\`" <<<"$au" \
+   && grep -q "^| \`release_audit\` | \`on\` |" docs/reference.md && grep -qF "release_audit: off" docs/security.md'
+check "then a passed security review stands in for the audit at the release, and /landspec:security stays the full audit on demand" \
+  'grep -qF -- "- \`AUDIT=reviewed (security review of <sha>)\`" <<<"$au" && [[ "$(flat <<<"$au")" == *"The notes get no \"Known issues\" and no \"Not audited\" section"* ]] \
+   && [[ "$(grep -cF "only on \`AUDIT=done\`, \`AUDIT=reviewed\` or \`AUDIT=skipped\`" skills/implement/SKILL.md)" == 2 ]] \
+   && grep -qF "This is the full audit, on demand." skills/security/SKILL.md && grep -q "^| \`security_review\` | \`on\` |" docs/reference.md \
+   && grep -qF "| Before the PR is ready: security review of the feature diff |" docs/security.md && grep -qF "AUDIT=reviewed" docs/security.md \
+   && grep -qF "## One security review, of the diff, before the PR is ready" docs/design.md && grep -qF "before the feature PR is ready" README.md'
 check "then the run report names the missing scanners, which do not hold the release" \
   'e="$(sed -n "/^## End/,\$p" skills/implement/SKILL.md)"; grep -qF "report'"'"'s coverage names as missing (they do not hold the release" <<<"$e"'
 check "then /landspec:security has the unattended mode (steps 1 to 6, HOLD=) and takes a report for step 7" \
   'grep -qF "**Unattended**" skills/security/SKILL.md && grep -qF "steps 1 to 6 only" skills/security/SKILL.md && grep -qF "\`HOLD=<n>\`" skills/security/SKILL.md \
    && grep -qF "Read it, show its summary as step 6 says, then step 7" skills/security/SKILL.md'
 check "then /landspec:next and README point to /landspec:implement once every task is merged, never to /speckit-converge" \
-  'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "audits it and makes the release" skills/next/SKILL.md \
+  'grep -qF "it checks the whole feature against the spec" skills/next/SKILL.md && grep -qF "the next run makes the release" skills/next/SKILL.md \
    && grep -qF "however the tasks were done: it checks the" README.md && grep -qF "audits the base" README.md \
    && ! grep -qF "speckit-converge" skills/next/SKILL.md && ! grep -qF "/speckit-converge" README.md'
 check "then the release runs no whole-feature check on the base: the end check ran on the branch before the PR was ready" \

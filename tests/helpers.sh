@@ -84,6 +84,7 @@ case "$1 $2" in
              if [[ "$*" == *mergeCommit* ]]; then cat "$GH_REL" 2>/dev/null # implement.sh release-plan: "<n>\t<title>\t<head>\t<state>\t<merge sha>\t<merged at>"
              elif [[ "$*" == *headRefName* && "$*" == *"--state all"* ]]; then cat "$GH_ALL" 2>/dev/null # implement.sh release-plan (a legacy feature): every PR, with its state
              elif [[ "$*" == *headRefName* ]]; then cat "$GH_OPEN" 2>/dev/null
+             elif [[ "$*" == *"--state merged"* && "$*" == *headRefOid* ]]; then echo "${GH_MERGED_HEAD:-}" # implement.sh audit-plan: the merged PR's head
              elif [[ "$*" == *"--state merged"* ]]; then : # no merged PR unless GH_PR_JSON lists one
              elif [[ -n "$h" ]]; then if [[ -f "$GH_PR" && "$(cat "$GH_PR.head" 2>/dev/null)" == "$h" ]]; then cat "$GH_PR"; fi
              elif [[ -f "$GH_PR" ]]; then cat "$GH_PR"; fi; exit 0 ;;
@@ -92,7 +93,8 @@ case "$1 $2" in
                echo "$h" > "$GH_PR.head"; echo "https://github.com/acme/app/pull/99" | tee "$GH_PR" ;;
   "issue list") if [[ -n "${GH_FAIL_ISSUE_LIST:-}" ]]; then echo "HTTP 502: Bad Gateway" >&2; exit 1; fi
                 cat "$GH_CLOSED" 2>/dev/null; exit 0 ;;
-  "repo view") exit 1 ;;
+  "repo view") # pr.sh's visibility lookup: $GH_VISIBILITY (PUBLIC, PRIVATE, INTERNAL); unset: gh cannot tell
+               if [[ "$*" == *visibility* && -n "${GH_VISIBILITY:-}" ]]; then echo "$GH_VISIBILITY"; exit 0; fi; exit 1 ;;
   "issue view") printf '%s\n%s\n' "${GH_VIEW_STATE:-OPEN}" "${GH_VIEW_BODY:-an older body}"; exit 0 ;; # as --jq '.state + "\n" + .body
   "release view") if grep -qxF "$3" "$GH_RELEASES" 2>/dev/null; then echo "{\"tagName\":\"$3\"}"; else echo "release not found" >&2; exit 1; fi ;;
   "pr view") echo "${GH_PR_DRAFT:-false}"; exit 0 ;; # as --json isDraft --jq .isDraft
@@ -221,6 +223,18 @@ plan_report() {
 }
 # plan_review [<model>]: write that report and record it.
 plan_review() { plan_report "$@" && "$SCRIPTS/review.sh" record --plan "$TMP/plan.md"; }
+
+# security_reviewed [<finding line>...]: the end check's security review of HEAD, recorded as review.sh record
+# --security does (the check ref moved to HEAD); its Security: line counts the confirmed lines given.
+security_reviewed() {
+  local d h; d="$(sed -n 's/.*"feature_directory": *"\([^"]*\)".*/\1/p' .specify/feature.json)"; h="$(git rev-parse HEAD)"
+  git update-ref "refs/landspec/check/$(basename "$d")" "$h"
+  { printf '%s\n' "$@"; echo 'Coverage: scanners run: none; missing: gitleaks, semgrep; groups: injection'
+    echo "Copy: $TMP/no-copy"; echo "Reviewed: $(git rev-parse "$h^")..$h"; echo 'Model: claude-opus-5-5'
+    printf '%s\n' "$@" | awk '/^- confirmed: / { n[$3]++ } END { printf "Security: %d critical, %d high, %d medium, %d low\n", n["critical"], n["high"], n["medium"], n["low"] }'
+    echo; echo 'Assessment: ready'; } > "$TMP/security.md"
+  "$SCRIPTS/review.sh" record --security "$TMP/security.md" >/dev/null 2>&1
+}
 
 # commit_tasks <content>: write tasks.md, commit it on main and develop.
 commit_tasks() {

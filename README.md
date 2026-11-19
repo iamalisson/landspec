@@ -94,11 +94,11 @@ branches start there. What `new` asks and sets up: [docs/reference.md](docs/refe
 | | `/speckit-plan` | the technical plan |
 | | `/speckit-tasks` | the task list, grounded in the real code, and one Opus review of the plan; no GitHub issues |
 | | *(optional)* `/speckit-analyze` | a consistency check (required on `full`) |
-| **Then, once per feature** | `/landspec:implement` | every startable task at once, **in parallel** (up to `parallel_tasks`), each in its own copy: **code → tests → Opus review → landed on the feature branch**; a task that depends on another starts once that one has landed. A draft PR opens after the first landing (`pr.sh feature`). Then all of them checked together against the suite and the spec, any gap filed as a new task, and one scan and mutation run of the whole diff before the PR is marked ready |
+| **Then, once per feature** | `/landspec:implement` | every startable task at once, **in parallel** (up to `parallel_tasks`), each in its own copy: **code → tests → Opus review → landed on the feature branch**; a task that depends on another starts once that one has landed. A draft PR opens after the first landing (`pr.sh feature`). Then all of them checked together against the suite and the spec, any gap filed as a new task, one security review of the feature's diff beside that check, and one scan and mutation run of the whole diff before the PR is marked ready |
 | | review and merge the feature PR | one merge for the whole feature |
 | *(any time)* | `/landspec:next` | progress: done, failed, pending and waiting tasks, the branch and the PR; it offers `/landspec:implement`. Several features? `next 002` |
 | *(optional, once per project)* | `/landspec:aws` | the AWS access layer on: `.mcp.json`, the "Cloud access" rules, and the deploy command for the read-only or build agent role, for you to run; landspec itself makes no AWS call |
-| **When the feature PR is merged** | `/landspec:implement` | the full security audit, unattended, then the release PR, the tag and the release, one step per run; a confirmed critical or high holds the release |
+| **When the feature PR is merged** | `/landspec:implement` | the release PR, the tag and the release, one step per run; the feature's security review stands in for the audit (without one, the full security audit runs first, unattended, and a confirmed critical or high holds the release) |
 
 **Small fixes don't need the feature loop.** A typo, a one-line bug fix or a dependency bump
 goes on a normal branch with a normal PR, through `pr.sh fix`. The independent review, the hooks
@@ -111,8 +111,9 @@ task. See **[examples/](examples/)** for one feature walked through from spec to
 the real PR body.
 
 When the feature PR is merged, run `/landspec:implement` again, however the tasks were done: it checks the
-feature is on the base, audits the base
-(`/landspec:security` `full`, unattended, once per commit) and makes the release. A confirmed critical
+feature is on the base and makes the release; the feature's security review, passed before the PR
+was ready, stands in for an audit. Only when none is recorded it first audits the base
+(`/landspec:security` `full`, unattended, once per commit). A confirmed critical
 or high finding holds it, with nothing filed or posted, and the run ends with `run /landspec:security
 <report>`, which tracks and fixes it without disclosing it.
 
@@ -127,8 +128,9 @@ Why one branch and one PR per feature, with tasks reviewed one by one, with the 
 | **every command Claude runs** | blocks `--no-verify`, `git add -A`, commits on base branches and pushes to them, and `gh pr create` outside `pr.sh` (a promotion between long-lived branches aside) |
 | **every push** | re-checks every outgoing commit, including ones made with `--no-verify` |
 | **before each task lands, and before each PR** | an **independent review** by a fresh agent (`landspec:reviewer`, on Opus only), in its own copy of the reviewed commit, that reads the diff and the code around it in one fast pass (following personal data and secrets into the helpers that log them), like Copilot code review, with no subscription needed, scanners on the changed files (the PR is refused until they ran on its exact diff), `/security-review` |
+| **before the feature PR is ready** | one **security review** of the feature's diff (Opus, its own copy), at the same time as the feature review: it maps what the diff exposes, hunts only there with the scanners' findings as leads, and tries to disprove each finding; a confirmed critical or high keeps the PR a draft; `security_review: off` turns it off |
 | **every PR, and weekly** | CI gate (standard and full): Gitleaks, OSV-Scanner and zizmor (Semgrep with the OWASP rules on `full`, from its image pinned by digest, its rules fetched from the Semgrep registry at run time; trivy on Dockerfiles and Terraform when the project has them), all pinned and checksum-verified |
-| **before a release** | `/landspec:security`, the full audit, run unattended by `/landspec:implement` before the bump; a confirmed critical or high holds the release |
+| **on demand** | `/landspec:security`, the full audit of the whole repository; before a release `/landspec:implement` runs it only for a feature with no recorded security review (a confirmed critical or high holds the release; `release_audit: off` turns that off, and the release notes then say so) |
 
 Why each layer exists, and what it can't do: **[docs/security.md](docs/security.md)**.
 

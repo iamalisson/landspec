@@ -6,6 +6,11 @@ argument-hint: "[quick|full|deep|<report>]"
 
 # Security audit
 
+This is the full audit, on demand. `/landspec:implement` does not run it for a feature: there, one
+**security review** of the feature's diff (`review.md`, "A security review") runs in the end check,
+before the PR is ready, and stands in for the audit at the release. Run this skill when the whole
+repository is the question: before a launch, after adopting a codebase, on a schedule.
+
 **Modes**
 - `quick`: only what this branch changed. Scanners on the changed files, `/security-review`,
   the sweep limited to the touched code.
@@ -17,7 +22,15 @@ argument-hint: "[quick|full|deep|<report>]"
   fresh verification (step 5) disproves gets the reason written in the report, and the new count of
   confirmed critical or high recorded with `implement.sh audit-record <commit> <report> <n>` (the
   commit is the report's): with 0, the next `/landspec:implement` goes on with the release.
-- **Unattended** (the audit `/landspec:implement` runs before a release): `full`, steps 1 to 6 only, on
+  A report with a `Security:` count line is the end check's security review (the record
+  `review.sh record --security` printed as `REPORT=`), held on a public repository: fix its confirmed
+  critical and high findings on the feature branch, each with its regression test, and commit them
+  with a neutral message; the next `/landspec:implement` checks the new head and reviews it again.
+  One that a fresh verification disproves is settled by the confirming security review of
+  `review.md` ("No second agent by default"), recorded with `review.sh record --security`, never by
+  editing the record.
+- **Unattended** (the audit `/landspec:implement` runs before a release when no security review is
+  recorded for the feature, `AUDIT=needed`): `full`, steps 1 to 6 only, on
   the checkout it names. Ask nothing; change no file in the working tree (the scanners' reports in
   `REPORT_DIR`, inside `.git`, are fine), commit nothing, open no issue, advisory or PR,
   post nothing. Write the report where the prompt says (not `REPORT_DIR`), and end with one line

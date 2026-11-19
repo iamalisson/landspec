@@ -28,6 +28,8 @@ argument-hint: "[feature]"
    at once, each in its own copy, through its tests and an Opus review, and lands
    each one. When `NEXT` is empty and `DONE=y/y`, it checks the whole feature against the spec
    (gaps become new tasks) and marks the feature's one PR ready; then, once the developer merged
-   it, the next run audits it and makes the release (each step once; a confirmed critical or high
+   it, the next run makes the release: it reuses the feature's security review, and the
+   whole-repository audit runs first only when there is none and `release_audit` is not `off`
+   (each step once; a confirmed critical or high of that audit
    holds it and names `/landspec:security <report>`). Then `/speckit-specify` for the next feature. Make sure the working tree is clean
    first; if it isn't, say so; never stash or discard.
