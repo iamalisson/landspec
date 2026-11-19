@@ -705,8 +705,13 @@ git switch --quiet main
 check "when pr.sh feature runs off the feature branch, then it refuses naming branch.sh <feature>" \
   'one_refusal "run branch.sh 001-demo" "$p" feature "feat: demo" "$TMP/fbody.md"'
 git switch --quiet "$FB"
-check "when no scan was recorded for the feature diff, then pr.sh feature refuses (the shared gates run)" \
-  'fails_with "no security-scan.sh --changed result for this diff" "$p" feature "feat: demo" "$TMP/fbody.md" && ! grep -q "^pr create" "$GH_LOG"'
+# The draft opens after the first landing, long before the scan and mutation testing of the whole diff (research R15).
+mkdir -p .specify/memory
+printf '**Commands**: build `[BUILD_COMMAND]` · test `true` · lint `[LINT_COMMAND]` · mutate `false`\n' > .specify/memory/constitution.md
+out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>"$TMP/pr.err")" || true
+check "when the feature diff has no scan and no mutants record, with a mutate command, then pr.sh feature (no --ready) still opens its draft" \
+  '[[ "$out" == *"READY=no" ]] && grep -q "^pr create --draft" "$GH_LOG" && ! grep -qE "security-scan|mutants" "$TMP/pr.err"'
+rm .specify/memory/constitution.md; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
 sed -i.bak 's/^- \[ \] T003 /- [X] T003 /' specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak; git commit --quiet -am "docs: tick T003 by hand"
 check "when a task is ticked with no landing commit, then pr.sh feature refuses it" \
   'one_refusal "T003 is ticked but was never landed: untick it or run /landspec:implement" "$p" feature "feat: demo" "$TMP/fbody.md"'

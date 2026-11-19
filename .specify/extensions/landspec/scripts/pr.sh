@@ -11,8 +11,9 @@
 #   pr.sh feature "feat(api): price search" <body-file>
 #       On the feature's branch: the gates of a fix PR on the whole diff from the base, except the
 #       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
-#       [X] with no landing commit. Adds a "## Tasks" table and "## End check" from the feature's
-#       end-check record when there is one; closes no issue.
+#       [X] with no landing commit, and needs no scan or mutants record (the draft opens after the
+#       first landing; they run once on the whole diff). Adds a "## Tasks" table and "## End check"
+#       from the feature's end-check record when there is one; closes no issue.
 #       Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
 #       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch: the same
@@ -105,13 +106,13 @@ case "$mode" in
     # same gate, so no PR opens without a recorded review at any level; only "Closes #N" is task-only.
     branch="$(git branch --show-current)"; issue=""
     # What feature mode changes, set here once: no branch-wide review (research R9), a draft, the generated sections.
-    need_review=true; draft=false; nodraft=""; ready=""; extra=""
+    need_review=true; need_scan=true; draft=false; nodraft=""; ready=""; extra=""
     if [[ "$mode" == feature ]]; then
       title="${2:-}"; body_file="${3:-}"
       [[ -n "$title" && -n "$body_file" ]] || die 'usage: pr.sh feature "type(scope): summary" <body-file>'
       [[ "$branch" == "$(feature_branch "$fdir")" ]] \
         || die "not on the feature's branch $(feature_branch "$fdir") (on '${branch:-a detached HEAD}'); run branch.sh $(basename "$fdir")"
-      need_review=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
+      need_review=false; need_scan=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
       feature_sections
     elif [[ "$mode" == task ]]; then
       task="${2:-}"; title="${3:-}"; body_file="${4:-}"
@@ -177,7 +178,8 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     # carries them, a security finding as one line), so nothing private reaches a public PR here.
     review=""; if $need_review; then review="$(bash "$LANDSPEC_EXT_DIR/scripts/review.sh" report)"; fi
     # Mutation testing too, when the project has a mutate command: mutants.sh records it per diff.
-    if [[ -n "$(constitution_cmd mutate)" ]]; then
+    if ! $need_scan; then : # the draft: scan and mutants run once on the whole feature diff (research R15)
+    elif [[ -n "$(constitution_cmd mutate)" ]]; then
       mutants="$(diff_record landspec-mutants)"
       [[ -f "$mutants" ]] || die "no mutants.sh result for this diff; run bash .specify/extensions/landspec/scripts/mutants.sh after the last commit"
       grep -q '^mutants unavailable' "$mutants" \
@@ -191,9 +193,9 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     fi
     # And the scanners on the changed files: a finding is for the body to say; one that did not run, the body names here.
     scan="$(diff_record landspec-security)"
-    [[ -f "$scan" ]] \
+    ! $need_scan || [[ -f "$scan" ]] \
       || die "no security-scan.sh --changed result for this diff; run bash .specify/extensions/landspec/scripts/security-scan.sh --changed after the last commit"
-    gaps="$(awk '$2=="missing"||$2=="failed"{printf "%s%s (%s)", s, $1, $2; s=", "}' "$scan")"
+    gaps=""; ! $need_scan || gaps="$(awk '$2=="missing"||$2=="failed"{printf "%s%s (%s)", s, $1, $2; s=", "}' "$scan")"
     [[ -z "$gaps" ]] || body+=$'\n\n'"Scanners not run: $gaps"
     # With aws: on, an infrastructure diff needs its Terraform plan recorded (tfplan.sh), which the body shows.
     tfplan="$(bash "$LANDSPEC_EXT_DIR/scripts/tfplan.sh" gate)" || exit 1

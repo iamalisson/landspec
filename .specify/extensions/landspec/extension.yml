@@ -31,7 +31,7 @@ provides:
       description: "Switch to the task's branch before implementing"
     - name: speckit.landspec.pr
       file: commands/pr.md
-      description: "Commit, push and open the task's pull request"
+      description: "Open the feature's draft pull request, or any other PR"
     - name: speckit.landspec.review
       file: commands/review.md
       description: "Independent review of the branch or the plan by a fresh reader grounded in the whole repository"
@@ -60,6 +60,6 @@ hooks:
   after_implement:
     command: speckit.landspec.pr
     optional: false
-    description: "Open the task's pull request"
+    description: "Open or update the feature's draft pull request"
 
 tags: ["github", "branching", "workflow", "best-practices"]

@@ -302,8 +302,8 @@ check "when the implementer, the reviewer and the single-task path are read, the
   'grep -qF "3. Follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\` first, before writing code." agents/implementer.md \
    && grep -qF "3. In a task review (full or delta), follow the \"Installed skills and MCP servers\" section of commands/review.md before reading the diff" agents/reviewer.md \
    && [[ "$(flat < extension/commands/branch.md)" == *"Before writing code, follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\`"* ]]'
-check "when OPEN and pr.md step 5 are read, then the Skills: line goes in Evidence, with not reported when the implementer gave none" \
-  '[[ "$(flat < skills/implement/SKILL.md)" == *"its \`Skills:\` line goes in *Evidence* as it returned it; an implementer that returned none, or a run resumed after the line was lost, gives \`Skills: not reported\`, never \`none matched\`"* \
+check "when the draft PR and pr.md step 5 are read, then each implementer's Skills: line goes in Evidence, with not reported when it gave none" \
+  '[[ "$(flat < skills/implement/SKILL.md)" == *"each implementer'"'"'s \`Skills:\` line, as it returned it, under its task id; an implementer that returned none, or a run resumed after the line was lost, gives \`Skills: not reported\`, never \`none matched\`"* \
    && "$(sed -n "/^5\. /,/^6\. /p" extension/commands/pr.md | flat)" == *"\`## Evidence\`: one visible line per result"*"showing the task'"'"'s *Completed when* is met, and the implementer'"'"'s \`Skills:\` line"*"\`Skills: not reported\` when it gave none"* ]]'
 
 # The installed copies (specify extension add --dev extension --force) are what this repo runs: they match the source.
@@ -352,28 +352,64 @@ if [[ "$v_plugin" == 1.8.0 ]]; then
     'for n in 13 14 15 16 17 18 19 20 21; do grep -q "^| T0$n |" "$notes" || exit 1; done'
 fi
 
-# /landspec:implement (spec 004 T006): the loop's steps, the order around the PR, and the implementer's rules.
+# /landspec:implement (spec 008 T004): every startable task at once on its task ref, each landed on the feature branch as it is ready.
 im="$(cat skills/implement/SKILL.md)"; ag="$(cat agents/implementer.md)"
+imf="$(flat <<<"$im")"; agf="$(flat <<<"$ag")"
 check "when /landspec:implement launches an implementer, then it uses landspec:implementer with isolation worktree, in the background" \
   'grep -qF "subagent_type: \"landspec:implementer\"" <<<"$im" && grep -qF "isolation: \"worktree\"" <<<"$im" && grep -qF "run_in_background: true" <<<"$im"'
-check "then each pass runs restack, then status with --running, and reviews against base: <base_ref <branch>>" \
-  'grep -qF "I restack" <<<"$im" && grep -qF "I status --running" <<<"$im" && grep -qF "base: <base_ref <branch>>" <<<"$im"'
-check "then it has a step for each of START, REVIEW, FIX and OPEN, and reads ORDER=" \
-  'for k in START REVIEW FIX OPEN; do grep -qF "**\`$k\`**" <<<"$im" || exit 1; done; grep -qF "ORDER=" <<<"$im"'
+check "then it works on the feature branch and each pass runs status with one --running per implementer in flight" \
+  'grep -qF "branch.sh <feature>" <<<"$im" && grep -qF "\`I status --running <id> --running <id> …\`, one \`--running\` per implementer in flight" <<<"$imf"'
+check "then it has a step for each of START, REVIEW, FIX and LAND, and reads ORDER=" \
+  'for k in START REVIEW FIX LAND; do grep -qF "**\`$k\`**" <<<"$im" || exit 1; done; grep -qF "ORDER=" <<<"$im"'
+check "then START gives the implementer its REF= and FROM=, resumed on RESUME=yes" \
+  's="$(sed -n "/\*\*\`START\`\*\*/,/\*\*\`REVIEW\`\*\*/p" <<<"$im" | flat)"; [[ "$s" == *"\`REF=\`"* && "$s" == *"\`FROM=\`"* && "$s" == *"\`RESUME=yes\`"* ]]'
+rv_sec="$(sed -n "/\*\*\`REVIEW\`\*\*/,/\*\*\`FIX\`\*\*/p" <<<"$im" | flat)"
+check "then REVIEW runs one reviewer on model: opus whose branch: is the task ref and base: the feature branch, recorded with record --branch <REF>" \
+  '[[ "$rv_sec" == *"\`model: opus\`"* && "$rv_sec" == *"\`branch:\` the task ref (\`REF=\`)"* && "$rv_sec" == *"\`base:\` the feature branch"* && "$rv_sec" == *"\`review.sh record --branch <REF> <report>\`"* ]]'
+check "then a fix or conflict round is always recorded with record --delta, never a full review instead" \
+  '[[ "$rv_sec" == *"always \`review.sh record --delta --branch <REF> <report>\`"* ]] && ! grep -qF "full review instead" <<<"$im"'
+check "then a high or medium finding marks the task changes" '[[ "$rv_sec" == *"a high or medium finding is \`changes\`"* ]]'
 check "then a task under review is in flight, so a second reviewer never starts on it, and the run waits for reviewers too" \
-  'r="$(sed -n "/\*\*\`REVIEW\`\*\*/,/\*\*\`FIX\`\*\*/p" <<<"$im")"; grep -qF "Add the task to \`in flight\`" <<<"$r" && grep -qF "remove it from \`in flight\`" <<<"$r" && grep -qF "no implementer and no reviewer" <<<"$im"'
-check "then a fix round reads the review from the <task>.report file, is reviewed as a delta, and falls back to a full review when the delta refuses" \
-  'r="$(sed -n "/\*\*\`REVIEW\`\*\*/,/\*\*\`FIX\`\*\*/p" <<<"$im" | tr "\n" " " | tr -s " ")"; grep -qF "landspec-run/<feature dir name>/<task>.report" <<<"$im" \
-   && grep -qF "\`review.sh record --delta --branch <branch> <report>\`" <<<"$r" && grep -qF "When \`record --delta\` refuses" <<<"$r" && grep -qF "run a full review instead and record it with \`review.sh record --branch\`" <<<"$r" && ! grep -qF "never \`--delta\`" <<<"$im"'
-check "then OPEN runs the scan and mutation testing only when this diff has no record of them" \
-  'o="$(sed -n "/\*\*\`OPEN\`\*\*/,/^4\. /p" <<<"$im" | tr "\n" " " | tr -s " ")"; grep -qF "only when this diff has no record of them" <<<"$o" && grep -qF "diff_record" <<<"$o" && grep -qF "landspec-security" <<<"$o" && grep -qF "landspec-mutants" <<<"$o"'
-check "then every return that is not done leaves in flight, and one that returns nothing is marked red, failed at RED=2 or with no branch" \
-  'r="$(sed -n "/^Otherwise:/,/^## End/p" <<<"$im" | tr "\n" " " | tr -s " ")"; [[ "$(grep -o "remove it from \`in flight\`" <<<"$r" | wc -l)" -eq 4 ]] \
-   && grep -qF "It returned none of these" <<<"$r" && grep -qF "With a branch, \`I mark <task> red\`: at \`RED=2\`, \`I fail <task> \"implementer returned nothing\"\`" <<<"$r" && grep -qF "With no branch, \`I fail <task> \"implementer returned nothing\"\` at once" <<<"$r"'
-check "when the implementer works, then it reads the test rules and Method step 2 it is held to, and runs the scan and mutants before it detaches" \
-  'grep -qF "\"Tests are evidence\" rules of \`.specify/extensions/landspec/commands/pr.md\` step 2" <<<"$ag" && grep -qF "step 2 of the Method in \`.specify/extensions/landspec/commands/review.md\`" <<<"$ag" \
-   && [[ "$(grep -n "security-scan.sh --changed\` and \`bash .specify/extensions/landspec/scripts/mutants.sh\`" <<<"$ag" | cut -d: -f1)" -lt "$(grep -n "Last, \`git switch --detach\`" <<<"$ag" | cut -d: -f1)" ]] \
-   && grep -qF "the last \`security-scan.sh\` and \`mutants.sh\` result lines" <<<"$ag"'
+  '[[ "$rv_sec" == *"Add the task to \`in flight\`"* && "$rv_sec" == *"remove it from \`in flight\`"* ]] && grep -qF "skipping any task that is in \`in flight\`" <<<"$im" && grep -qF "no implementer and no reviewer" <<<"$im"'
+fx_sec="$(sed -n "/\*\*\`FIX\`\*\*/,/\*\*\`LAND\`\*\*/p" <<<"$im" | flat)"
+check "then FIX is one round through SendMessage, with the <task>.report, or a new implementer with RESUME=yes" \
+  '[[ "$fx_sec" == *"landspec-run/<feature dir name>/<task>.report"* && "$fx_sec" == *"SendMessage"* && "$fx_sec" == *"if SendMessage is not available, or the agent is gone, launch a new implementer as in \`START\`, with \`RESUME=yes\`"* ]]'
+check "then a CONFLICT= round has the implementer merge the feature branch into its ref and run the tests, then a delta review and land again" \
+  '[[ "$fx_sec" == *"\`REASON=conflict\`"* && "$fx_sec" == *"merges the feature branch into its ref, resolves the conflict, runs the tests"* && "$fx_sec" == *"a delta review and \`land\` again"* ]]'
+ld_sec="$(sed -n "/\*\*\`LAND\`\*\*/,/^3\. /p" <<<"$im" | flat)"
+check "then LAND runs I land <task> one at a time as soon as a task is ready, and status again after every landing" \
+  '[[ "$ld_sec" == *"\`I land <task>\`"* && "$ld_sec" == *"one \`land\` at a time"* && "$ld_sec" == *"\`status\` again after every landing"* && "$ld_sec" == *"\`CONFLICT=<id> FILES=<files>\`"* ]]'
+check "then FAILED= is reported and the run goes on" 'grep -qF "\`FAILED=<id>\`: reported, and the run goes on" <<<"$imf"'
+check "then a draft pr.sh feature opens after the first landing and is updated at the end of each run, without the scan or mutation testing" \
+  'd="$(sed -n "/^## The draft PR/,/^## T/p" <<<"$im" | flat)"; [[ "$d" == *"after the first landing"* && "$d" == *"at the end of each run"* && "$d" == *"\`pr.sh feature \"<title>\" <body-file>\`"* && "$d" == *"no scan and no mutation testing"* ]]'
+check "then the skill names no per-task PR step: no restack, stack, OPEN, pr.sh task, issues.sh, SIMPLIFY, review.sh answer --plan, 20 lines or per-task scan record" \
+  '! grep -qE "restack|I stack|\*\*\`OPEN\`\*\*|pr\.sh task|issues\.sh|SIMPLIFY|answer --plan|20 lines|landspec-security|landspec-mutants" <<<"$im"'
+ir="$(sed -n "/^## When an implementer returns/,/^Otherwise:/p" <<<"$im" | flat)"
+check "then a returning implementer is marked implemented, and on no green record its tests run in its copy through run_tests" \
+  '[[ "$ir" == *"\`I mark <task> implemented\`"* && "$ir" == *"no green test run"* && "$ir" == *"run_tests"* ]]'
+check "then red once goes back to its implementer with the test output, and red twice fails the task" \
+  '[[ "$ir" == *"red: \`I mark <task> red\`. At \`RED=2\`"* && "$ir" == *"\`I fail <task> \"tests red twice\"\`"* && "$ir" == *"At \`RED=1\`, SendMessage its implementer the test output"* && "$ir" == *"It stays in flight."* ]]'
+check "then every return that is not done leaves in flight, and one that returns nothing is marked red, failed at RED=2 or with no task ref" \
+  'r="$(sed -n "/^Otherwise:/,/^## /p" <<<"$im" | flat)"; [[ "$(grep -o "remove it from \`in flight\`" <<<"$r" | wc -l)" -eq 3 ]] \
+   && [[ "$r" == *"With a task ref, \`I mark <task> red\`: at \`RED=2\`, \`I fail <task> \"implementer returned nothing\"\`"* && "$r" == *"With no task ref, \`I fail <task> \"implementer returned nothing\"\` at once"* ]] && ! grep -qF "elsewhere" <<<"$im"'
+check "then a missing Copy: is recreated detached on the task ref beside the repository" 'grep -qF "git worktree add --detach <repo>-<feature>-<task> <REF>" <<<"$im"'
+check "then a failed worktree_setup fails the task with its output" 'grep -qF "I fail <task> \"worktree_setup: <its output>\"" <<<"$im"'
+check "then the End lists each failed task with its findings and the feature PR" \
+  'e="$(sed -n "/^## End/,\$p" <<<"$im" | flat)"; [[ "$e" == *"each \`failed\` task with its reason and, when its review rounds failed it, the findings of its last report"* && "$e" == *"the feature PR"* ]] && ! grep -qF "PRs to merge" <<<"$e"'
+check "when the implementer starts, then it makes its task ref from FROM= (or switches to it on RESUME=yes) and records the feature branch as its parent" \
+  '[[ "$agf" == *"\`git switch -c <REF> <FROM>\`"* && "$agf" == *"\`git switch <REF>\` on \`RESUME=yes\`"* && "$agf" == *"\`git config branch.<REF>.landspec-parent <feature branch>\`"* ]]'
+check "then it runs the tests through run_tests after its last commit, merges the feature branch on a conflict round, and returns Copy: and REF=" \
+  '[[ "$agf" == *"run_tests"* && "$agf" == *"After your last commit"* && "$agf" == *"\`git merge <feature branch>\`"* && "$agf" == *"\`Copy: <git rev-parse --show-toplevel>\` and \`REF=<ref>\`"* ]]'
+check "then a fix or conflict round switches the detached copy to its ref first" \
+  '[[ "$(sed -n "/^5\. /p" <<<"$ag")" == *"\`git switch <REF>\` first"* ]]'
+check "then it returns one Test changes: reason per existing test file it changed, or Test changes: none" \
+  '[[ "$agf" == *"\`Test changes: <file> <why>\` line per existing test file you changed (edited, renamed, skipped or deleted), or \`Test changes: none\`"* ]]'
+check "then the draft PR keeps each implementer's Test changes: lines and writes ## Test changes when the feature diff changes existing tests" \
+  'd="$(sed -n "/^## The draft PR/,/^## T/p" <<<"$im" | flat)"; [[ "$d" == *"when the feature diff changes an existing test, \`## Test changes\`: each landed task'"'"'s \`Test changes:\` lines under its task id"* ]] && grep -qF "the \`Test changes:\` lines its implementer returned" <<<"$imf"'
+check "then it never runs branch.sh, git push, security-scan.sh or mutants.sh, and returns no Elsewhere:" \
+  '! grep -qE "branch\.sh|git push|security-scan\.sh|mutants\.sh|Elsewhere:" <<<"$ag"'
+check "when the implementer works, then it reads the test rules and Method step 2 it is held to" \
+  'grep -qF "\"Tests are evidence\" rules of \`.specify/extensions/landspec/commands/pr.md\` step 2" <<<"$ag" && grep -qF "step 2 of the Method in \`.specify/extensions/landspec/commands/review.md\`" <<<"$ag"'
 check "when pr.md records the review, then it records the file the reviewer names, never a saved copy" \
   '! grep -qF "Save the report as it came" extension/commands/pr.md && grep -qF "Record the file the reviewer names on its report'"'"'s first line (\`Report file: <path>\`), as it" extension/commands/pr.md'
 check "when pr.md runs step 4, then the scan comes before the reviewer, mutants after /security-review, and a test-only commit after ready gets a delta" \
@@ -381,18 +417,12 @@ check "when pr.md runs step 4, then the scan comes before the reviewer, mutants 
    && grep -qF "never both at once in this tree" <<<"$s4" && grep -qF "A commit that only adds tests (killing a survivor) after a \`ready\` review is checked with a delta." <<<"$s4" && grep -qF "after any later commit (a fix round'"'"'s too), run both again" <<<"$s4"'
 check "when pr.md runs mutants while the reviewer runs, then it waits for mutants.sh before it records, edits or re-runs step 2" \
   's4="$(sed -n "/^4\. /,/^5\. /p" extension/commands/pr.md | tr "\n" " " | tr -s " ")"; [[ "$s4" =~ Wait\ for\ \`mutants\.sh\`\ to\ finish\ before\ you\ record\ the\ review,\ edit\ any\ file\ or\ re-run\ step\ 2.*Record\ the\ file\ the\ reviewer\ names ]]'
-check "then a returning implementer's tests run first in its copy: green marks it implemented, red marks it red, failed at RED=2" \
-  'r="$(sed -n "/^## When an implementer returns/,/^## End/p" <<<"$im")"; grep -qF "run the project'"'"'s test command before anything else" <<<"$r" \
-   && grep -qF "green: \`I mark <task> implemented\`" <<<"$r" && grep -qF "red: \`I mark <task> red\`. At \`RED=2\`" <<<"$r" && grep -qF "\`I fail <task> \"tests red twice\"\`" <<<"$r"'
-check "then only implementers take parallel_tasks slots (status --running), while every task in flight is kept from restack" \
-  'grep -qF "\`I status --running <the implementers in flight, comma separated>\`" <<<"$im" && grep -qF "\`I restack --running <every task in flight, implementers and reviewers, comma separated>\`" <<<"$im" \
-   && grep -qF "reviewers take no slot" docs/reference.md'
-check "then a listed task already in flight is skipped, so a task under review never gets a second reviewer" \
-  'grep -qF "skipping any task that is in \`in flight\`" <<<"$im"'
-check "then red once goes back to its implementer with the test output, not through FIX's review report" \
-  'r="$(sed -n "/^## When an implementer returns/,/^## End/p" <<<"$im")"; grep -qF "At \`RED=1\`, SendMessage its" <<<"$r" && grep -qF "with that output. It stays in flight." <<<"$r"'
-check "then the PR step switches to the branch first, runs gh pr ready after pr.sh task on a draft that targets the base, and detaches last" \
-  'o="$(sed -n "/\*\*\`OPEN\`\*\*/,/^4\. /p" <<<"$im" | tr "\n" " ")"; [[ "$o" =~ git\ switch\ \<branch\>.*pr\.sh\ task.*gh\ pr\ ready.*git\ switch\ +--detach ]] && grep -qF "never while \`landspec-parent\` is set" <<<"$o"'
+check "when pr.md is read, then it opens the feature PR with pr.sh feature and no task PR: no pr.sh task, Closes # or Refs #" \
+  'p="$(flat < extension/commands/pr.md)"; [[ "$p" == *"\`pr.sh feature \"<title>\" <body-file>\`"* && "$p" == *"no review, scan or mutation testing here"* ]] && ! grep -qE "pr\.sh task|Closes #|Refs #" extension/commands/pr.md'
+check "when the preset implement command is read, then it builds the feature as /landspec:implement does, ticks only through land, and has no one-task rule" \
+  'f=preset/commands/speckit.implement.md; grep -qF "Build the feature'"'"'s tasks as \`/landspec:implement\` does" $f && grep -qF "\`implement.sh land\`" $f && grep -qF "Do not mark tasks \`[X]\`" $f && ! grep -qiE "one task|only the task|issue" $f'
+check "when the help overview is read, then the loop is once per feature, with nothing run once per task" \
+  '! grep -qF "once per task" skills/help/SKILL.md && grep -qF "/landspec:implement" skills/help/SKILL.md'
 check "then nothing in the skill or the implementer merges a PR" '! grep -qF "gh pr merge" skills/implement/SKILL.md agents/implementer.md'
 # Spec 007 T011: the hand-over rule (FR-025) and Copilot's comments (FR-024) in every hand-over step.
 handover_ok() {
@@ -400,23 +430,14 @@ handover_ok() {
   local t re='pr\.sh state <pr>`.{0,250}`CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`'
   t="$(flat < "$1")"; [[ "$t" =~ $re && "$t" == *'"CI still running"'* ]]
 }
-for f in skills/implement/SKILL.md extension/commands/pr.md extension/commands/branch.md; do
+for f in extension/commands/pr.md extension/commands/branch.md; do
   check "when $f hands a PR over, then it runs pr.sh state and the CONFLICT=no / COPILOT= rule, with CI still running shown" "handover_ok $f"
 done
-check "when the implement End lists PRs, then each is [#N](<url>) and one waiting for Copilot is listed apart" \
-  'grep -qF "\`[#N](<url>)\`" <<<"$im" && grep -qF "\"waiting for Copilot'"'"'s review\"" <<<"$im"'
-check "when Copilot's threads are answered, then the implement skill and branch.md reply with a file and resolve RESOLVE= ones with none" \
-  'i="$(flat < skills/implement/SKILL.md)"; b="$(flat < extension/commands/branch.md)"
-   [[ "$i" == *"\`pr.sh state <pr> --reply <thread id> <file>\`"* && "$i" == *"\`pr.sh state <pr> --reply <thread>\`, with no file"* \
-   && "$b" == *"\`pr.sh state <pr> --reply <thread id> <file>\`"* && "$b" == *"\`pr.sh state <pr> --reply <thread id>\` with no file"* ]]'
-check "when the implementer has a Copilot fix round, then it returns one Answer: <thread id> line per thread, fixed or not a defect" \
-  'grep -qF "\`Answer: <thread id> fixed in <sha>\` or \`Answer: <thread id> not a defect: <reason>\` line per thread" <<<"$ag"'
+check "when Copilot's threads are answered, then branch.md replies with a file and resolves RESOLVE= ones with none" \
+  'b="$(flat < extension/commands/branch.md)"
+   [[ "$b" == *"\`pr.sh state <pr> --reply <thread id> <file>\`"* && "$b" == *"\`pr.sh state <pr> --reply <thread id>\` with no file"* ]]'
 check "when a hook rewrites files outside the task, then the implementer returns the Failed: formatter line (FR-017)" \
   'grep -qF "return \`Failed: formatter <hook> rewrote <n> files outside the task'"'"'s change: run /landspec:adopt, or format the code in its own PR first\` and stop" <<<"$ag"'
-check "then a missing Copy: is recreated detached beside the repository" 'grep -qF "git worktree add --detach <repo>-<feature>-<task> <branch>" <<<"$im"'
-check "then a fix round without SendMessage launches a new implementer on the branch" 'grep -qF "if SendMessage is not available, or the" <<<"$im" && grep -qF "launch a new implementer as in \`START\`, on the existing branch" <<<"$im"'
-check "then a failed worktree_setup fails the task with its output" 'grep -qF "I fail <task> \"worktree_setup: <its output>\"" <<<"$im"'
-check "then branch.sh exit 3 makes the task elsewhere and the next one starts" 'grep -qF "\`branch.sh\` exit 3" <<<"$im" && grep -qF "the task is \`elsewhere\`" <<<"$im"'
 check "then no \"not built yet\" line is left: the gaps are filed" '! grep -qF "not built yet" skills/implement/SKILL.md'
 gp="$(sed -n "/^5\. \*\*The gaps\*\*/,/^## /p" skills/implement/SKILL.md)"
 check "then each not met becomes a task through pr.sh spec, in the run worktree, which is detached last" \
@@ -448,17 +469,17 @@ check "when next.sh has shown the progress, then the next skill offers /landspec
 rv="$(cat extension/commands/review.md)"
 check "when review.md describes the feature review, then it has the three line kinds and record --feature" \
   'for k in "- met: " "- not met: " "- not verifiable: "; do grep -qF -- "$k" <<<"$rv" || exit 1; done; grep -qF "record --feature <file>" <<<"$rv" && grep -qF "only when no line is \`not met\`" <<<"$rv"'
-check "then /landspec:implement checks the feature: check-copy, a conflict stacked with stack, the test, check-result, the feature review, --remove" \
-  'grep -qF "I check-copy" <<<"$im" && grep -qF "I stack <task> <earlier task>" <<<"$im" && grep -qF "I check-result red" <<<"$im" && grep -qF "review.sh record --feature <report>" <<<"$im" && grep -qF "I check-copy --remove" <<<"$im"'
+check "then /landspec:implement checks the feature: check-copy, the test, check-result, the feature review, --remove" \
+  'grep -qF "I check-copy" <<<"$im" && grep -qF "I check-result red" <<<"$im" && grep -qF "review.sh record --feature <report>" <<<"$im" && grep -qF "I check-copy --remove" <<<"$im"'
 check "then it stops and asks on UNCHANGED= and ROUNDS_EXHAUSTED=, and waits for an open spec PR" \
   'grep -qF "\`UNCHANGED=<n>\`" <<<"$im" && grep -qF "\`ROUNDS_EXHAUSTED=<n>\`" <<<"$im" && grep -qF "Either way, stop, and ask the developer" <<<"$im" && grep -qF "merge <url> first" <<<"$im"'
 check "then the reference documents feature_rounds" 'grep -q "^| \`feature_rounds\` | \`3\` |" docs/reference.md'
 check "then it reads implement_model and refuses any model but sonnet, opus or fable" 'grep -qF "implement_model must be sonnet, opus or" <<<"$im"'
 check "when agents/implementer.md is read, then it is named implementer, isolated in a worktree, never git add -A, and detaches last" \
   'grep -qx "name: implementer" agents/implementer.md && grep -qx "isolation: worktree" agents/implementer.md && grep -qF "never \`git add -A\`" <<<"$ag" \
-   && grep -qF "Last, \`git switch --detach\`" <<<"$ag" && grep -qF "branch.sh <feature> <task> [--from <parent>]\`, first" <<<"$ag"'
-check "then it runs worktree_setup, stays in its copy, and returns Copy: and BRANCH=" \
-  'grep -qF "worktree_setup:" <<<"$ag" && grep -qF "never touch a path outside it" <<<"$ag" && grep -qF "\`Copy: <git rev-parse --show-toplevel>\` and \`BRANCH=<branch>\`" <<<"$ag"'
+   && grep -qF "Last, \`git switch --detach\`" <<<"$ag"'
+check "then it runs worktree_setup and stays in its copy" \
+  'grep -qF "worktree_setup:" <<<"$ag" && grep -qF "never touch a path outside it" <<<"$ag"'
 check "then without worktree_setup it prepares its own copy from the README, and returns Failed: setup: when the tests still cannot run" \
   'grep -qF "When it is not set, prepare your copy as the project'"'"'s README says" <<<"$ag" && grep -qF "in your copy only, never in the developer'"'"'s checkout" <<<"$ag" \
    && grep -qF "return \`Failed: setup: <what is missing>\` and stop" <<<"$ag"'
