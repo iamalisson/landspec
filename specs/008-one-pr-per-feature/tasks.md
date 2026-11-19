@@ -110,7 +110,7 @@ and landed on the branch; one draft PR per feature.
     landing reached only through a merge's second parent (a pull merge) shows `done`, and a bare
     `Landspec-Task: T001` does not count; `tests/run.sh` passes.
 
-- [ ] T003 [US1] Open one draft PR per feature with the task table and the latest end check, in extension/scripts/pr.sh (depends on T002)
+- [X] T003 [US1] Open one draft PR per feature with the task table and the latest end check, in extension/scripts/pr.sh (depends on T002)
   - Comes from: FR-010, FR-011, FR-012, US1 scenarios 2 and 4, US4 scenario 4, US5 scenarios 1-2; research R9; data-model "Feature PR"; contracts/scripts.md "pr.sh"
   - What: `pr.sh feature "<title>" <body-file>` is the existing `task|fix` arm of `pr.sh` with mode
     `feature` (the developer's answer to the plan review), on the feature branch only (else die
