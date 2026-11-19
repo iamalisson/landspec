@@ -51,7 +51,9 @@ current plan.
      and stop, with no commit and no `/landspec:implement` line. The developer fixes the plan and
      runs this command again.
    - **Medium** and **low** findings are shown to the developer, one line each; they never force
-     another pass.
+     another pass. To apply them, edit the folder, then run a **plan delta** (review.md's "Plan
+     delta", with its facts) instead of a full pass, and record it with
+     `review.sh record --plan --delta <file>`. A change no finding asked for needs the full pass.
 3. **Commit the spec folder on the feature branch.** Be on the feature's branch (the
    `after_specify` hook made it; `bash .specify/extensions/landspec/scripts/branch.sh <feature>`
    switches to it). Stage only the spec folder (`git add specs/<feature>/`), commit it as

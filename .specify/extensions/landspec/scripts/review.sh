@@ -344,10 +344,15 @@ case "$action" in
       df="$(field 'delta from')"
       if $delta; then
         # A plan delta reads only review.sh diff --plan: the edits since a ready round (its Lows), nothing else.
-        [[ -f "$record" && "$(hdr assessment)" == ready ]] \
-          || die "a plan delta follows a ready plan review: run the full plan review, then record it with review.sh record --plan <report-file>"
+        [[ -f "$record" && "$(hdr assessment)" == ready && "$(findings_hml "$record" | cut -d' ' -f1)" == 0 ]] \
+          || die "a plan delta follows a ready plan review with no high finding: run the full plan review, then record it with review.sh record --plan <report-file>"
         [[ "$df" == "$(hdr state)" ]] || die "a plan delta report names the state it started from: Delta from: $(hdr state); run the delta again"
         [[ "$st" != "$(hdr state)" ]] || die "the plan has not changed since the last plan review: nothing to record"
+        [[ -n "$(findings_hml "$report")" ]] || die "the report has no line 'Findings: <n> high, <n> medium, <n> low'"
+        # The passes are not run again, so a delta never adds or drops a task, an FR or an SC.
+        ids() { { grep -oE '^- \[.\] T[0-9]+' "$1/tasks.md" || true; grep -oE '^- \*\*(FR|SC)-[0-9]+\*\*' "$1/spec.md" 2>/dev/null || true; } | grep -oE '(T|FR-|SC-)[0-9]+' | LC_ALL=C sort || true; }
+        [[ "$(ids "$record.reviewed")" == "$(ids "$fdir")" ]] \
+          || die "a plan delta adds or removes no task, FR or SC: run the full plan review, then record it with review.sh record --plan <report-file>"
       else
         [[ -z "$df" ]] || die "this is a plan delta report: record it with review.sh record --plan --delta <report-file>"
         pass_tables

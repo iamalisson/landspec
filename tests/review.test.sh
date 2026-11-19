@@ -125,6 +125,15 @@ check "when a plan delta names a state that is not the last one recorded, then i
   'plan_delta "$d0" && fails_with "a plan delta report names the state it started from" "$r" record --plan --delta "$TMP/delta.md"'
 check "when a full plan report carries Delta from:, then record --plan refuses it as a delta" \
   'plan_delta "$d0" && fails_with "this is a plan delta report: record it with review.sh record --plan --delta" "$r" record --plan "$TMP/delta.md"'
+last() { sed -n "s/^state: //p" "$prec" | head -1; }
+check "when a second Low is applied after a recorded plan delta, then a delta from that delta records ready" \
+  'plan_delta "$(last)" && [[ "$("$r" record --plan --delta "$TMP/delta.md")" == REVIEW=ready ]]'
+printf '%s\n' '- [ ] T003 A task no Low asked for in `c`' >> specs/001-demo/tasks.md
+check "when a plan delta adds a task, then it is refused: a new task needs the full plan review" \
+  'plan_delta "$(last)" && fails_with "a plan delta adds or removes no task, FR or SC: run the full plan review" "$r" record --plan --delta "$TMP/delta.md"'
+sedi '/T003 A task no Low asked for/d' specs/001-demo/tasks.md; sedi 's/a second Low/a third Low/' specs/001-demo/tasks.md
+check "when a plan delta report has no Findings: line, then it is refused" \
+  'plan_delta "$(last)" && sedi "/^Findings:/d" "$TMP/delta.md" && fails_with "the report has no line '"'"'Findings: <n> high, <n> medium, <n> low'"'"'" "$r" record --plan --delta "$TMP/delta.md"'
 sedi 's/^assessment: ready$/assessment: changes needed/' "$prec"
 check "when the last plan round said changes needed, then a plan delta is refused" \
   'plan_delta "$(sed -n "s/^state: //p" "$prec" | head -1)" && fails_with "a plan delta follows a ready plan review" "$r" record --plan --delta "$TMP/delta.md"'
