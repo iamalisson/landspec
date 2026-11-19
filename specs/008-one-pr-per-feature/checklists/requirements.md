@@ -1,4 +1,4 @@
-# Specification Quality Checklist: One issue and one pull request per feature
+# Specification Quality Checklist: One pull request per feature
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-11-18
@@ -37,3 +37,7 @@
 - The three open choices were settled with the developer before writing: the spec, plan and tasks
   go in the same PR as the code; the Opus review runs after each task; the per-task flow is
   replaced, not kept as an option.
+- Revised 2026-11-18 by the developer: no GitHub issue at all, tasks in parallel by default, one
+  pass for the plan review and for the task review (one fix round), tests once per tree, the
+  security scan and mutation testing once per feature. The items above were checked again on the
+  revised spec.

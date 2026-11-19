@@ -1,4 +1,4 @@
-# Research: One issue and one pull request per feature
+# Research: One pull request per feature
 
 Each decision names what was chosen, why, and what else was weighed. Code references are to
 `extension/scripts/` unless a path says otherwise.
@@ -25,7 +25,7 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
   parent is recorded with the existing `branch.<ref>.landspec-parent = <feature branch>` setting, so
   `base_ref` (`lib.sh:146-157`), `review.sh record --branch` and `record --delta` review exactly the
   task's change against the feature head, unchanged. The main session lands a task only when its
-  tests are green and its review is `ready`: `git merge --no-ff` into the feature branch, with a
+  tests are green and its review has no high or medium finding (R13): `git merge --no-ff` into the feature branch, with a
   generated message (R3), then push.
 - **Rationale**: the feature branch then only ever holds green, reviewed tasks, so the PR can be
   opened or updated at any time without a red tree, and a failed task leaves the branch untouched
@@ -47,8 +47,8 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
   `git log --grep '^Landspec-Task: NNN/Tnnn$'` over the branch's whole history (the developer's
   answer at T002's round limit: every merge shape keeps the landing, and no other feature's matches).
 - **Rationale**: it is on the branch, so every clone and a resumed run see it (FR-014), it needs no
-  GitHub call (today's `closed_issues`, `lib.sh:374-387`, goes away), and the tick is what spec-kit's
-  own implement does. A box ticked by hand without a landing commit is not done, and `pr.sh feature`
+  GitHub call (today's `closed_issues`, `lib.sh:374-387`, stays only for a legacy feature's
+  release), and the tick is what spec-kit's own implement does. A box ticked by hand without a landing commit is not done, and `pr.sh feature`
   says so.
 - **Alternatives**: the local run records under `landspec-run/` alone (rejected: another clone or
   a new worktree cannot see them); ticking `[X]` alone (rejected: proves no review happened).
@@ -65,40 +65,51 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
 - **Alternatives**: keep `review_model` with an `opus` default (rejected: FR-005 says other models
   are refused, which a config key would undo).
 
-## R5. One issue per feature
+## R5. One issue per feature (superseded)
 
-- **Decision**: `issues.sh` creates one issue, titled `[NNN] <the spec's H1 title>`, with a short
-  body (the spec's path, the branch) and one checklist line per task (`- [ ] T001 <summary>`, ticked
-  for each landed task). Its number is written once at the top of `tasks.md` as
-  `**Issue**: #N`, which makes reruns update the same issue (FR-002); an open issue with the exact
-  title is reused if the line is missing (today's dedup, `issues.sh:36-40`). `issues.sh --sync`
-  (run by the implement loop after each landing) rewrites the body from `tasks.md`. The feature PR
-  carries `Closes #N`. The `issue_labels` default becomes `type:feature`; `milestone` and `project`
-  stay (`add_meta`, `lib.sh:335-352`).
-- **Rationale**: one place to see progress, closed by the one merge.
-- **Alternatives**: keep the number in a git config or a run file (rejected: other clones cannot
-  read it); one sub-issue per task (rejected: it is the per-task issue under another name).
+- **Superseded 2026-11-18 by the developer**: no GitHub issue at all, not even one per feature.
+  The PR's `## Tasks` table and `next.sh` are the progress view. `issues.sh`,
+  `extension/commands/issues.md` and the `issue_labels`, `milestone` and `project` config keys are
+  removed (T005); `add_meta` keeps only the assignee for the PR. Was: one issue per feature with a
+  task checklist, its number in `**Issue**: #N`, closed by the PR's `Closes #N`.
 
-## R6. The plan review stays, and gates the build instead of a spec PR
+## R6. The plan review: one pass, gating the build
 
-- **Decision**: `review.sh check --plan` keeps its rules. `issues.sh` still requires a current
-  `ready` plan review (the issue body is the task list), and `implement.sh status` refuses to
-  start a task without one. Gap tasks added by the end check get a plan review of the new lines
-  before they are built, as today.
-- **Rationale**: the plan review found real defects in features 006 and 007 before any code; with
-  no spec PR, it is the only review of the plan before the build.
-- **Alternatives**: dropping it for speed (rejected: the developer asked for a review during the
-  build, not for fewer reviews; it costs no merge).
+- **Decision**: after the tasks step and after converge, the `after_tasks`/`after_converge` hooks run
+  one plan review: the grounding steps of today's issues command, then one Opus review of spec, plan
+  and tasks, recorded with `review.sh record --plan`, then the spec folder committed and pushed on
+  the feature branch. `review.sh check --plan` passes when the recorded review is current and has no
+  high finding; medium and low findings are shown to the developer and never force a second round.
+  The `## Simplify:` sections, `review.sh answer --plan` and the areas state are removed.
+  `implement.sh status` refuses to start a task while `check --plan` fails. Gap tasks added by the
+  end check get the same single pass on their new lines.
+- **Superseded 2026-11-18 by the developer**: was "the plan review keeps its rules" (rounds until
+  `ready`, Simplify questions after repeated areas).
+- **Rationale**: the plan review found real defects in features 006 and 007 before any code; the
+  defects that mattered were high. Rounds over medium and low findings cost time without changing
+  the build.
+- **Alternatives**: dropping it (rejected: with no spec PR it is the only review of the plan).
 
-## R7. Tasks run one at a time
+## R7. Tasks run in parallel by default
 
-- **Decision**: `implement.sh status` lists at most one task to build: the first task in `ORDER`
-  that is not done, not failed, and whose `depends on` tasks are done. `parallel_tasks`, `restack`,
-  `stack`, `move`, the claim push and `next.sh`'s `parallel` lines are removed.
-- **Rationale**: one branch, one tree; parallel builders would each need their own branch and a
-  merge between them, which is the overhead being removed. The spec's assumption.
-- **Alternatives**: parallel task refs merged in order (rejected: brings back conflicts, restacks
-  and their tests for a speed-up the developer did not ask for).
+- **Decision**: `implement.sh status` prints one `START=<id> REF=landspec/<NNN>-<tnnn>-task
+  FROM=<feature head>` line for every task whose `depends on` tasks are done and which is not done,
+  failed or in flight (`--running`), up to `cfg parallel_tasks 4` builders at once (the key stays; it
+  no longer means stacked PRs). It also prints a `REVIEW=`, `FIX=` or `LAND=` line for every task in
+  that state. Each task starts from the feature head in its own worktree. The main session lands
+  each task as it becomes ready, in any order, one `land` at a time. When a landing conflicts
+  (another task landed first and touched the same lines), `land` aborts the merge and prints
+  `CONFLICT=<id> FILES=…`; the task gets one conflict round: its implementer merges the feature
+  branch into its ref, resolves, runs the tests, and a delta review checks the round before it
+  lands. A second conflict marks it failed. The conflict round does not count against
+  `task_rounds`. `restack`, `stack`, `move`, the claim push and `next.sh`'s `parallel` lines are
+  removed.
+- **Superseded 2026-11-18 by the developer**: was "tasks run one at a time".
+- **Rationale**: independent tasks are most of a feature; building them at once is the speed-up
+  left once the merge loop is gone. Landing on one branch needs no PR stacking: a conflict is rare
+  and costs one round.
+- **Alternatives**: one at a time (rejected by the developer); stacked task refs (rejected: brings
+  back restacks).
 
 ## R8. The end check runs on the feature branch itself
 
@@ -107,9 +118,10 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
   at the feature head (no merge copy), counts the attempt against `feature_rounds` (default 3) and
   refuses an unchanged head that already failed. The main session runs the test command on that
   head (in a detached worktree of it), records the result, then runs the Opus feature review
-  (`review.sh` feature mode, base `origin/<base>`) and records it. Not-met items become tasks
-  appended to `tasks.md` on the feature branch, plan-reviewed, synced to the feature issue, and built
-  in the same run.
+  (`review.sh` feature mode, base `origin/<base>`) and records it. Not-met items (and red tests, as one
+  task) become tasks appended to `tasks.md` on the feature branch, given one plan review pass (R6),
+  committed and pushed, and built in the same run. The test run goes through `run_tests` (R14), so a
+  head already tested green is not run again.
 - **Rationale**: the existing feature review mode already reports met, not met and not verifiable
   per FR, scenario and SC (`review.sh:315-340`); only the merge copy and the spec PR around it go.
 - **Alternatives**: a fresh check worktree with a merge of task branches (rejected: there is one
@@ -118,27 +130,27 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
 ## R9. The feature PR
 
 - **Decision**: `pr.sh feature "<title>" <body-file>` replaces `pr.sh task` and `pr.sh spec`. On the
-  feature branch it runs today's gates on the whole diff from the base (green tests,
-  `## Test changes`, mutants, `security-scan.sh --changed`, `tfplan.sh gate`), refuses a ticked task
-  with no landing commit, appends a generated task table (each task: done, failed or pending, its
-  landing commit and review assessment) and `Closes #N`, and opens the PR as a draft or updates it.
-  `pr.sh feature --ready` also requires a recorded `ready` feature review for the current head and
-  every task done, then runs `gh pr ready`. `pr.sh fix` and `pr.sh state` stay as they are.
+  feature branch it runs the shared gates on the whole diff from the base (green tests through
+  `run_tests`, `## Test changes`, `tfplan.sh gate`), refuses a ticked task with no landing commit,
+  appends a generated `## Tasks` table (each task: done, failed or pending, its landing commit and
+  review assessment), `## Low findings` (from the landing commits, R13) and `## End check`, and opens
+  the PR as a draft or updates it. No `Closes #N`: there is no issue (superseded 2026-11-18).
+  `pr.sh feature --ready` also requires every task done, `review.sh check --feature` (a `ready`
+  feature review for the current head), and the security scan and mutation testing of the feature
+  diff (R15); then it runs `gh pr ready`. `pr.sh fix` and `pr.sh state` stay as they are.
   The draft does not read `review.sh report` (a branch-wide review record): each landed commit
-  already carries its task's ready review, and the independent review of the whole diff is the
-  Opus feature review of the end check, which `--ready` requires and whose result the body carries
-  in `## End check`. `review.sh check --feature` is added for that. Before each `pr.sh feature`,
-  the loop runs `security-scan.sh --changed` and the mutation testing on the feature branch when
-  this diff has no record of them (the implementers ran them on task diffs only).
+  already carries its task's review, and the independent review of the whole diff is the Opus
+  feature review of the end check, which `--ready` requires and whose result the body carries.
 - **Rationale**: `pr.sh fix` already holds every gate without an issue (`pr.sh:79-82`); the feature
-  mode adds the task table, the issue and the draft-to-ready step.
+  mode adds the task table and the draft-to-ready step.
 - **Alternatives**: opening the PR only once everything passed (rejected: FR-010 wants the draft
   visible while work is pending).
 
 ## R10. Release
 
 - **Decision**: `release-plan` lists merged PRs whose head is a feature branch
-  (`<branch_prefix>/<NNN>-`; the task key `/<NNN>-t` goes) and requires the feature issue closed;
+  (`<branch_prefix>/<NNN>-`; the task key `/<NNN>-t` goes); no issue is read (superseded
+  2026-11-18: was "requires the feature issue closed");
   `stats.sh` groups by feature PR. Version bump, tag, publish and the audit are unchanged.
 - **Rationale**: FR-013; only the PR list's key changes.
 
@@ -163,8 +175,10 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
   issues and a spec PR. Its build should instead run on one branch, as a single PR, which also
   exercises the new flow's shape before the scripts exist.
 - **How** (chosen by the developer on 2026-11-18): the plan review runs as today; then no per-task
-  issues and no spec PR. One issue is created by hand for 008, and the spec folder is committed on
-  `feat/008-one-pr-per-feature`. Tasks are built one at a time, and 008 uses each of its own new
+  issues and no spec PR. Issue #263 was created by hand for 008 before the issues were dropped; it
+  stays a plain issue, closed by hand (or by a `Closes #263` the developer writes in the PR body).
+  The spec folder is committed on `feat/008-one-pr-per-feature`. Tasks are built in parallel waves
+  (tasks.md "Build order"), and 008 uses each of its own new
   scripts as soon as an earlier 008 task has added it (the developer's answer to the plan review;
   `land` and `check` are never removed):
   1. Every task: the implementer works in its copy on `git switch -c landspec/008-<tnnn>-task
@@ -176,8 +190,59 @@ Each decision names what was chosen, why, and what else was weighed. Code refere
      "Landing commit", a push, and the ref deleted.
   3. From T003 on: `implement.sh 008 mark <tnnn> ready <report>`, then `implement.sh 008 land
      <tnnn>`.
-  4. The end: from T009 on, `implement.sh 008 check`, `tests/run.sh` on its head, `check-result`,
-     an Opus feature review (`record --feature`); then an Opus review of the whole diff against
-     `origin/main` recorded with `review.sh record`, and one PR through `pr.sh fix` (every gate, no
-     issue) with `Closes #<the issue>`.
+  4. From T017 on, `implement.sh 008 status` names every task of the next wave; from T004 on, the
+     implement skill drives the loop.
+  5. The end: `implement.sh 008 check`, `tests/run.sh` on its head, `check-result`, an Opus feature
+     review (`record --feature`), then `pr.sh feature --ready` (from T009 on; before it, one PR
+     through `pr.sh fix`, every gate, after an Opus review of the whole diff against `origin/main`).
 - **Rationale**: the new scripts do not exist until 008 is built; the developer wants one PR.
+
+## R13. Review gates by severity
+
+- **Decision** (the developer, 2026-11-18): the plan review blocks only on a high finding (R6). The
+  task review blocks landing only on a high or medium finding: `review.sh check --branch` passes on
+  a current record with neither, and the reviewer's `Assessment:` follows the same rule
+  (`extension/commands/review.md`: plan `changes needed` only with a high; task only with a high or
+  medium). One full review, then at most one fix round (`task_rounds` default 2), always checked by
+  a delta: the rule that a fix of more than 20 lines outside the earlier findings' files needs a
+  full review is removed (the other delta refusals stay). A delta of a conflict round reads the
+  merge's resolution (`git show --remerge-diff`) and the commits after it, not the other tasks'
+  code the merge brought in. Low findings do not block: `land` copies them into the landing
+  commit's message (`Low: <file>:<line> <text>` lines above the trailers), and `pr.sh feature`
+  lists them under `## Low findings`. Still blocked after the fix round: the task is failed, the run
+  goes on with every independent task, and the end report lists it.
+- **Rationale**: the rounds that mattered in 006 and 007 were over high and medium findings; low
+  ones are worth reading, not worth a round. A delta of a fix stays small however many lines the
+  fix touches, because it reads only the fix.
+- **Alternatives**: keep full-review fallback for large fixes (rejected by the developer); store
+  lows only in the local review records (rejected: another clone could not list them in the PR).
+
+## R14. Tests run once per tree
+
+- **Decision**: every test run goes through `run_tests` (`lib.sh`), which records a green run on a
+  clean tree. Its key becomes the tree and the command only (today it also holds the copy's path,
+  so a tree tested in the builder's worktree ran again in the main checkout). The builder runs the
+  tests through it; `implement.sh mark <task> implemented` refuses unless a green record exists for
+  the task ref's head tree; `pr.sh feature` and the end check call `run_tests` and reuse the record.
+- **Rationale**: the same tree gave the same result three times per task (builder, main session,
+  PR). A landing merge with nothing landed in between has the task ref's tree, so even the
+  feature head is often already tested.
+- **Risk**: ignored files (dependencies, `.env`) can differ between copies; the key already ignored
+  them within one copy. The end check's full run on the feature head stays the final word.
+
+## R15. Security scan and mutation testing once per feature
+
+- **Decision**: the secret hook stays on every commit and push. `security-scan.sh --changed` and
+  `mutants.sh` run once, on the whole feature diff from `origin/<base>`, right before
+  `pr.sh feature --ready`; the implementers no longer run them per task, and the draft PR does not
+  require them (they are slow, and the draft is opened after the first landing, when most of the
+  diff is still to come). `security-scan.sh` records each scanner's line as `findings high` when the
+  tool reports a high or critical finding (gitleaks: every finding), else `findings`. `--ready`
+  refuses on a `findings high` line; other findings, a missing scanner and an unavailable mutation
+  tool are listed in the body, never blocking. Surviving mutants still need their line in
+  `## Evidence`, as today.
+- **Rationale**: the scan of the feature diff covers every task's lines once; per-task scans
+  repeated the same scanners over overlapping diffs.
+- **Alternatives**: scan the first draft too (rejected: not cheap, and the result is stale by the
+  ready step).
+
