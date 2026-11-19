@@ -6,6 +6,8 @@
 #                                           keeps the folder it recorded as plan-<feature>.reviewed
 #   review.sh record --feature <report-file>  feature review: the check ref (the feature head) against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
+#   review.sh check|report --feature        exit 0 when the end-check record's head and reviewed: are the feature
+#                                           branch's head, its tests green and its verdict ready (report prints them)
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
@@ -35,8 +37,8 @@ while [[ "${1:-}" == --plan || "${1:-}" == --delta || "${1:-}" == --branch || "$
     --branch) bopt="${2:-}"; [[ -n "$bopt" ]] || die "usage: review.sh <action> --branch <branch> ..."; shift ;;
   esac; shift
 done
-if $feat && { $plan || $delta || [[ -n "$bopt" || "$action" != record ]]; }; then
-  die "a feature review is recorded alone: review.sh record --feature <report-file> (no --plan, --delta or --branch)"
+if $feat && { $plan || $delta || [[ -n "$bopt" ]] || ! [[ "$action" =~ ^(record|check|report)$ ]]; }; then
+  die "a feature review is recorded alone: review.sh record|check|report --feature (no --plan, --delta or --branch)"
 fi
 if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, not a branch: drop --branch"; fi
 if $plan && $delta; then die "a plan review is always full: review.sh record --plan <report-file>"; fi
@@ -281,6 +283,22 @@ remove_copy() {
 # branch's head after implement.sh check; no check copy needed). Its verdict comes from its lines: any "not
 # met" is "changes needed". After implement.sh check it adds verdict:, reviewed: and the lines to the end-check
 # record and deletes nothing; after check-copy, only a "ready" after a green run resets that check's round counter.
+if $feat && [[ "$action" != record ]]; then
+  # check|report --feature: the end-check record counts only for the feature branch's head, and only
+  # when that head's tests ran green and its review said ready (data-model "End check").
+  fdir="$(feature_dir)"; fname="$(basename "$fdir")"; fr="$dir/feature-$fname"
+  [[ -f "$fr" && -n "$(hdr head "$fr")" ]] || die "no end check recorded for $fname: run implement.sh check, then the feature review"
+  h="$(commit "$(feature_ref "$fdir")")"; [[ -n "$h" ]] || die "no feature branch $(feature_branch "$fdir") here or on origin"
+  ck="$(hdr head "$fr")"; t="$(hdr tests "$fr")"; rv="$(hdr reviewed "$fr")"; v="$(hdr verdict "$fr")"
+  [[ "$ck" == "$h" ]] || die "the end check ran on $ck, and the feature branch is now at $h: run implement.sh check again"
+  [[ "$t" == green ]] || die "the tests of the end check are ${t:-not recorded} on $h: fix them, then run implement.sh check again"
+  [[ "$rv" == "$h" ]] || die "the feature review is of ${rv:-no commit}, not of $h: run the feature review again"
+  [[ "$v" == ready ]] || die "the feature review said ${v:-nothing}: build the not met items, then run the end check again"
+  if [[ "$action" == check ]]; then echo "REVIEW=ready"; exit 0; fi
+  echo "Feature review: ready for $h, tests green"
+  m="$(hdr model "$fr")"; [[ -z "$m" ]] || echo "Model: $m"
+  exit 0
+fi
 if $feat; then
   report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --feature <report-file>"
   [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
@@ -426,5 +444,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan|--feature] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
 esac

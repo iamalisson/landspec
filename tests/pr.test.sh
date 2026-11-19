@@ -468,7 +468,14 @@ check "when a fix PR has no recorded review (level lite), then it refuses" \
   'fails_with "no independent review" "$p" fix "fix: typo" "$TMP/body.md" && ! grep -q "^pr create" "$GH_LOG"'
 check "when pr.sh fix has no body file, then it refuses with its usage" 'fails_with "usage: pr.sh fix" "$p" fix "fix: typo"'
 range() { printf 'Reviewed: %s..%s\nModel: claude-sonnet-4-7\n' "$(git merge-base HEAD origin/main)" "$(git rev-parse HEAD)"; }
-reviewed; scanned
+reviewed
+check "when a reviewed fix PR has no scan record, then pr.sh fix still refuses: only the feature draft goes without one" \
+  'fails_with "no security-scan.sh --changed result for this diff" "$p" fix "fix: typo" "$TMP/body.md"'
+scanned; mkdir -p .specify/memory
+printf '**Commands**: build `[BUILD_COMMAND]` · test `true` · lint `[LINT_COMMAND]` · mutate `false`\n' > .specify/memory/constitution.md
+check "when a fix PR has a mutate command and no mutants record, then pr.sh fix still refuses" \
+  'fails_with "no mutants.sh result for this diff" "$p" fix "fix: typo" "$TMP/body.md"'
+rm .specify/memory/constitution.md
 out="$("$p" fix "fix: typo" "$TMP/body.md" 2>/dev/null)" || true
 check "when it was reviewed and scanned, then it opens the PR into the base, with the review block and no Closes line" \
   '[[ "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && grep -q "^pr create --base main --head fix/typo" "$GH_LOG" \
@@ -745,5 +752,44 @@ check "when the feature has a changes needed end check for an older head, then t
   'grep -qxF "## End check" "$GH_LOG" && grep -qxF "Head: $old (round 2), tests: green" "$GH_LOG" && grep -qxF "Assessment: changes needed" "$GH_LOG" \
    && grep -qxF -- "- not met: SC-001 ranking is tested" "$GH_LOG" && grep -qxF -- "- met: FR-001 the demo searches" "$GH_LOG" \
    && grep -qxF "checked at $old; the branch is now at $(git rev-parse HEAD)" "$GH_LOG"'
+
+# ── Spec 008 T009: pr.sh feature --ready, after one scan and mutation run of the whole feature diff ──
+: > "$GH_LOG"
+check "when a task is still pending, then pr.sh feature --ready refuses it and marks nothing ready" \
+  'one_refusal "T003 is pending: every task is done before pr.sh feature --ready" "$p" feature "feat: demo" "$TMP/fbody.md" --ready && ! grep -q "^pr ready" "$GH_LOG"'
+# T003 lands with two low findings of its review, as implement.sh land writes them.
+git switch --quiet -c landspec/001-T003-task; echo T003 > export.ts
+sed -i.bak "s/^- \[ \] T003 /- [X] T003 /" specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak
+git add -A; git commit --quiet -m "feat: T003"; git switch --quiet "$FB"
+git merge --quiet --no-ff -m "T003: x" -m "Low: src/export.ts:3 the name shadows a global"$'\n'"Low: src/export.ts:9 no test for an empty list" \
+  -m "Landspec-Task: 001/T003"$'\n'"Landspec-Review: ready $PID" landspec/001-T003-task
+git branch --quiet -D landspec/001-T003-task
+mkdir -p .specify/memory
+printf '**Commands**: build `[BUILD_COMMAND]` · test `true` · lint `[LINT_COMMAND]` · mutate `exit 127`\n' > .specify/memory/constitution.md
+: > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>/dev/null)" || true
+check "when two Low: lines are landed, with no scan or mutants record of the new diff, then the draft lists them under Low findings" \
+  '[[ "$out" == *"READY=no" ]] && grep -qxF "## Low findings" "$GH_LOG" && grep -qxF -- "- T003: src/export.ts:3 the name shadows a global" "$GH_LOG" \
+   && grep -qxF -- "- T003: src/export.ts:9 no test for an empty list" "$GH_LOG" && ! grep -q "^pr ready" "$GH_LOG"'
+H="$(git rev-parse HEAD)"; fr="$(git rev-parse --git-common-dir)/landspec-review/feature-001-demo"
+check "when the feature review is not ready for the head, then pr.sh feature --ready refuses it" \
+  'one_refusal "the end check ran on $old, and the feature branch is now at $H" "$p" feature "feat: demo" "$TMP/fbody.md" --ready'
+printf 'head: %s\nheads: %s %s\ntests: green\nverdict: ready\nreviewed: %s\nmodel: claude-opus-5-5\n\n- met: FR-001 the demo searches\n' "$H" "$old" "$H" "$H" > "$fr"
+check "when the mutate command has no mutants record for the feature diff, then pr.sh feature --ready refuses it" \
+  'one_refusal "no mutants.sh result for this diff" "$p" feature "feat: demo" "$TMP/fbody.md" --ready'
+bash "$SCRIPTS/mutants.sh" >/dev/null
+check "when the feature diff has no scan record, then pr.sh feature --ready refuses it" \
+  'one_refusal "no security-scan.sh --changed result for this diff" "$p" feature "feat: demo" "$TMP/fbody.md" --ready'
+scanned; scan="$(bash -c "source \"$SCRIPTS/lib.sh\"; diff_record landspec-security")"; cp "$scan" "$TMP/scan.ok"
+printf 'semgrep      findings  high /x/semgrep.json\n' >> "$scan"
+check "when the scan has a findings high line, then pr.sh feature --ready refuses naming the scanner" \
+  'one_refusal "semgrep reported a high finding" "$p" feature "feat: demo" "$TMP/fbody.md" --ready && ! grep -q "^pr ready" "$GH_LOG"'
+cp "$TMP/scan.ok" "$scan"; printf 'osv-scanner  findings  /x/osv.json\n' >> "$scan"
+: > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" --ready 2>"$TMP/pr.err")" || true
+check "when every task is done, the end check passed and the scan has only missing scanners and other findings, with mutants unavailable, then --ready marks the PR ready" \
+  '[[ "$out" == *$'\''\n'\''"PR=https://github.com/acme/app/pull/99 READY=yes" ]] && grep -q "^pr ready https://github.com/acme/app/pull/99" "$GH_LOG"'
+check "then the body lists the missing scanners, the other findings, mutants unavailable and the End check" \
+  'grep -q "^Scanners not run: .*semgrep (missing)" "$GH_LOG" && grep -qxF "Scanner findings (not high): osv-scanner" "$GH_LOG" \
+   && grep -q "^Mutation testing: unavailable" "$GH_LOG" && grep -qxF "## End check" "$GH_LOG" && grep -qxF "Assessment: ready" "$GH_LOG"'
+rm .specify/memory/constitution.md
 
 exit "$FAIL"

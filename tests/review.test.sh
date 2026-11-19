@@ -699,4 +699,26 @@ check "when the check ref points at the head and no check copy exists, then reco
   '"$r" record --feature "$TMP/feature.md" 2>/dev/null | grep -qx "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
    && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | grep -q -- "-check "'
 
+# Spec 008 T009: check --feature passes only on a ready review and green tests of the feature branch's head.
+git switch --quiet -C feat/001-demo "$fh"
+# endcheck <head> <tests> <verdict> <reviewed>: the end-check record implement.sh check and record --feature write.
+endcheck() { printf 'head: %s\nheads: %s\ntests: %s\nverdict: %s\nreviewed: %s\nmodel: claude-opus-5-5\n' "$1" "$1" "$2" "$3" "$4" > "$fr"; }
+rm -f "$fr"
+check "when no end check was recorded, then check --feature fails and says to run implement.sh check" \
+  'fails_with "no end check recorded for 001-demo: run implement.sh check" "$r" check --feature'
+endcheck "$fh" green "changes needed" "$fh"
+check "when the feature review said changes needed, then check --feature fails" 'fails_with "the feature review said changes needed" "$r" check --feature'
+endcheck "$fh" red ready "$fh"
+check "when the end check's tests are red, then check --feature fails" 'fails_with "the tests of the end check are red" "$r" check --feature'
+endcheck "$fh" green ready "$fh"
+check "when the review is ready and the tests green for the feature branch's head, then check --feature passes and report --feature prints its facts" \
+  '[[ "$("$r" check --feature)" == REVIEW=ready && "$("$r" report --feature)" == "$(printf "Feature review: ready for %s, tests green\nModel: claude-opus-5-5" "$fh")" ]]'
+check "when check --feature is given with --branch, then it is refused" 'fails_with "a feature review" "$r" check --feature --branch "$P"'
+echo more > more.txt; git add more.txt; git commit --quiet -m "feat: more"; nh="$(git rev-parse HEAD)"
+check "when a commit lands on the feature branch after the end check, then check --feature fails" \
+  'fails_with "the end check ran on $fh, and the feature branch is now at $nh: run implement.sh check again" "$r" check --feature'
+endcheck "$nh" green ready "$fh"
+check "when the ready review is of an older head, with green tests on the new head, then check --feature fails" \
+  'fails_with "the feature review is of $fh, not of $nh: run the feature review again" "$r" check --feature'
+
 exit "$FAIL"

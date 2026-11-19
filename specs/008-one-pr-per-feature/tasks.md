@@ -365,7 +365,7 @@ diff.
     `security-scan.sh --changed` before `pr.sh feature --ready`, and no `check-copy` and no
     `issues.sh`; `tests/run.sh` passes.
 
-- [ ] T009 [US4] Mark the feature PR ready on the latest feature review, after one scan and mutation run of the feature diff, in extension/scripts/pr.sh and extension/scripts/review.sh (depends on T003, T008, T018, T021)
+- [X] T009 [US4] Mark the feature PR ready on the latest feature review, after one scan and mutation run of the feature diff, in extension/scripts/pr.sh and extension/scripts/review.sh (depends on T003, T008, T018, T021)
   - Comes from: FR-010, FR-011, FR-012, FR-020, FR-022, US1 scenario 5, US4 scenario 3, US5 scenario 3, SC-005, SC-007; research R9, R13, R15; data-model "Feature PR"; contracts/scripts.md "pr.sh", "review.sh"
   - What: `review.sh check --feature` and `report --feature` (today `--feature` takes only
     `record`): pass when the end-check record has `verdict: ready`, `tests: green`, and `reviewed`

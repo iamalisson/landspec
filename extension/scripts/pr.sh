@@ -12,9 +12,13 @@
 #       On the feature's branch: the gates of a fix PR on the whole diff from the base, except the
 #       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
 #       [X] with no landing commit, and needs no scan or mutants record (the draft opens after the
-#       first landing; they run once on the whole diff). Adds a "## Tasks" table and "## End check"
-#       from the feature's end-check record when there is one; closes no issue.
-#       Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
+#       first landing; they run once on the whole diff). Adds a "## Tasks" table, "## Low findings" (the
+#       landing commits' Low: lines) and "## End check" from the feature's end-check record when there
+#       is one; closes no issue. Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
+#   pr.sh feature "feat(api): price search" <body-file> --ready
+#       Also refuses a task not done, a failing review.sh check --feature, and no scan or (with a mutate
+#       command) mutants record of the whole feature diff; a "findings high" scan line refuses; other
+#       findings, missing scanners and unavailable mutants are listed. Then gh pr ready; PR=<url> READY=yes.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
 #       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch: the same
 #       review, mutants, scan and test gate as a task, without an issue.
@@ -65,6 +69,7 @@ open_pr() { # open_pr <title> <body> [body-file]
     err="$(gh pr edit "$url" --body "$2" 2>&1 >/dev/null)" || die "could not update the body of $url: ${err%%$'\n'*}"
     echo "PR body replaced from $3; edits made on GitHub are gone"
   fi
+  if [[ "${ready:-}" == yes ]]; then gh pr ready "$url" >/dev/null || die "could not mark $url ready for review"; fi
   event pr mode="$mode" url="$url"
   echo "PR=$url${ready:+ READY=$ready}"
 }
@@ -72,7 +77,7 @@ open_pr() { # open_pr <title> <body> [body-file]
 # feature_sections: the feature PR's generated "## Tasks" table and "## End check" (data-model
 # "Feature PR"), into $extra; dies on a task ticked with no landing commit.
 feature_sections() {
-  local line t c rv st sum fr hd n v h r l
+  local line t c rv st sum fr hd n v h r l lows=""
   record_field() { awk -v k="$1: " 'index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$fr"; }
   extra=$'\n\n## Tasks\n\n| Task | Summary | State | Landing commit | Review |\n|---|---|---|---|---|'
   while IFS= read -r line; do
@@ -81,12 +86,16 @@ feature_sections() {
     rv=""; st=pending
     if [[ -n "$c" ]]; then
       st=done; rv="$(git log -1 --format=%B "$c" | sed -nE 's/^Landspec-Review: ([a-z ]*[a-z]) ([0-9a-f]{12}).*/\1 (patch id \2)/p')"
+      lows+="$(git log -1 --format=%B "$c" | sed -nE "s/^Low: (.*)/- $t: \1/p")"$'\n' # implement.sh land writes one per low finding
     elif grep -qE '^- \[[xX]\]' <<<"$line"; then die "$t is ticked but was never landed: untick it or run /landspec:implement"
     elif grep -q '^failed=.' "$(git rev-parse --git-common-dir)/landspec-run/$(basename "$fdir")/$t" 2>/dev/null; then st=failed
     fi
+    [[ "$st" == done || "$ready" != yes ]] || die "$t is $st: every task is done before pr.sh feature --ready"
     sum="$(task_summary "$line" | sed 's/|/\\|/g')"
     extra+=$'\n'"| $t | $sum | $st | ${c:--} | ${rv:--} |"
   done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$fdir/tasks.md" || true)
+  lows="$(grep . <<<"$lows" || true)"
+  [[ -z "$lows" ]] || extra+=$'\n\n## Low findings\n\n'"$lows"
   # The end-check record (data-model "End check"): "<field>: <value>" lines, then the review's lines.
   fr="$(git rev-parse --git-common-dir)/landspec-review/feature-$(basename "$fdir")"
   [[ -f "$fr" ]] || return 0
@@ -109,11 +118,14 @@ case "$mode" in
     need_review=true; need_scan=true; draft=false; nodraft=""; ready=""; extra=""
     if [[ "$mode" == feature ]]; then
       title="${2:-}"; body_file="${3:-}"
-      [[ -n "$title" && -n "$body_file" ]] || die 'usage: pr.sh feature "type(scope): summary" <body-file>'
+      [[ -n "$title" && -n "$body_file" && "${4:---ready}" == --ready ]] || die 'usage: pr.sh feature "type(scope): summary" <body-file> [--ready]'
       [[ "$branch" == "$(feature_branch "$fdir")" ]] \
         || die "not on the feature's branch $(feature_branch "$fdir") (on '${branch:-a detached HEAD}'); run branch.sh $(basename "$fdir")"
       need_review=false; need_scan=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
+      # --ready: every task done, the end check passed for this head, one scan and mutation run of the whole diff (research R15).
+      if [[ -n "${4:-}" ]]; then ready=yes; need_scan=true; fi
       feature_sections
+      [[ "$ready" != yes ]] || bash "$LANDSPEC_EXT_DIR/scripts/review.sh" check --feature >/dev/null
     elif [[ "$mode" == task ]]; then
       task="${2:-}"; title="${3:-}"; body_file="${4:-}"
       [[ "$task" =~ ^T[0-9]{3,}$ && -n "$title" ]] || die 'usage: pr.sh task T003 "type(scope): summary" [body-file]'
@@ -182,8 +194,10 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     elif [[ -n "$(constitution_cmd mutate)" ]]; then
       mutants="$(diff_record landspec-mutants)"
       [[ -f "$mutants" ]] || die "no mutants.sh result for this diff; run bash .specify/extensions/landspec/scripts/mutants.sh after the last commit"
-      grep -q '^mutants unavailable' "$mutants" \
-        && die "the mutate command could not run ($(constitution_cmd mutate)); install it or fix it in the constitution, then run mutants.sh again"
+      if ! grep -q '^mutants unavailable' "$mutants"; then :
+      elif [[ "$mode" == feature ]]; then body+=$'\n\n'"Mutation testing: unavailable (the mutate command could not run: $(constitution_cmd mutate))"
+      else die "the mutate command could not run ($(constitution_cmd mutate)); install it or fix it in the constitution, then run mutants.sh again"
+      fi
       evidence="$(sed -n '/^## Evidence/,/^## /p' <<<"$body")"
       if grep -q '^mutants survivors' "$mutants" && ! grep -qi surviv <<<"$evidence"; then
         die "mutants.sh found surviving mutants; say in '## Evidence' why each changes nothing, or add the test that kills it"
@@ -197,6 +211,12 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
       || die "no security-scan.sh --changed result for this diff; run bash .specify/extensions/landspec/scripts/security-scan.sh --changed after the last commit"
     gaps=""; ! $need_scan || gaps="$(awk '$2=="missing"||$2=="failed"{printf "%s%s (%s)", s, $1, $2; s=", "}' "$scan")"
     [[ -z "$gaps" ]] || body+=$'\n\n'"Scanners not run: $gaps"
+    if [[ "$mode" == feature ]] && $need_scan; then # --ready: a high finding stops it; any other is listed
+      high="$(awk '$2=="findings" && $3=="high" {printf "%s%s", s, $1; s=", "}' "$scan")"
+      [[ -z "$high" ]] || die "$high reported a high finding on the feature diff; fix it, then run security-scan.sh --changed again"
+      found="$(awk '$2=="findings" {printf "%s%s", s, $1; s=", "}' "$scan")"
+      [[ -z "$found" ]] || body+=$'\n\n'"Scanner findings (not high): $found"
+    fi
     # With aws: on, an infrastructure diff needs its Terraform plan recorded (tfplan.sh), which the body shows.
     tfplan="$(bash "$LANDSPEC_EXT_DIR/scripts/tfplan.sh" gate)" || exit 1
     [[ -z "$tfplan" ]] || body+=$'\n\n'"$tfplan"
@@ -336,5 +356,5 @@ Merge this before starting tasks: \`/speckit-implement Tnnn\` branches from \`$b
     else die "$usage"
     fi
     ;;
-  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh feature \"type(scope): summary\" <body-file> | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
+  *) die "usage: pr.sh task T003 \"type(scope): summary\" [body-file] | pr.sh feature \"type(scope): summary\" <body-file> [--ready] | pr.sh fix \"type(scope): summary\" <body-file> | pr.sh spec [\"<title>\"] | pr.sh state <pr> [--reply <thread id> [<file>]]" ;;
 esac
