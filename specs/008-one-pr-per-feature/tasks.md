@@ -105,7 +105,10 @@ and landed on the branch; one draft PR per feature.
     landed twice); a developer commit on the branch is kept by `land`, a conflicting one aborts with
     the file named; a legacy feature and a missing plan review are refused; `bash tests/review.test.sh`
     passes with a plan review that stays `ready` after a tick and an added `**Issue**:` line, and
-    goes stale after a changed task line; `tests/run.sh` passes.
+    goes stale after a changed task line; a merged-in commit carrying another feature's
+    `Landspec-Task: 007/T001` (through a PR merge or a squash) leaves T001 `pending`, this feature's
+    landing reached only through a merge's second parent (a pull merge) shows `done`, and a bare
+    `Landspec-Task: T001` does not count; `tests/run.sh` passes.
 
 - [ ] T003 [US1] Open one draft PR per feature with the task table and the latest end check, in extension/scripts/pr.sh (depends on T002)
   - Comes from: FR-010, FR-011, FR-012, US1 scenarios 2 and 4, US4 scenario 4, US5 scenarios 1-2; research R9; data-model "Feature PR"; contracts/scripts.md "pr.sh"
@@ -334,7 +337,10 @@ only one PR per feature.
     `pr.sh task T001` call in `tests/pr.test.sh` becomes `pr.sh fix`, which runs the same arm, so
     every gate and review-record case keeps passing unchanged (SC-005), except these, named here: the
     dirty-tree cases get a body file (`fix` needs one); the task-branch refusal and the `Closes #N`
-    cases go with task mode (T003 covers `Closes #N` for the feature PR); the spec and stacked
+    cases go with task mode (T003 covers `Closes #N` for the feature PR), except the case that
+    checks the recorded review's folded block reaches the body (`Independent review recorded for
+    this diff`, `Assessment:`): it stays, running through `pr.sh fix`, and drops only its clause
+    that the block sits before `Closes #N`; the spec and stacked
     cases go. `open_pr` keeps its draft branch for `feature` when the stacked-parent logic goes. `extension/scripts/guard.sh`'s block message names
     `pr.sh feature` and `pr.sh fix`; `extension/commands/analyzed.md` drops the level-`full` spec PR
     step; the header comments of `extension/scripts/mutants.sh` and `security-scan.sh` name
