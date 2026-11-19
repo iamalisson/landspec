@@ -83,54 +83,42 @@ a conventional one for the feature (`feat(<scope>): <what it does>`), as
 testing here (they run once, on the whole feature diff, before `pr.sh feature --ready`). It adds the
 task table and prints `PR=<url> READY=no`. When it refuses, report its message; the run goes on.
 
-## The whole-feature check
+## The end check
 
-When the loop has stopped and every task is `pr` or `merged`, check them together, at most
-`feature_rounds:` rounds (`check-copy` counts them, across runs). When every task is `merged`, the
-check runs on the base itself, once per base commit, and only from "The release" below: after
-`release-plan`, on `RELEASE=bump` or `RELEASE=none`, never on `pending`, `tag`, `publish` or `done`.
+When the loop has stopped and every task is `done` (`CHECK=yes`), check the whole feature once, on
+the feature branch itself, at most `feature_rounds:` rounds (`implement.sh check` counts the heads it
+checked, across runs).
 
-1. `I check-copy`. It prints one of:
-   - `SPEC_PR=<url>`: the feature has an open spec PR (gaps already filed wait for it); skip the
-     check, and the report says `merge <url> first`.
-   - `UNCHANGED=<n>`: the same task heads as the last attempt that was not green (the fix round
-     changed nothing, or the test is flaky); `ROUNDS_EXHAUSTED=<n>`: `feature_rounds:` attempts are
-     used up. Either way, stop, and ask the developer at the end.
-   - `CONFLICT=<task> WITH=<earlier task> FILES=<paths>`: stop, and report both tasks and the files.
-   - `CHECKED=<sha>`: every task is merged and that base commit was already checked (green, and a
-     `ready` feature review); go on with the release.
-   - `CHECK=<path> ROUND=<n>`, with `FROM=<sha>` when every task is merged: go on.
-2. In `<path>`, the project's test command. Red: `I check-result red`, then a fix round on the task
-   branch whose files the failing test covers, and back to the loop. With every task merged (`FROM=`), there is no task branch to fix:
-   `I check-result red`, the failing test becomes a gap task (step 5), and there is no release. Green:
-   `I check-result green`.
-3. After a green run only: the **feature review**, as `review.md` says (its feature review mode), with
-   the facts: `feature review`, the feature folder, `commit:` `git rev-parse refs/landspec/check/<feature
-   dir name>`, `checkout:` the repository root, `base:` `origin/<base>` (with `FROM=`: `base: <FROM>`,
-   and the facts say that the diff from `<FROM>` may hold unrelated commits merged meanwhile, so the
-   reviewer judges only the feature's FRs and files), the test command and its output.
-   Record it with `review.sh record --feature <report>`. Its `not met` lines go into the run report.
-4. `I check-copy --remove`.
-5. **The gaps**, when the feature review has `not met` lines, or the base's run was red with every
-   task merged: each becomes a task (a red run: `Comes from:` the failing test), through a spec PR,
-   before anything is merged. The check ran only because the feature has no open spec PR, so this is
-   always a new one. Work in the run's worktree `<repo>-<feature>-run` (when it is
-   missing, `git worktree add --detach <repo>-<feature>-run origin/<base>`):
-   - If `spec/<feature dir name>` is checked out in any worktree (`git worktree list`), print
-     `SKIPPED=spec/<feature dir name> (checked out in <path>)`, say so in the report, and stop.
-   - There: `git fetch origin`, `git switch --detach origin/<base>`, and `bash
-     .specify/extensions/landspec/scripts/next.sh <feature>` (so the feature is the active one).
-   - Append one task line per `not met` item to the feature's `tasks.md`, with the next free ids, in
-     the format of the others (`- [ ] Tnnn <what> in <files>`, then the sub-bullets `Comes from:`
-     the item, `What`, `Completed when`); never change the description of a line that already ends in
-     `— #N` (only its `(depends on …)` suffix).
-   - A plan review of those lines, as `plan-review.md` step 2 says (`review.sh record --plan`; every
-     round is read cold: the next one gets the last report and `review.sh diff --plan`, never
-     replies to its findings), then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
-   - `git switch --detach` there, last.
-
-   Gap tasks are ordinary tasks: the next run starts them from the base, once the developer has
-   merged the spec PR, and checks the whole feature again.
+1. `I check`. It refuses while a task is not done, and first merges `origin/<base>` into the branch
+   and pushes it (a conflict stops it, naming the files: report them, and stop). It prints one of:
+   - `CHECK=<head> ROUND=<n>`: go on.
+   - `UNCHANGED=<n>`: this head's own tests or its own feature review already failed (the gap tasks
+     changed nothing, or a test is flaky); `ROUNDS_EXHAUSTED=<n>`: `feature_rounds:` heads were
+     checked. Either way, stop: the PR stays a draft, its body keeps the record's `not met` lines
+     (update it, as "The draft PR" says), and ask the developer at the end.
+2. The tests on `<head>`: `git worktree add --detach <repo>-<feature>-check <head>`, there `bash -c
+   'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'` (a tree already
+   green is not run again), then `git worktree remove <repo>-<feature>-check`. Then `I check-result
+   green` or `I check-result red`.
+3. The **feature review**, as `review.md` says (its feature review mode): one `landspec:reviewer`
+   with `model: opus` and `isolation: "worktree"`, with the facts: `feature review`, the feature
+   folder, `commit:` `<head>`, `base:` `origin/<base>`, the test command and its result. Record it
+   with `review.sh record --feature <report>`; its `not met` lines go into the run report.
+4. **The gaps**, when the review has `not met` lines or the tests were red: here, on the feature
+   branch, append to the feature's `tasks.md` one task per `not met` line, and one task for the red
+   tests, with the next free ids, in the format of the others (`- [ ] Tnnn <what> in <files>`, then
+   the sub-bullets `Comes from:` the line (or the failing test), `What`, `Completed when`). Then one
+   plan review pass of the new lines, as `plan-review.md` step 2 says, recorded with `review.sh
+   record --plan <file>`; on a high finding, fix the lines and one more pass, as it says (every round
+   is read cold); a high left after it blocks the plan: show it and stop. Commit `tasks.md`
+   (`docs(specs): file the end check's gaps`), push the branch, and go back to the loop: the gap
+   tasks are built, reviewed and landed like the others, then the end check runs again.
+5. **A pass** (tests green, no `not met` line): here, once, on the whole feature diff, `bash
+   .specify/extensions/landspec/scripts/security-scan.sh --changed` and `bash
+   .specify/extensions/landspec/scripts/mutants.sh`, as `pr.md` says; then write the body as "The
+   draft PR" says, with their results in `## Evidence`, and `pr.sh feature "<title>" <body-file>
+   --ready`. It marks the PR ready and prints `PR=<url> READY=yes`; when it refuses, report its
+   message.
 
 ## The release
 
@@ -138,8 +126,7 @@ When every task is `merged` and no gaps were filed (on this run or a later one),
 and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
 next run reads where it stands from git and GitHub:
 
-- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the whole-feature check on the base (above): go on
-  only on `CHECKED=`, or a green run and a `ready` feature review; then the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
+- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
   (`git fetch origin`, then `git switch -c chore/release-X.Y.Z origin/<base>` as its own command): `I release-bump X.Y.Z`
   there, then write the notes to `<path>`: grouped by user story, one line per PR in `PRS=` (its
   title and number), an "Upgrading" section when a task changed a config key or a command, and the
@@ -157,12 +144,12 @@ next run reads where it stands from git and GitHub:
   `mktemp` file, then `gh release create vV --title "<project> V" --notes-file <that file>`.
 - `RELEASE=pending X.Y.Z PR=<n>`: the release PR waits for its merge; say so.
 - `RELEASE=done V`: the feature is released; say so.
-- `RELEASE=none (no version_files:)`: first the whole-feature check on the base, as for `bump`; then the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
+- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
   release convention (`version_files:` and `release_notes:` in `landspec-config.yml` set one).
 
 ## The audit before the bump
 
-On `RELEASE=bump` and on `RELEASE=none`, once the whole-feature check on the base passed and before anything else, run `I audit-plan` and act on the **one** `AUDIT=` line it
+On `RELEASE=bump` and on `RELEASE=none`, before anything else, run `I audit-plan` and act on the **one** `AUDIT=` line it
 prints. The base is audited once per commit: a later run reuses the recorded result.
 
 - `AUDIT=needed COMMIT=<sha>`: in the run's worktree `<repo>-<feature>-run`, `git switch --detach <sha>`.
@@ -225,17 +212,17 @@ then only what is left for the developer:
 - each `failed` task with its reason and, when its review rounds failed it, the findings of its last report
   (`landspec-run/<feature dir name>/<task>.report`); `I retry <task>` lifts it, and the next run starts it
   again from the feature head;
-- the whole-feature check: its round, the test result, and each `not met` line of the feature review;
-- the gap tasks filed, with their issues and the spec PR;
+- the end check: its round, the test result, and each `not met` line of the feature review;
+- the gap tasks appended to `tasks.md`;
 - the release: the `RELEASE=` line and what was done for it (the release PR to merge, the tag, the
   published release), and the `AUDIT=` line when there was one, with the scanners and reviews the
   report's coverage names as missing (they do not hold the release; installing them widens the next audit).
 
-Last line, when gaps were filed: `merge the PRs in ORDER and <spec PR>, then run /landspec:implement
-again`. When the release holds: `release held: <n> confirmed critical or high; run /landspec:security
+Last line, when the end check stopped on `UNCHANGED=` or `ROUNDS_EXHAUSTED=`: `the PR stays a draft:
+fix what is not met, then run /landspec:implement again`. When the release holds: `release held: <n> confirmed critical or high; run /landspec:security
 <report path>`. When the release is done or was published by this run: `/speckit-specify` for the next
 feature. Otherwise, while a task is not done: "run `/landspec:implement` again" (after `I retry` for a
-failed one). Nothing else is left for the developer to run by hand: the whole-feature check stands in for
+failed one). Nothing else is left for the developer to run by hand: the end check stands in for
 `/speckit-converge`, and the audit for `/landspec:security`.
 
 The skill never merges a PR: the developer merges.

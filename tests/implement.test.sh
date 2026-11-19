@@ -812,4 +812,49 @@ check "when run_tests was green on that tree in the implementer's copy, then mar
   '"$I" mark T001 implemented >/dev/null && [[ "$(wc -l < "$TMP/runs")" -eq 1 ]]'
 build "$R1"; printf '**Commands**: build `[BUILD_COMMAND]` · test `[TEST_COMMAND]` · lint `[LINT_COMMAND]`\n' > .specify/memory/constitution.md
 check "when there is no test command, then mark implemented accepts a tree never tested" '"$I" mark T001 implemented >/dev/null'
+# ── Spec 008 T008: the end check runs on the feature branch itself ──
+ck() { out="$("$I" check 2>&1)" || true; }
+ER() { echo "$(git rev-parse --git-common-dir)/landspec-review/feature-001-demo"; } # the end-check record
+landed() { build "$2"; "$I" mark "$1" implemented >/dev/null; ready "$2"; "$I" mark "$1" ready >/dev/null; "$I" land "$1" >/dev/null 2>&1; }
+fcommit() { printf '%s\n' "${2:-$RANDOM}" >> "$1"; git add "$1"; git commit --quiet -m "fix: $1"; }
+# erep <line>: a feature review of the check ref (Copy: none: no check copy), base origin/develop.
+erep() {
+  printf -- '%s\nCopy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\n\nAssessment: ready\n' "$1" \
+    "$(git rev-parse origin/develop)" "$(git rev-parse refs/landspec/check/001-demo)" > "$TMP/e.md"
+  "$SCRIPTS/review.sh" record --feature "$TMP/e.md" 2>&1
+}
+fsetup; plan_review >/dev/null 2>&1; landed T001 "$R1"
+check "when a task is not done, then check refuses naming it and points no check ref" \
+  'one_refusal "T002 is not done" "$I" check && ! git show-ref --quiet refs/landspec/check/001-demo'
+landed T002 "$R2"; landed T003 "$R3"; h1="$(head_fb)"; ck
+check "when every task is done, then check prints CHECK=<head> ROUND=1 and the check ref points at the head" \
+  '[[ "$out" == "CHECK=$h1 ROUND=1" && "$(git rev-parse refs/landspec/check/001-demo)" == "$h1" ]]'
+check "then the end-check record holds head:, heads: and tests: pending" \
+  '[[ "$(head -3 "$(ER)")" == "head: $h1"$'"'"'\n'"'"'"heads: $h1"$'"'"'\n'"'"'"tests: pending" ]]'
+"$I" check-result red >/dev/null; ck
+check "when check-result red then check on the same head, then UNCHANGED=1" '[[ "$out" == UNCHANGED=1 ]] && grep -qx "tests: red" "$(ER)"'
+fcommit gap.txt; h2="$(head_fb)"; ck
+check "when a new commit is on the branch, then check prints ROUND=2 and heads: lists both heads" \
+  '[[ "$out" == "CHECK=$h2 ROUND=2" ]] && grep -qx "heads: $h1 $h2" "$(ER)" && grep -qx "tests: pending" "$(ER)"'
+"$I" check-result green >/dev/null; erep '- not met: FR-001 — nothing searches' >/dev/null; ck
+check "when this head is green but its own review has a not met line, then check prints UNCHANGED=2" '[[ "$out" == UNCHANGED=2 ]]'
+git -C "$TMP/w" switch --quiet --detach origin/develop; echo base > "$TMP/w/base.txt"; git -C "$TMP/w" add base.txt
+git -C "$TMP/w" commit --quiet -m "chore: on the base"; git -C "$TMP/w" push --quiet origin HEAD:develop; bc="$(git -C "$TMP/w" rev-parse HEAD)"
+git -C "$TMP/w" switch --quiet --detach "$FB"; ck; h3="$(head_fb)"
+check "when the base has a new commit, then check merges it into the branch first, pushes, and checks the merge: ROUND=3" \
+  '[[ "$out" == "CHECK=$h3 ROUND=3" && "$(git rev-parse "$h3^1")" == "$h2" && "$(git rev-parse "$h3^2")" == "$bc" ]] \
+   && [[ "$(git ls-remote origin "refs/heads/$FB" | cut -f1)" == "$h3" && "$(git rev-parse refs/landspec/check/001-demo)" == "$h3" ]]'
+"$I" check-result green >/dev/null; eo="$(erep '- met: FR-001 — search.ts searches')"
+check "after check, check-result green and a ready record --feature, then the record still holds tests: green, the verdict, reviewed: the head and the lines" \
+  'grep -qx "REVIEW=ready" <<<"$eo" && f="$(ER)" && grep -qx "head: $h3" "$f" && grep -qx "tests: green" "$f" && grep -qx "verdict: ready" "$f" \
+   && grep -qx "reviewed: $h3" "$f" && grep -qx -- "- met: FR-001 — search.ts searches" "$f" && [[ ! -e "$f-round" ]]'
+fcommit gap.txt; ck
+check "when a fourth head comes past feature_rounds (3), then check prints ROUNDS_EXHAUSTED=3 and leaves the ref" \
+  '[[ "$out" == ROUNDS_EXHAUSTED=3 && "$(git rev-parse refs/landspec/check/001-demo)" == "$h3" ]]'
+echo "feature_rounds: 9" >> .specify/extensions/landspec/landspec-config.yml
+fcommit clash.txt mine; git -C "$TMP/w" switch --quiet --detach origin/develop; echo theirs > "$TMP/w/clash.txt"; git -C "$TMP/w" add clash.txt
+git -C "$TMP/w" commit --quiet -m "chore: clash"; git -C "$TMP/w" push --quiet origin HEAD:develop; git -C "$TMP/w" switch --quiet --detach; h4="$(head_fb)"
+check "when the base has a conflicting commit, then check stops naming the file and leaves the branch as it was" \
+  'one_refusal "clash.txt" "$I" check && [[ "$(head_fb)" == "$h4" && -z "$(git status --porcelain --untracked-files=no)" ]] && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
+
 exit "$FAIL"

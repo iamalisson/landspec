@@ -178,25 +178,32 @@ it stale. On upgrade, a plan review recorded on a `tasks.md` that already had `-
 line goes stale once: review the plan again.
 
 **The end check.** Each task review reads one diff. When every task is done (`CHECK=yes`),
-`implement.sh check` updates the branch from the base (a conflict stops with its files), then prints
-`CHECK=<head> ROUND=<n>`, or `UNCHANGED=<n>` when this head's tests or review already failed, or
-`ROUNDS_EXHAUSTED=<n>` past `feature_rounds`. The test command runs on that head through `run_tests`
-(`implement.sh check-result green|red`), and an Opus review in **feature mode** reads the spec
-against the whole diff from `origin/<base>` and reports each FR, scenario and SC as `met`, `not met`
-or `not verifiable` (`review.sh record --feature`). One record per feature,
-`.git/landspec-review/feature-<feature>`, holds the head, every head checked so far (the round is
-their count), the tests and the verdict for the head it reviewed; a new head has no verdict until it
-is reviewed, so a stale `ready` never passes. Each `not met` line (and red tests, as one task)
-becomes a new task appended to `tasks.md` on the branch (`Comes from:` the line), given one plan
-review pass, committed and pushed; the next pass builds it like any other.
+`implement.sh check` checks the whole feature once, on the feature branch itself: it merges
+`origin/<base>` into the branch and pushes it (a conflict stops it, naming the files), points
+`refs/landspec/check/<feature>` at the head and prints `CHECK=<head> ROUND=<n>`; or `UNCHANGED=<n>`
+when this head's own tests or its own feature review already failed, or `ROUNDS_EXHAUSTED=<n>` once
+`feature_rounds` heads were checked. On either of those it stops: the PR stays a draft, its body keeps
+what is not met, and the developer is asked at the end. The test command runs on that head through
+`run_tests`, in a detached worktree (a tree already green is not run again), and `implement.sh
+check-result green|red` records it. Then an Opus review in **feature mode** reads the spec against
+the whole diff from `origin/<base>` and reports each FR, scenario and SC as `met`, `not met` or `not
+verifiable`; `review.sh record --feature` adds its `verdict:`, `reviewed:` (the head it reviewed) and
+lines. One record per feature, `.git/landspec-review/feature-<feature>`, never deleted, holds `head:`,
+`heads:` (every head checked so far; the round is their count), `tests:`, `verdict:`, `reviewed:` and
+the lines; a new head has no verdict until it is reviewed, so a stale `ready` never passes. Each `not
+met` line, and red tests as one task, becomes a new task appended to `tasks.md` on the branch
+(`Comes from:` the line), given one plan review pass, committed (`docs(specs): file the end check's
+gaps`) and pushed; the same run builds, reviews and lands it like the others, then checks again. A
+pass (green tests, no `not met` line) runs `security-scan.sh --changed` and `mutants.sh` once on the
+whole feature diff, then `pr.sh feature --ready`.
 
 **The PR.** After the first landing, `pr.sh feature "<title>" <body-file>` opens the feature's one PR
 as a draft, with no scan and no mutation testing, and at the end of each run in which a task landed
 it replaces the body (see "What happens automatically"). The body holds a short summary, `## Evidence`
 (the test result and each task's `Skills:` line) and, when the feature diff changes an existing
 test, `## Test changes` from the implementers' `Test changes:` lines under each task id. When every task is done and the end check
-passed, `pr.sh feature --ready` checks that the scan and mutation testing ran once on the whole
-feature diff and marks the PR ready (`PR=<url> READY=yes`). You review, approve and merge that one PR.
+passed, `pr.sh feature --ready` checks that the scan and mutation testing were recorded for the whole
+feature diff (their results go in `## Evidence`) and marks the PR ready (`PR=<url> READY=yes`). You review, approve and merge that one PR.
 
 `security-scan.sh` prints one line per scanner, `<tool> ok|findings|missing|skipped|failed <detail>`,
 and keeps them with `--changed` as the diff's record (on the feature branch, the diff from
@@ -352,7 +359,7 @@ twice adds both PRs into one row.
 | `worktree_setup` | *(empty)* | one command each `/landspec:implement` implementer runs first in its own copy (a new worktree has no git-ignored files: `pnpm install`, say); when it fails, that task is `failed` with its output. Empty: each implementer prepares its own copy as the README says, and a task it cannot prepare is `failed` (`setup: <what is missing>`) |
 | `implement_model` | *(empty: the session's)* | the model of `/landspec:implement`'s implementers: `sonnet`, `opus` or `fable`; any other value is refused |
 | `task_rounds` | `2` | how many `changes needed` reviews a task gets (the first review and one delta; a landing conflict's round is not counted) before `implement.sh mark … changes` marks it `failed` (`FAILED=<id>`; `retry` lifts it): a number from `1` to `9` |
-| `feature_rounds` | `3` | how many whole-feature check attempts `/landspec:implement` makes (each new feature head checked is one round: red tests or a `not met` line give new tasks, and the next head is checked again) before it stops and asks: a number from `1` to `9` |
+| `feature_rounds` | `3` | how many heads of the feature branch the end check checks (a red run or a `changes needed` feature review count once per head; red tests or a `not met` line give new tasks, and the next head is checked again) before it stops and asks: a number from `1` to `9` |
 | `version_files` | *(empty)* | the files that carry the version (`version: "X.Y.Z"` or `"version": "X.Y.Z"`), comma separated, the first one read as the current version; `/landspec:implement` bumps them for the release (minor; patch when every task is a `Fix`). Empty: no release step, only notes |
 | `release_notes` | *(empty)* | the folder for each release's notes, `<folder>/X.Y.Z.md`; they are also the published release's body; without it, the notes are the release PR's body, up to its `## Evidence` or `## Review` |
 | `parallel_tasks` | `4` | how many builders `/landspec:implement` runs at once on the feature branch, each on its own task ref: `implement.sh status` prints at most this many `START=` lines, minus the running ones; reviewers take no slot: a number from `1` to `16`, any other value is refused |
