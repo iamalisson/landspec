@@ -27,7 +27,7 @@ fork.
 Wait for its report. The reviewer writes it to a file itself and names it on its first line,
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:
 `bash .specify/extensions/landspec/scripts/review.sh record <file>` (`record --plan <file>` for a plan
-review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
+review, `record --plan --delta <file>` for a plan delta, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
 go on without a recorded review of the current state that passes its gate (no High
 finding in a plan review, no High or Medium in a task review), at every level,
 so a commit after the review means another review. Recording removes the reviewer's copy (its
@@ -75,6 +75,8 @@ Facts the author passes:
   the author wrote about the findings. When the last record predates the kept copies (a 2.7.0
   record: `diff --plan` dies "no plan review recorded yet"), the folder and that round's report,
   with no diff: the round reads the whole folder.
+- for a **plan delta**: "plan delta", the feature folder, the path of the last `ready` round's
+  report and the output of `review.sh diff --plan`.
 
 **A delta** reads `git diff <sha>..HEAD` only: it checks that each previous finding is fixed and
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
@@ -247,6 +249,16 @@ a changed text, in a cell before it) or `open`, never `none:`. An `open` row is 
 findings (its `Findings:` total above 0), and a `ready` with an `open` row only when it counts a
 High finding. When that report
 counted no findings (`Findings: 0 high, 0 medium, 0 low`), leave the table out.
+
+**Plan delta** (after a `ready` plan review, to apply its Low findings without a new full round):
+the author passes the last round's report and the output of `review.sh diff --plan` (the reviewed
+copy against the current folder). Read only that diff and the lines around it: for each changed
+hunk, the Low it applies, or a **High** finding when it changes anything a Low did not ask for (a
+rule, a task, a dependency, a requirement): the passes are not run again, so such a change goes to
+the full plan review. Run no passes. The report has `Delta from: <the last round's Plan state>`
+beside its `Plan state:`, a `Findings:` line and `Assessment: ready` unless it has a High; record it
+with `review.sh record --plan --delta <file>`, which refuses it after a round with a High finding,
+and when a task, an FR or an SC was added or removed since the reviewed copy.
 
 ## Report
 

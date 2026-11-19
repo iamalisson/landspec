@@ -109,6 +109,36 @@ plan_report
 sedi -E '/ — #[0-9]+$/!s/^(- \[ \] T00[0-9].*)$/\1 — #42/' specs/001-demo/tasks.md
 check "when only — #N is appended to the task lines, then the same report still records ready" \
   'grep -q "T002 New task in \`b\` — #42$" specs/001-demo/tasks.md && [[ "$("$r" record --plan "$TMP/plan.md")" == REVIEW=ready ]]'
+
+# #206: a plan delta applies a ready round's Lows without a new full round.
+# plan_delta <from> [<assessment>]: a delta report from the state <from> for the current plan.
+plan_delta() { printf 'Diff read.\n\nDelta from: %s\nPlan state: %s\nModel: claude-sonnet-4-7\nFindings: 0 high, 0 medium, 0 low\n\nAssessment: %s\n' "$1" "$("$r" state --plan)" "${2:-ready}" > "$TMP/delta.md"; }
+prec="$(git rev-parse --git-common-dir)/landspec-review/plan-001-demo"
+d0="$("$r" state --plan)"
+sedi 's/an edited version/a Low applied/' specs/001-demo/tasks.md
+check "when a Low of a ready plan round is applied, then check --plan refuses, a plan delta from that round records ready, and check --plan passes" \
+  'fails_with "changed since" "$r" check --plan && plan_delta "$d0" && [[ "$("$r" record --plan --delta "$TMP/delta.md")" == REVIEW=ready ]] && "$r" check --plan'
+check "when the plan has not changed since the last record, then a plan delta is refused" \
+  'plan_delta "$("$r" state --plan)" && fails_with "the plan has not changed since the last plan review: nothing to record" "$r" record --plan --delta "$TMP/delta.md"'
+sedi 's/a Low applied/a second Low/' specs/001-demo/tasks.md
+check "when a plan delta names a state that is not the last one recorded, then it is refused" \
+  'plan_delta "$d0" && fails_with "a plan delta report names the state it started from" "$r" record --plan --delta "$TMP/delta.md"'
+check "when a full plan report carries Delta from:, then record --plan refuses it as a delta" \
+  'plan_delta "$d0" && fails_with "this is a plan delta report: record it with review.sh record --plan --delta" "$r" record --plan "$TMP/delta.md"'
+last() { sed -n "s/^state: //p" "$prec" | head -1; }
+check "when a second Low is applied after a recorded plan delta, then a delta from that delta records ready" \
+  'plan_delta "$(last)" && [[ "$("$r" record --plan --delta "$TMP/delta.md")" == REVIEW=ready ]]'
+printf '%s\n' '- [ ] T003 A task no Low asked for in `c`' >> specs/001-demo/tasks.md
+check "when a plan delta adds a task, then it is refused: a new task needs the full plan review" \
+  'plan_delta "$(last)" && fails_with "a plan delta adds or removes no task, FR or SC: run the full plan review" "$r" record --plan --delta "$TMP/delta.md"'
+sedi '/T003 A task no Low asked for/d' specs/001-demo/tasks.md; sedi 's/a second Low/a third Low/' specs/001-demo/tasks.md
+check "when a plan delta report has no Findings: line, then it is refused" \
+  'plan_delta "$(last)" && sedi "/^Findings:/d" "$TMP/delta.md" && fails_with "the report has no line '"'"'Findings: <n> high, <n> medium, <n> low'"'"'" "$r" record --plan --delta "$TMP/delta.md"'
+sedi 's/^assessment: ready$/assessment: changes needed/' "$prec"
+check "when the last plan round said changes needed, then a plan delta is refused" \
+  'plan_delta "$(sed -n "s/^state: //p" "$prec" | head -1)" && fails_with "a plan delta follows a ready plan review" "$r" record --plan --delta "$TMP/delta.md"'
+check "when check --plan --delta runs, then it is refused: a plan delta is only recorded" \
+  'fails_with "a plan delta is only recorded: review.sh record --plan --delta <report-file>" "$r" check --plan --delta'
 st="$("$r" state --plan)"
 printf 'Plan read.\n\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' > "$TMP/plan.md"
 check "when the plan report has no Plan state: line, then record --plan refuses it" \
@@ -355,8 +385,6 @@ check "when the diff touches nothing risky, then review.sh risk prints exactly R
 drep ready "$(git rev-parse HEAD)"
 check "when no full review was recorded for the branch, then record --delta refuses" \
   'fails_with "a delta follows a recorded full review of this branch: run a new full review, then record it with review.sh record <report-file>" "$r" record --delta "$TMP/report.md"'
-check "when record --plan --delta is used, then it is refused" \
-  'fails_with "a plan review is always full: review.sh record --plan <report-file>" "$r" record --plan --delta "$TMP/report.md"'
 check "when review.sh risk --plan runs, then it refuses" 'fails_with "risk maps a diff; a plan review has none" "$r" risk --plan'
 
 mkdir -p db/migrations src tests
