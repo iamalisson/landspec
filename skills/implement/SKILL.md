@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Run every startable task of a spec-kit feature at once: each in its own copy as a background implementer, then through the independent review, fix rounds, the scan and its PR (stacked on its parent's PR when it depends on one). Never merges. Use for /landspec:implement, or when the user asks to run a feature's tasks in parallel."
+description: "Run every startable task of a spec-kit feature at once: each in its own copy as a background implementer on its task ref, then through the independent review and one fix round, and land each on the feature branch as soon as it is ready; one draft PR for the feature. Never merges. Use for /landspec:implement, or when the user asks to run a feature's tasks in parallel."
 argument-hint: "[feature]"
 ---
 
@@ -10,75 +10,78 @@ You are the main session: you start every agent, and no agent starts another. `I
 `bash .specify/extensions/landspec/scripts/implement.sh <feature>`, with the feature the user named
 (or the one `next.sh` serves). If `.specify/extensions/landspec/` does not exist, tell the user to
 run `/landspec:init` first, and stop. Make sure the working tree is clean; if it isn't, stop and say
-so: never stash or discard. Ask nothing while the loop runs: every question waits for the end.
+so: never stash or discard. Then put this checkout on the feature's branch, where every task lands:
+`bash .specify/extensions/landspec/scripts/branch.sh <feature>`. Ask nothing while the loop runs:
+every question waits for the end.
 
 Keep, for the whole run, the tasks whose agents (implementers and reviewers) are in flight (`in flight`), and for each task its
-copy (`Copy:`), branch (`BRANCH=`), the `REVIEWED=` sha its last review record printed, and the
-`Answer: <thread id> …` lines its implementer returned for a Copilot fix round.
+copy (`Copy:`), its task ref (`REF=`), its implementer (to SendMessage it), the `REVIEWED=` sha its last review record printed, and
+the `Skills:` line its implementer returned.
 
 ## The loop
 
 Each pass:
 
-1. `I restack --running <every task in flight, implementers and reviewers, comma separated>` (left out
-   when nothing is in flight), so a stacked task under review is never moved mid-review. Show its `RESTACKED=`, `RESTACK_SKIPPED=`, `RESTACK_CONFLICT=`, `RESTACK_NOT_READY=` and
-   `RETARGETED=` lines as they come; a conflict waits for the end (step "End").
-2. `I status --running <the implementers in flight, comma separated>` (left out when none is): only
-   implementers take `parallel_tasks:` slots, and a task under review is kept from a second review by
-   `in flight`, not by `status`. It prints one `TASK=` line per task, then `START=`, `REVIEW=`, `FIX=`, `OPEN=`,
+1. `I status --running <id> --running <id> …`, one `--running` per implementer in flight (left out
+   when none is): only implementers take `parallel_tasks:` slots, and a task under review is kept
+   from a second review by `in flight`, not by `status`. It prints one `TASK=` line per task, then
+   one `START=`, `REVIEW=`, `FIX=` or `LAND=` line per task in that state, then `CHECK=`, `PR=`,
    `ORDER=` and `DONE=`.
-3. One step per listed task, in the order printed, skipping any task that is in `in flight` (a task
+2. One step per listed task, in the order printed, skipping any task that is in `in flight` (a task
    under review is listed in `REVIEW=` again until its reviewer returns):
-   - **Each `STATE=pr` task** → `bash .specify/extensions/landspec/scripts/pr.sh state <its PR=>`. On
-     `COPILOT=comments <n> REPORT=<file>` with n > 0, `I mark <task> changes <file>`: Copilot's
-     comments are a fix round (the next pass lists it in `FIX=`; go back to 1 at once when nothing
-     is in flight), and it counts against the
-     task's rounds, so a Copilot that comments on every push stops at the limit as a review does.
-     Each `RESOLVE=` thread (already answered): `pr.sh state <pr> --reply <thread>`, with no file.
    - **`START`** → launch an implementer: the Agent tool with `subagent_type: "landspec:implementer"`,
      `isolation: "worktree"`, `run_in_background: true`, and `model` from `implement_model:` in
      `.specify/extensions/landspec/landspec-config.yml` (`sonnet`, `opus` or `fable`; left out when
      empty, so it is the session's; any other value: say `implement_model must be sonnet, opus or
-     fable` and stop). Its prompt: the feature, the task id, its line with the sub-bullets from
-     `tasks.md`, the project's test command, and `--from <parent branch>` when the task's line in
-     `status` has `PARENT=` other than `-`. Add the task to `in flight`.
+     fable` and stop). Its prompt: the feature, the feature branch, the task id, its line with the
+     sub-bullets from `tasks.md`, the project's test command, the line's `REF=` and `FROM=`, and
+     `RESUME=yes` when the line has it (the ref exists: the implementer goes on from its last
+     commit). Add the task to `in flight`.
    - **`REVIEW`** → the independent review, exactly as `.specify/extensions/landspec/commands/review.md`
-     says (its copy, its model, its record), in the background, with the facts: `commit:` the branch's
-     head, `checkout:` the task's copy, `branch:` its branch, and `base: <base_ref <branch>>`
-     (`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; base_ref "$0"' <branch>`), so a
-     stacked task is reviewed against its parent. A fix round (the task has the `<task>.report` of
-     `FIX` below, and you hold the `REVIEWED=` sha its last record printed) is a **delta**, as
-     review.md says: add that sha and that report to the facts. A fix round from a Copilot report
-     (its findings have `thread=` lines) gets a full review instead, recorded with `review.sh record
-     --branch`, never a delta: `record --delta` reads the last recorded review's files, not
-     Copilot's. Add the task to `in flight`, so the
-     next pass does not review it again. When it returns, remove it from `in flight`, then record
-     it: `review.sh record --branch <branch> <report>`, or for a delta `review.sh record --delta
-     --branch <branch> <report>`. When `record --delta` refuses (a restack rebased the branch, or the
-     fix grew past its 20 lines), run a full review instead and record it with `review.sh record
-     --branch`. Then `I mark <task> ready <report>` or `I mark <task> changes <report>` from its
-     Assessment.
-   - **`FIX`** → a fix round with the review that asked for it, the file
-     `$(git rev-parse --git-common-dir)/landspec-run/<feature dir name>/<task>.report` (`mark … changes`
-     keeps it there): if the task's
-     implementer is still in flight, SendMessage it the report; if SendMessage is not available, or the
-     agent is gone, launch a new implementer as in `START`, on the existing branch, with the report.
-     Either way the task is in flight again until it returns.
-   - **`OPEN`**, parents first (in `ORDER`): in the task's copy, `git switch <branch>` (copies are
-     left detached, so the branch is free), then the scan and mutation testing only when this diff
-     has no record of them (the implementer ran both; a restack changes the diff): `bash -c 'source
-     .specify/extensions/landspec/scripts/lib.sh; cat "$(diff_record "$0")"' landspec-security`, and
-     the same for `landspec-mutants`. A `survivors` record goes in *Evidence* with the implementer's
-     survivor lines, and its `Skills:` line goes in *Evidence* as it returned it; an implementer that
-     returned none, or a run resumed after the line was lost, gives `Skills: not reported`, never
-     `none matched`. Then `pr.sh task` exactly as `.specify/extensions/landspec/commands/pr.md` says. On a draft PR that already exists and now
-     targets the base (its `landspec-parent` setting is gone), run `gh pr ready <pr>` after
-     `pr.sh task`; never while `landspec-parent` is set. After a Copilot fix round is pushed, answer
-     each thread with what the implementer answered: its `Answer: <thread id> <answer>` line's
-     answer written to a `mktemp` file, then `pr.sh state <pr> --reply <thread id> <file>`, which
-     replies and resolves it. Then `I mark <task> pr` and `git switch --detach` in that copy.
-4. Wait for the next agent to return, then go back to 1. Stop when `status` lists nothing in
-   `START`, `REVIEW`, `FIX` and `OPEN`, and nothing is in flight (no implementer and no reviewer).
+     says: one `landspec:reviewer` with `model: opus` and `isolation: "worktree"`, in the background,
+     with the facts: `commit:` the task ref's head (`git rev-parse <REF>`), `checkout:` the task's
+     copy, `branch:` the task ref (`REF=`), `base:` the feature branch, the task's line with its
+     sub-bullets, and the test command. A fix or conflict round (the task has a review recorded
+     before) is a **delta**, as review.md says: add the `REVIEWED=` sha you hold (in a new run, the
+     `head:` line of `$(git rev-parse --git-common-dir)/landspec-review/task-<REF with each / as __>`)
+     and the last round's report. Add the task to `in flight`, so the next pass does not review it
+     again. When it returns, remove it from `in flight`, then record it: the first review with
+     `review.sh record --branch <REF> <report>`, a fix or conflict round always `review.sh record
+     --delta --branch <REF> <report>`. When `record` refuses, `I fail <task> "<its message>"`. Then
+     `I mark <task> ready <report>` or `I mark <task> changes <report>` from its Assessment: a high
+     or medium finding is `changes`; low ones never hold a task (`land` copies them into the landing
+     commit).
+   - **`FIX`** → one fix round, through SendMessage to the task's implementer, with the review that
+     asked for it, the file `$(git rev-parse --git-common-dir)/landspec-run/<feature dir name>/<task>.report`
+     (`mark … changes` keeps it there). With `REASON=conflict`, the round is the landing conflict
+     instead: the implementer merges the feature branch into its ref, resolves the conflict, runs the
+     tests, then a delta review and `land` again; send it the feature branch and the `FILES=` of
+     `CONFLICT=`. Either way, if SendMessage is not available, or the agent is gone, launch a new
+     implementer as in `START`, with `RESUME=yes` and the report (or the conflict). The task is in
+     flight again until it returns.
+   - **`LAND`** → as soon as a task is ready, `I land <task>` here, on the feature branch, one `land`
+     at a time. `LANDED=<id> COMMIT=<sha>`: when it is the first landing of this run and `status` had
+     `PR=-`, open the draft (below). `CONFLICT=<id> FILES=<files>`: the next `status` lists the task
+     in `FIX=` with `REASON=conflict`. `status` again after every landing: a landing can make
+     another task startable.
+
+   Any `FAILED=<id>`: reported, and the run goes on with every task that does not depend on it (its
+   dependants stay `waiting`); `mark`, `land` and `fail` print it.
+3. Wait for the next agent to return, then go back to 1. Stop when `status` lists nothing in
+   `START`, `REVIEW`, `FIX` and `LAND`, and nothing is in flight (no implementer and no reviewer).
+
+## The draft PR
+
+One draft PR for the whole feature: opened after the first landing, and updated at the end of each
+run in which a task landed. Here, on the feature branch, write the body to a `mktemp` file: one or
+two sentences on what the feature does, and `## Evidence`: the test result and each implementer's
+`Skills:` line, as it returned it, under its task id; an implementer that returned none, or a run
+resumed after the line was lost, gives `Skills: not reported`, never `none matched`. Then
+`pr.sh feature "<title>" <body-file>` (`bash .specify/extensions/landspec/scripts/pr.sh`), the title
+a conventional one for the feature (`feat(<scope>): <what it does>`), as
+`.specify/extensions/landspec/commands/pr.md` says for the feature PR: no scan and no mutation
+testing here (they run once, on the whole feature diff, before `pr.sh feature --ready`). It adds the
+task table and prints `PR=<url> READY=no`. When it refuses, report its message; the run goes on.
 
 ## The whole-feature check
 
@@ -93,17 +96,12 @@ check runs on the base itself, once per base commit, and only from "The release"
    - `UNCHANGED=<n>`: the same task heads as the last attempt that was not green (the fix round
      changed nothing, or the test is flaky); `ROUNDS_EXHAUSTED=<n>`: `feature_rounds:` attempts are
      used up. Either way, stop, and ask the developer at the end.
-   - `CONFLICT=<task> WITH=<earlier task> FILES=<paths>`: `I stack <task> <earlier task>` (so the fix
-     round sees both), then a fix round on `<task>` (as `FIX` above, with the conflict and its files as
-     the report), and back to the loop. When `stack` prints `RESTACK_CONFLICT=<task>`, the same fix
-     round resolves it on `<task>` alone (both branches and the files in its report). When the task
-     already has a parent (`stack` refuses), stop, and report both tasks and the files.
+   - `CONFLICT=<task> WITH=<earlier task> FILES=<paths>`: stop, and report both tasks and the files.
    - `CHECKED=<sha>`: every task is merged and that base commit was already checked (green, and a
      `ready` feature review); go on with the release.
    - `CHECK=<path> ROUND=<n>`, with `FROM=<sha>` when every task is merged: go on.
 2. In `<path>`, the project's test command. Red: `I check-result red`, then a fix round on the task
-   branch whose files the failing test covers, stacked first (`I stack`) on the other task branch it
-   needs, and back to the loop. With every task merged (`FROM=`), there is no task branch to fix:
+   branch whose files the failing test covers, and back to the loop. With every task merged (`FROM=`), there is no task branch to fix:
    `I check-result red`, the failing test becomes a gap task (step 5), and there is no release. Green:
    `I check-result green`.
 3. After a green run only: the **feature review**, as `review.md` says (its feature review mode), with
@@ -116,7 +114,7 @@ check runs on the base itself, once per base commit, and only from "The release"
 5. **The gaps**, when the feature review has `not met` lines, or the base's run was red with every
    task merged: each becomes a task (a red run: `Comes from:` the failing test), through a spec PR,
    before anything is merged. The check ran only because the feature has no open spec PR, so this is
-   always a new one. Work in the run's worktree `<repo>-<feature>-run` (`restack` makes it; when it is
+   always a new one. Work in the run's worktree `<repo>-<feature>-run` (when it is
    missing, `git worktree add --detach <repo>-<feature>-run origin/<base>`):
    - If `spec/<feature dir name>` is checked out in any worktree (`git worktree list`), print
      `SKIPPED=spec/<feature dir name> (checked out in <path>)`, say so in the report, and stop.
@@ -128,8 +126,7 @@ check runs on the base itself, once per base commit, and only from "The release"
      `— #N` (only its `(depends on …)` suffix).
    - A plan review of those lines, as `plan-review.md` step 2 says (`review.sh record --plan`; every
      round is read cold: the next one gets the last report and `review.sh diff --plan`, never
-     replies to its findings; on `SIMPLIFY=<area>`, the next round gets `simplify: <area>` and the
-     developer answers its Simplify section with `review.sh answer --plan`), then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
+     replies to its findings), then `pr.sh spec "docs(specs): file the whole-feature check's gaps"`.
    - `git switch --detach` there, last.
 
    Gap tasks are ordinary tasks: the next run starts them from the base, once the developer has
@@ -193,50 +190,42 @@ prints. The base is audited once per commit: a later run reuses the recorded res
 
 ## When an implementer returns
 
-When it says it is done: its `Copy: <path>` is the task's copy from now on. A missing `Copy:` (or a
-path that is gone) is recreated: `git worktree add --detach <repo>-<feature>-<task> <branch>`, beside
-the repository. In that copy, run the project's test command before anything else, as
-`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'`: a green
-run on the committed head is recorded, so OPEN's checks and `pr.sh` do not run the same tree again:
+When it says it is done: its `Copy: <path>` is the task's copy from now on, and its `REF=` the task
+ref. A missing `Copy:` (or a path that is gone) is recreated beside the repository:
+`git worktree add --detach <repo>-<feature>-<task> <REF>`. Keep its `Skills:` line. Then
+`I mark <task> implemented`. It refuses with `no green test run` when the implementer's run of the
+tests was not recorded for the ref's head: then, in that copy, run the project's test command as
+`bash -c 'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'`:
 
 - green: `I mark <task> implemented` (it clears `red=`), then remove it from `in flight`;
 - red: `I mark <task> red`. At `RED=2` (it said done twice and the tests are still red):
   `I fail <task> "tests red twice"`, then remove it from `in flight`. At `RED=1`, SendMessage its
   implementer the test output; if SendMessage is not available, or the agent is gone, launch a new
-  implementer as in `START`, on the existing branch, with that output. It stays in flight.
+  implementer as in `START`, with `RESUME=yes` and that output. It stays in flight.
 
 Otherwise:
 
-- `branch.sh` exit 3 (it says the task was claimed elsewhere): the task is `elsewhere`; leave it,
-  remove it from `in flight`, and start the next one.
 - `worktree_setup` failed: `I fail <task> "worktree_setup: <its output>"`, then remove it from
   `in flight`, and go on with the others.
 - Any other failure it reports: `I fail <task> "<what it said>"`, then remove it from `in flight`.
-- It returned none of these (no done, no `Elsewhere:`, no `Failed:`: it crashed or ran out): remove
-  it from `in flight`. With a branch, `I mark <task> red`: at `RED=2`, `I fail <task> "implementer
-  returned nothing"`; otherwise the next `status` lists it as `resume` in `START`. With no branch,
-  `I fail <task> "implementer returned nothing"` at once.
+- It returned none of these (no done, no `Failed:`: it crashed or ran out): remove
+  it from `in flight`. With a task ref, `I mark <task> red`: at `RED=2`, `I fail <task> "implementer
+  returned nothing"`; otherwise the next `status` lists it in `START` with `RESUME=yes`. With no task
+  ref, `I fail <task> "implementer returned nothing"` at once.
 
 ## End
 
-Show the run report, then only what is left for the developer:
+At the end of each run in which a task landed, update the draft (above). Then show the run report,
+then only what is left for the developer:
 
 - each task's state from the last `status`, and `DONE=`; each `waiting` task with its `REASON=` (`waits
-  for Tnnn`, or `merge Tnnn or Tmmm first`); for `REASON=locked worktree <path>` (an agent stopped
-  mid-task), the commands to free it: `git worktree unlock <path>`, then `git worktree remove <path>`;
-- the PRs to merge, in `ORDER` (parents first: a child's draft becomes ready once its parent is
-  merged and `/landspec:implement` runs again), then "run `/landspec:implement` again". The hand-over
-  rule: run `pr.sh state <pr>` on each; a PR is listed among the PRs to merge only on `CONFLICT=no` and
-  `COPILOT=` `none`, `clean` or `unavailable` (with Copilot's reason: it could not review). Every
-  other PR is listed apart with its reason: "conflict with <base>" (`CONFLICT=yes`), "GitHub is still
-  computing whether it conflicts" (`CONFLICT=unknown`), "waiting for Copilot's review"
-  (`COPILOT=pending`), "Copilot comments being answered" (`COPILOT=comments`). CI never holds a PR
-  back: beside each listed PR, "CI passed" (`CI=pass`), "CI still running" (`CI=pending`), "CI failed:
-  <jobs>" (`CI=fail`) or "no CI" (`CI=none`). Each PR the End names is written `[#N](<url>)` (the
-  url from `gh pr view <N> --json url -q .url`);
+  for Tnnn`); for `REASON=locked worktree <path>` (an agent stopped mid-task), the commands to free
+  it: `git worktree unlock <path>`, then `git worktree remove <path>`;
+- the feature PR, written `[#N](<url>)` (`PR=` of `status`), still a draft;
+- each `failed` task with its reason and, when its review rounds failed it, the findings of its last report
+  (`landspec-run/<feature dir name>/<task>.report`); `I retry <task>` lifts it, and the next run starts it
+  again from the feature head;
 - the whole-feature check: its round, the test result, and each `not met` line of the feature review;
-- each `failed` task with its reason (`I retry <task>` lifts it), each `RESTACK_CONFLICT=`, each
-  skipped task;
 - the gap tasks filed, with their issues and the spec PR;
 - the release: the `RELEASE=` line and what was done for it (the release PR to merge, the tag, the
   published release), and the `AUDIT=` line when there was one, with the scanners and reviews the
@@ -245,7 +234,8 @@ Show the run report, then only what is left for the developer:
 Last line, when gaps were filed: `merge the PRs in ORDER and <spec PR>, then run /landspec:implement
 again`. When the release holds: `release held: <n> confirmed critical or high; run /landspec:security
 <report path>`. When the release is done or was published by this run: `/speckit-specify` for the next
-feature. Nothing else is left for the developer to run by hand: the whole-feature check stands in for
+feature. Otherwise, while a task is not done: "run `/landspec:implement` again" (after `I retry` for a
+failed one). Nothing else is left for the developer to run by hand: the whole-feature check stands in for
 `/speckit-converge`, and the audit for `/landspec:security`.
 
-The skill never merges a PR: the developer merges, in `ORDER`.
+The skill never merges a PR: the developer merges.
