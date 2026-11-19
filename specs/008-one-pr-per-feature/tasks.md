@@ -456,6 +456,20 @@ diff.
     include a symbolic link and the fake semgrep is given no link among its targets (and fails the
     way the real one does when it is); `tests/run.sh` passes.
 
+- [ ] T024 [US5] Refuse a merged feature in pr.sh feature, and make the release's worktree, in extension/scripts/pr.sh and skills/implement/SKILL.md
+  - Comes from: the end check's feature review, round 2: US5 scenario 4 and SC-001 not met (after a
+    squash merge, the `after_implement` hook's `pr.sh feature` pushes the deleted feature branch back
+    and opens a second PR: `merged_pr`/`refuse_merged` are called only from branch.sh and
+    implement.sh); its low: "The release" and the audit work in `<repo>-<feature>-run`, which nothing
+    makes since `restack` went
+  - What: `pr.sh feature` (draft and `--ready`) calls `refuse_merged` first, before any push or PR
+    lookup. In `skills/implement/SKILL.md`, "The release" makes its worktree when it is missing
+    (`git worktree add --detach <repo>-<feature>-run origin/<base>`), as the line `restack` carried did.
+  - Impact: `tests/pr.test.sh`; `tests/static.test.sh` (the release section makes its worktree).
+  - Completed when: `bash tests/pr.test.sh` passes with a case where the feature PR is merged in the
+    fake gh and `pr.sh feature` refuses with `the feature PR #<n> is merged`, origin gains no branch
+    and no `pr create` is logged; `bash tests/static.test.sh` passes; `tests/run.sh` passes.
+
 - [X] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
   - Comes from: FR-013, FR-015, US5 scenario 4, SC-004; research R10, R11
   - What: `release-plan`: PRs merged whose head starts with `<branch_prefix>/<NNN>-` (not
@@ -621,6 +635,7 @@ Every task of a wave starts at once; a wave starts as soon as its tasks' depende
 | 9 | T014, T015 | |
 | 10 | T016 | |
 | 11 | T022, T023 | the end check's gaps, round 1 |
+| 12 | T024 | the end check's gap, round 2 |
 
 ## Implementation strategy
 
