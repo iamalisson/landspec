@@ -53,7 +53,7 @@ ours() { # ours <file>: created by landspec and not taken over by the user
     echo "kept (edited): $1"; return 1
   fi
   # No record (set up before 1.8.0): only a committed, unchanged marked file is known to be landspec's.
-  if head -2 "$1" | grep -q '^# landspec: managed file'; then
+  if head -2 "$1" | grep '^# landspec: managed file' >/dev/null; then
     if git ls-files --error-unmatch "$1" >/dev/null 2>&1 && git diff --quiet HEAD -- "$1" 2>/dev/null; then return 0; fi
     echo "kept (edited): $1"; return 1
   fi

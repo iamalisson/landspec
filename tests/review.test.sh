@@ -24,11 +24,11 @@ check "when the report has no assessment line, then it is refused" 'fails_with "
 printf 'Assessment: not ready, changes needed\n' > "$TMP/report.md"
 check "when the verdict is not the exact line (not ready, already), then it is refused" 'fails_with "exactly" "$r" record "$TMP/report.md"'
 printf 'Assessment: changes needed\n\nmy risk assessment is that the retry path is already covered\n%s\nModel: claude-sonnet-4-7\n' "$(range)" > "$TMP/report.md"
-check "when prose after the verdict mentions ready, then the verdict still counts" '"$r" record "$TMP/report.md" | grep -q "^REVIEW=changes needed"'
+check "when prose after the verdict mentions ready, then the verdict still counts" '"$r" record "$TMP/report.md" | gq "^REVIEW=changes needed"'
 report "changes needed"
 check "when the review said changes needed, then check refuses" '"$r" record "$TMP/report.md" && fails_with "changes needed" "$r" check'
 report ready
-check "when the review said ready on this diff, then check passes" '"$r" record "$TMP/report.md" | grep -q "^REVIEW=ready" && "$r" check'
+check "when the review said ready on this diff, then check passes" '"$r" record "$TMP/report.md" | gq "^REVIEW=ready" && "$r" check'
 # R13: a task review blocks on a high or medium finding, never on a low one, whatever its Assessment line says.
 fr() { printf 'What changed: x\n\n- %s: search.ts:1 a case\n\n%s\nModel: claude-sonnet-4-7\nFindings: %s\n\nAssessment: %s\n' "$1" "$(range)" "$2" "$3" > "$TMP/report.md"; }
 fr Medium "0 high, 1 medium, 0 low" ready
@@ -368,7 +368,7 @@ check "when [area: discards] is found in three rounds, then record --plan prints
   'af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] && af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] \
    && af ready discards && [[ "$(rec)" == REVIEW=ready && ! -e "$L" ]] && "$r" check --plan'
 check "when review.sh answer --plan x y runs, then it exits non-zero with the usage error, which names no answer action" \
-  'fails_with "usage: review.sh record [--plan|--delta|--feature]" "$r" answer --plan x y && ! "$r" answer --plan x y 2>&1 | grep -qF "review.sh answer"'
+  'fails_with "usage: review.sh record [--plan|--delta|--feature]" "$r" answer --plan x y && ! "$r" answer --plan x y 2>&1 | gq -F "review.sh answer"'
 rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
@@ -393,9 +393,9 @@ printf 'make x || true\n' > build.sh; printf 'assert 1\nassert 2\nassert 3\n' > 
 git add db src build.sh tests; git commit --quiet -m "feat: risky"
 check "when the diff adds db/migrations/002_drop.sql with DROP TABLE, then risk prints RISK=migration and RISK=delete for it" \
   'out="$("$r" risk)"; grep -qx "RISK=migration db/migrations/002_drop.sql" <<<"$out" && grep -qx "RISK=delete db/migrations/002_drop.sql" <<<"$out"'
-check "when the diff adds src/authorization.py, then risk prints RISK=auth for it" '"$r" risk | grep -qx "RISK=auth src/authorization.py"'
-check "when an added line swallows a failure (x || true), then risk prints RISK=gate for its file" '"$r" risk | grep -qx "RISK=gate build.sh"'
-check "then risk prints only paths and categories, never the line content" '! "$r" risk | grep -qiE "drop table|make x"'
+check "when the diff adds src/authorization.py, then risk prints RISK=auth for it" '"$r" risk | gq -x "RISK=auth src/authorization.py"'
+check "when an added line swallows a failure (x || true), then risk prints RISK=gate for its file" '"$r" risk | gq -x "RISK=gate build.sh"'
+check "then risk prints only paths and categories, never the line content" '! "$r" risk | gq -iE "drop table|make x"'
 mkdir -p web; printf 'a { color: #8a90ad }\n' > web/site.css; printf '<a href="/">x</a>\n' > web/page.html; echo 'x = 1' > src/util.py
 git add web src/util.py; git commit --quiet -m "feat: page"
 check "when the diff adds a stylesheet or a page template, then risk prints RISK=ui for each, and not for other code" \
@@ -470,7 +470,7 @@ check "when Model: is us.anthropic.claude-opus-4-1-20250805-v1:0, then it is kep
 check "when Model: is claude-haiku-4-5, then it is kept, with its warning" 'model_is claude-haiku-4-5 claude-haiku-4-5 && [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
 for bad in Token=abc ghp_abc123; do
   check "when Model: is $bad, then unknown is stored in the record and the warning, and the value in neither" \
-    'model_is "$bad" unknown && [[ "$err" == "$(warn "the review ran on unknown")" ]] && grep -qx "warning: the review ran on unknown; the review did not run on the configured model" "$(rec)" && ! sed "/^$/q" "$(rec)" | grep -qF "$bad"'
+    'model_is "$bad" unknown && [[ "$err" == "$(warn "the review ran on unknown")" ]] && grep -qx "warning: the review ran on unknown; the review did not run on the configured model" "$(rec)" && ! sed "/^$/q" "$(rec)" | gq -F "$bad"'
 done
 long="claude-$(head -c 80 /dev/zero | tr '\0' x)"
 check "when Model: is over 80 characters, then unknown is stored" 'model_is "$long" unknown'
@@ -527,8 +527,8 @@ check "when the fix adds DROP TABLE to a path round 1 marked deep and the delta 
   'fails_with "the report does not check db/migrations/002_drop.sql (" "$r" record --delta "$TMP/report.md"'
 drep ready "$h2" "- deep: db/migrations/002_drop.sql — drops orders: checked"
 check "when the delta deep-checks it, then the delta is recorded and report lists both labeled risk maps, paths only" \
-  '"$r" record --delta "$TMP/report.md" >/dev/null && out="$("$r" report)" && grep -A3 -x "Risk map (round 1)" <<<"$out" | grep -qx -- "- deep: build.sh" \
-   && grep -A1 -x "Risk map (fix round)" <<<"$out" | grep -qx -- "- deep: db/migrations/002_drop.sql" && ! grep -qE "drops|checked|always allows" <<<"$out"'
+  '"$r" record --delta "$TMP/report.md" >/dev/null && out="$("$r" report)" && grep -A3 -x "Risk map (round 1)" <<<"$out" | gq -x -- "- deep: build.sh" \
+   && grep -A1 -x "Risk map (fix round)" <<<"$out" | gq -x -- "- deep: db/migrations/002_drop.sql" && ! grep -qE "drops|checked|always allows" <<<"$out"'
 
 rep ready "${all[@]}"; "$r" record "$TMP/report.md" >/dev/null || true; h3="$(git rev-parse HEAD)"
 git reset --quiet --hard HEAD~1; git commit --quiet --amend -m rewritten
@@ -542,15 +542,15 @@ printf "it('works', () => {})\n" > tests/a.test.js; git add tests/a.test.js; git
 printf "it.skip('works', () => {})\n" > tests/a.test.js; git commit --quiet -am "test: skip a"
 rep ready "${all[@]}" "- proven: tests/a.test.js by tests/a.test.js:1"
 check "when a commit changes it( to it.skip( in tests/a.test.js and the report says '- proven: tests/a.test.js by tests/a.test.js:1', then record refuses" \
-  '"$r" risk | grep -qx "RISK=gate tests/a.test.js" && fails_with "the report does not check tests/a.test.js (gate): add '"'"'- deep: tests/a.test.js'"'"'" "$r" record "$TMP/report.md"'
+  '"$r" risk | gq -x "RISK=gate tests/a.test.js" && fails_with "the report does not check tests/a.test.js (gate): add '"'"'- deep: tests/a.test.js'"'"'" "$r" record "$TMP/report.md"'
 echo "it('denies', () => {})" > tests/login.test.js; git add tests/login.test.js; git commit --quiet -m "test: login"
 rep ready "${all[@]}" "- deep: tests/a.test.js" "- proven: tests/login.test.js by tests/login.test.js:1"
 check "when a test path flagged only auth (tests/login.test.js) is 'proven' by its own line, then record refuses" \
-  '"$r" risk | grep -qx "RISK=auth tests/login.test.js" && fails_with "the report does not check tests/login.test.js (auth): add '"'"'- deep: tests/login.test.js'"'"'" "$r" record "$TMP/report.md"'
+  '"$r" risk | gq -x "RISK=auth tests/login.test.js" && fails_with "the report does not check tests/login.test.js (auth): add '"'"'- deep: tests/login.test.js'"'"'" "$r" record "$TMP/report.md"'
 
 # review.sh risk reads only the diff, so it needs no branch.
 git checkout --quiet --detach
-check "when HEAD is detached, then review.sh risk still prints the risk map" '"$r" risk | grep -qx "RISK=gate tests/a.test.js"'
+check "when HEAD is detached, then review.sh risk still prints the risk map" '"$r" risk | gq -x "RISK=gate tests/a.test.js"'
 git switch --quiet -
 
 # ── FR-022: the rules that decide a review, one case each, on a branch of their own ──
@@ -700,7 +700,7 @@ check "on a stacked branch, then a report reviewed from the base's merge base is
   'fails_with "the report must state Reviewed: <from>..<head>" "$r" record "$TMP/report.md"'
 printf 'Reviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(git merge-base HEAD "$P")" "$(git rev-parse HEAD)" > "$TMP/report.md"
 check "on a stacked branch, then a report reviewed from the merge base with the parent is recorded" \
-  '"$r" record "$TMP/report.md" 2>/dev/null | grep -q "^REVIEW=ready"'
+  '"$r" record "$TMP/report.md" 2>/dev/null | gq "^REVIEW=ready"'
 export SCRIPTS; id_on="$(bash -c 'source "$SCRIPTS/lib.sh"; diff_id')"; ck_on="$("$r" check 2>&1 || true)"; git switch --quiet --detach
 check "from a detached HEAD, then review.sh check --branch <b> gives the same answer as on <b>" \
   '[[ "$("$r" check --branch "$C" 2>&1 || true)" == "$ck_on" && "$ck_on" == REVIEW=ready ]] && fails_with "no branch" "$r" check --branch feat/001-t009-none'
@@ -728,8 +728,8 @@ check "when the check ref is there but no end check was recorded, then record --
   'fails_with "no end check recorded for 001-demo: run implement.sh check" "$r" record --feature "$TMP/feature.md" && [[ ! -e "$fr" ]]'
 printf 'head: %s\nheads: %s\ntests: green\n' "$fh" "$fh" > "$fr"
 check "when the check ref points at the head and no check copy exists, then record --feature adds verdict:, reviewed: and the lines to the end-check record" \
-  '"$r" record --feature "$TMP/feature.md" 2>/dev/null | grep -qx "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
-   && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | grep -q -- "-check "'
+  '"$r" record --feature "$TMP/feature.md" 2>/dev/null | gq -x "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
+   && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | gq -- "-check "'
 
 # Spec 008 T009: check --feature passes only on a ready review and green tests of the feature branch's head.
 git switch --quiet -C feat/001-demo "$fh"

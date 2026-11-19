@@ -102,7 +102,7 @@ fi
 printf 'No changes. Your infrastructure matches the configuration.\n' > "$TMP/none.txt"
 out="$(PATH="$NOPY" TF_PLAN_TEXT="$TMP/none.txt" record infra/envs/dev)"
 check "when the text plan says No changes., then it records the root with no counts" \
-  '[[ "$out" == "PLAN=create 0 change 0 destroy 0" ]] && sed -n "/^\[infra\/envs\/dev\]$/,/^\[/p" "$(rec)" | grep -qvE "^(create|change|destroy)"'
+  '[[ "$out" == "PLAN=create 0 change 0 destroy 0" ]] && sed -n "/^\[infra\/envs\/dev\]$/,/^\[/p" "$(rec)" | gq -vE "^(create|change|destroy)"'
 printf 'Plan: 1 to import, 3 to add, 0 to change, 1 to destroy, 2 to forget.\n' > "$TMP/import.txt"
 check "when the Plan: line also has import and forget counts, then only add, change and destroy are read" \
   '[[ "$(PATH="$NOPY" TF_PLAN_TEXT="$TMP/import.txt" record infra/envs/dev)" == "PLAN=create 3 change 0 destroy 1" ]]'
@@ -155,7 +155,7 @@ check "when only a module used through another module changes (prod uses db, db 
 git switch --quiet -c tmp-dev-only origin/develop
 echo '# dev only' >> infra/envs/dev/main.tf; git commit --quiet -am "feat: dev"
 check "when the diff touches only the dev root, then a dev record is enough: prod's section is not needed" \
-  'record infra/envs/dev >/dev/null && bash "$t" gate | grep -qx "### infra/envs/dev"'
+  'record infra/envs/dev >/dev/null && bash "$t" gate | gq -x "### infra/envs/dev"'
 git switch --quiet -c tmp-rm origin/develop
 git rm --quiet infra/envs/prod/main.tf; git commit --quiet -m "chore: drop prod"; rmdir infra/envs/prod 2>/dev/null || true
 set_cfg aws_prod_paths "infra/envs/none, ./infra/envs/prod/"
@@ -196,7 +196,7 @@ check "when five files match, then the Skipped line names the first 3 in git dif
   '[[ "$(bash "$t" gate)" == "$(skipped "Pulumi.yaml, a/b.template.json, c/Pulumi.prod.yml and 2 more")" ]]'
 only tmp-tf-cdk infra/main.tf cdk.json
 check "when the diff has a .tf file and cdk.json with no plan recorded, then the gate still refuses, with no Skipped line" \
-  'rm -f "$(rec)"; one_refusal "no Terraform plan recorded for this diff" bash "$t" gate && ! bash "$t" gate 2>&1 | grep -q Skipped'
+  'rm -f "$(rec)"; one_refusal "no Terraform plan recorded for this diff" bash "$t" gate && ! bash "$t" gate 2>&1 | gq Skipped'
 printf 'infra_dir: .\n' >> .specify/extensions/landspec/landspec-config.yml
 only tmp-app src/app.py
 check "when the diff has only src/app.py, with infra_dir ., then the gate prints nothing" '[[ -z "$(bash "$t" gate)" ]]'

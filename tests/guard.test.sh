@@ -100,7 +100,7 @@ check "when git am uses -n, alone or bundled, then it is blocked like commit -n"
 check "when options only look like it (--verify, --no-edit, --no-ff, --no-stat, --no-tags, a message), then they are allowed" \
   '"$g" "git commit --verify -m x" && "$g" "git merge --no-edit --no-ff main" && "$g" "git rebase --no-stat main" && "$g" "git push --no-tags origin feat/001-t001-thing" && "$g" "git commit -m \"${nv:0:6}\""'
 check "when git -h is asked, then exactly commit, push, merge, rebase and am take --no-verify (cherry-pick and revert do not)" \
-  'for c in $takes; do { git $c -h 2>&1 || true; } | grep -qF -- "$nv" || exit 1; done; for c in cherry-pick revert; do if { git $c -h 2>&1 || true; } | grep -qF -- "$nv"; then exit 1; fi; done'
+  'for c in $takes; do { git $c -h 2>&1 || true; } | gq -F -- "$nv" || exit 1; done; for c in cherry-pick revert; do if { git $c -h 2>&1 || true; } | gq -F -- "$nv"; then exit 1; fi; done'
 check "when a chain switches to main and then commits or pushes HEAD, then it is blocked" \
   'blocked "git switch main && git commit -m x" && blocked "git checkout main && git push origin HEAD" && blocked "git switch --quiet main; git push" && blocked "git checkout -q develop && git commit -m x"'
 check "when a chain creates a branch named like a protected one, then a later commit is blocked" \
