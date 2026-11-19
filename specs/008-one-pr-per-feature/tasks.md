@@ -445,7 +445,7 @@ diff.
     unchanged, and `release-plan` still prints `RELEASE=bump … PRS=<that PR>`; with no merged PR,
     `status` prints no `MERGED=`; `bash tests/static.test.sh` passes; `tests/run.sh` passes.
 
-- [ ] T023 [P] [US5] Scan no symbolic link in the changed files, in extension/scripts/security-scan.sh
+- [X] T023 [P] [US5] Scan no symbolic link in the changed files, in extension/scripts/security-scan.sh
   - Comes from: the end check's scan, round 1: FR-022 (`security-scan.sh --changed` on this feature
     gave `semgrep failed` with "Invalid scanning root: … is a symbolic link", so the code patterns of
     any diff holding a linked skill file are never scanned)

@@ -16,6 +16,14 @@ if [[ " \${FAKE_FIND:-} " == *" $t "* ]]; then
   while (( \$# )); do [[ \$1 == --output || \$1 == --report-path ]] && printf '%s' "\${FAKE_OUT:-}" > "\$2"; shift; done
   exit 1
 fi
+# Like the real semgrep: a symbolic link among its targets is an error in its JSON, exit 2.
+if [[ $t == semgrep ]]; then
+  for a in "\$@"; do [[ -L \$a ]] && link=\$a; done
+  if [[ -n "\${link:-}" ]]; then
+    while (( \$# )); do [[ \$1 == --output ]] && printf '{"results":[],"errors":[{"code":2,"level":"error","message":"Invalid scanning root: %s is a symbolic link."}]}' "\$link" > "\$2"; shift; done
+    exit 2
+  fi
+fi
 [[ " \${FAKE_CRASH:-} " == *" $t "* ]] && { echo "$t-core exited with -11!" >&2; exit 2; }
 # FAKE_SILENT=<tool>: exits 2 with nothing on stderr, writing \$FAKE_JSON (may be empty) to --output.
 if [[ " \${FAKE_SILENT:-} " == *" $t "* ]]; then
@@ -140,6 +148,19 @@ echo "y = 1" > other.py; git add other.py; git commit --quiet -m other
 PATH="$TMP/tools:$PATH" bash "$scan" --changed >/dev/null
 check "when --changed on a stacked branch, then semgrep scans only its own files, not its parent's" \
   'grep -q " other.py$" "$TMP/semgrep.log" && ! grep -q "app.py" "$TMP/semgrep.log"'
+git switch --quiet feat/x
+
+# Spec 008 T023: semgrep refuses a symbolic link as a scanning root.
+git switch --quiet -c feat/link; ln -s app.py linked.py; echo "z = 1" > z.py; git add linked.py z.py; git commit --quiet -m link
+: > "$TMP/semgrep.log"
+out="$(PATH="$TMP/tools:$PATH" bash "$scan" --changed)"
+check "when --changed and the changed files hold a symbolic link, then semgrep is given no link and reports ok" \
+  '! grep -q "linked.py" "$TMP/semgrep.log" && grep -q " z.py$" "$TMP/semgrep.log" && grep -q "^semgrep *ok" <<<"$out"'
+git switch --quiet -c feat/onlylink feat/x; git config branch.feat/onlylink.landspec-parent feat/x; ln -s app.py only.py; git add only.py; git commit --quiet -m only
+: > "$TMP/semgrep.log"; : > "$TMP/gitleaks.log"
+out="$(PATH="$TMP/tools:$PATH" bash "$scan" --changed)"
+check "when --changed and the only changed file is a symbolic link, then semgrep is skipped as no regular changed files and gitleaks still runs" \
+  'grep -qE "^semgrep +skipped +no regular changed files$" <<<"$out" && [[ ! -s "$TMP/semgrep.log" ]] && grep -q "^gitleaks *ok" <<<"$out" && [[ -s "$TMP/gitleaks.log" ]]'
 git switch --quiet feat/x
 
 out="$(PATH="$TMP/none" bash "$scan" --changed)"
