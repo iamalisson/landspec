@@ -577,6 +577,10 @@ build "$R1"; echo findings > "$TMP/r.md"; "$I" mark T001 changes "$TMP/r.md" >/d
 check "when T001 gets its third changes, then mark prints FAILED=T001" 'grep -qx "FAILED=T001" <<<"$o3"'
 check "then T001 is failed, T002 stays waiting, and the independent T003 starts" \
   'line_of T001 | grep -q "STATE=failed ROUND=3 REASON=review rounds" && [[ "$(state_of T002)" == waiting ]] && grep -qx "START=T003 REF=$R3 FROM=$(head_fb)" <<<"$out"'
+git worktree add --quiet "$TMP/l" "$R1"; rf="$(git rev-parse --git-common-dir)/landspec-run/001-demo/T001"; cp "$rf" "$TMP/rec.before"
+check "when T001's ref is checked out in a worktree, then retry refuses it and leaves its record unchanged" \
+  'one_refusal "is checked out in" "$I" retry T001 && cmp -s "$rf" "$TMP/rec.before" && git show-ref --verify --quiet "refs/heads/$R1"'
+git worktree remove --force "$TMP/l"
 "$I" retry T001 >/dev/null; fs
 check "when T001 is retried, then its task ref is gone and it starts again from the feature head, with no RESUME" \
   '! git show-ref --verify --quiet "refs/heads/$R1" && [[ -z "$(git config --get-regexp "^branch\.$R1\." || true)" ]] && grep -qx "START=T001 REF=$R1 FROM=$(head_fb)" <<<"$out"'
@@ -623,12 +627,21 @@ check "when T001 is landed already, then land refuses it" 'one_refusal "T001 is 
 echo "https://github.com/acme/app/pull/99" > "$GH_PR"; echo "$FB" > "$GH_PR.head"; fs
 check "when the feature branch has an open PR, then status prints PR=<its url>" 'grep -qx "PR=https://github.com/acme/app/pull/99" <<<"$out"'
 rm -f "$GH_PR" "$GH_PR.head"
+build "$R3"; "$I" mark T003 implemented >/dev/null; ready "$R3"; "$I" mark T003 ready >/dev/null
+git merge --quiet --no-ff --no-edit "refs/heads/$R3"; hm="$(git rev-parse HEAD)"
+check "when a ready task's ref was merged into the feature branch by hand, then land refuses naming that merge and changes nothing" \
+  'one_refusal "already in $FB'"'"'s history (merged by hand?)" "$I" land T003 && [[ "$(git rev-parse HEAD)" == "$hm" ]] && git show-ref --verify --quiet "refs/heads/$R3" \
+   && ! git log --format=%B | grep -qx "Landspec-Task: 001/T003"'
+git reset --quiet --hard HEAD^1; git branch --quiet -D "$R3"
 # The analyzed marker hashes tasks.md as /speckit-analyze saw it: no tick, with or without the issue line.
 sh256() { bash -c 'source "$0/lib.sh"; sha256' "$SCRIPTS"; }
 mk_marker() { mkdir -p "$(git rev-parse --git-common-dir)/landspec-analyzed"; cat > "$(git rev-parse --git-common-dir)/landspec-analyzed/001-demo"; }
 set_cfg level full; echo stale | mk_marker
 check "when the level is full and the analyzed marker is for another tasks.md, then status refuses" \
   'one_refusal "level '"'"'full'"'"' requires /speckit-analyze" "$I" status'
+printf '## Specification Analysis Report\n\nCoverage Summary Table\n' > "$TMP/an.md"
+check "when /speckit-analyze runs again after a landing (tasks.md ticked), then analyzed.sh's marker lets status run" \
+  'git show HEAD:specs/001-demo/tasks.md | grep -q "^- \[X\] T001 " && "$SCRIPTS/analyzed.sh" "$TMP/an.md" >/dev/null && "$I" status | grep -q "^DONE=1/3$"'
 sed 's/^- \[X\] T001 /- [ ] T001 /' specs/001-demo/tasks.md | sh256 | mk_marker
 check "when the marker hashes tasks.md before the tick and before the issue line, then status runs" '"$I" status | grep -q "^DONE=1/3$"'
 awk 'NR == 1 { print; print ""; print "**Issue**: #7"; next } { print }' specs/001-demo/tasks.md > "$TMP/t.md"; cat "$TMP/t.md" > specs/001-demo/tasks.md

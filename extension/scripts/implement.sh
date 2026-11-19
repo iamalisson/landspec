@@ -172,7 +172,8 @@ feature_status() {
   bash "$(dirname "$0")/review.sh" check --plan >/dev/null || exit 1
   if [[ "$(landspec_level)" == full ]]; then
     marker="$(git rev-parse --git-common-dir)/landspec-analyzed/$(basename "$fdir")"
-    # the marker hashes tasks.md as analyzed, before any tick, with or without the issue line
+    # analyzed.sh hashes plain_tasks; the "issue" form still accepts a marker written before it did
+    # (the raw file, unticked, with its issue line)
     [[ -f "$marker" ]] && plain="$(cat "$marker")" \
       && [[ "$plain" == "$(plain_tasks "$fdir/tasks.md" | sha256)" || "$plain" == "$(plain_tasks "$fdir/tasks.md" issue | sha256)" ]] \
       || die "level 'full' requires /speckit-analyze on the current tasks.md before implementing"
@@ -225,6 +226,9 @@ land() {
   task_done "$fdir" "$t" && die "$t is landed already; push the branch if origin lacks it: git push origin $fb"
   r="$(task_ref "$t")"; git show-ref --verify --quiet "refs/heads/$r" || die "$t has no task ref $r in this clone: start it first"
   rh="$(git rev-parse "refs/heads/$r")"
+  # git would say "Already up to date" and make no landing commit
+  ! git merge-base --is-ancestor "$rh" "refs/heads/$fb" \
+    || die "$r is already in $fb's history (merged by hand?), so it has no landing commit: undo that merge on $fb, then land again"
   [[ "$(rec "$t" phase)" == ready && "$(rec "$t" head)" == "$rh" && -z "$(rec "$t" failed)" ]] \
     || die "$t is not ready at its ref's head: review it and mark it (implement.sh mark $t ready <report>)"
   bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1 \
@@ -290,13 +294,12 @@ case "$action" in
     b="$(task_branch "$t")"; head=""; [[ -z "$b" ]] || head="$(git rev-parse "refs/heads/$b")"
     write_rec "$t" "head=$head" "failed=$why"; event fail task="$t" branch="$b"; echo "FAILED=$t" ;;
   retry)
-    t="${1:-}"; valid_task "$t"
-    if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
-    r="$(task_ref "$t")"
-    if git show-ref --verify --quiet "refs/heads/$r"; then # the task starts again from the feature head
-      w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then run retry again"
-      git branch --quiet -D "$r"; git config --remove-section "branch.$r" 2>/dev/null || true
+    t="${1:-}"; valid_task "$t"; r="$(task_ref "$t")"; hr=false
+    if git show-ref --verify --quiet "refs/heads/$r"; then # refused before any write: the record stays as it was
+      hr=true; w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then run retry again"
     fi
+    if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
+    if $hr; then git branch --quiet -D "$r"; git config --remove-section "branch.$r" 2>/dev/null || true; fi # the task starts again from the feature head
     echo "RETRY=$t" ;;
   status)
     running_list=""
