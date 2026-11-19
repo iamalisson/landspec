@@ -162,8 +162,12 @@ check "when the security doc is read, then it says how to accept what each gate 
 check "then the constitution template and adopt say to keep the placeholder when there is no such step" \
   'grep -q "keep its \[PLACEHOLDER\]" preset/templates/constitution-template.md && grep -q "leave its placeholder" skills/adopt/SKILL.md'
 
-check "when init's summary is read, then it repeats a warning that a kept workflow never runs on task PRs, and the reference names it" \
-  'grep -qF "never runs on a task PR" <<<"$(sed -n "/^7\. Summarize/,/^8\. /p" skills/init/SKILL.md)" && grep -qF "never runs on a task PR" docs/reference.md'
+# shortcut: docs/reference.md's copy of this wording is checked again once T015 rewrites the reference.
+check "when init's summary is read, then it repeats level.sh's warning that a kept workflow never runs on the feature PR" \
+  'grep -qF "never runs on the feature PR" <<<"$(sed -n "/^7\. Summarize/,/^8\. /p" skills/init/SKILL.md)" && grep -qF "never runs on the feature PR into" extension/scripts/level.sh'
+
+check "when init is read, then it sets up one PR per feature: no task PR, no issue step" \
+  'grep -qF "one feature = one branch = one PR" skills/init/SKILL.md && ! sed "s/no GitHub issues//" skills/init/SKILL.md | grep -qiE "task PR|issue"'
 
 # The setup commit has to reach the base branch: task branches start there, and scripts read the level from the tree.
 init_commit="$(sed -n '/^8\. \*\*Offer to commit it/,$p' skills/init/SKILL.md)"
