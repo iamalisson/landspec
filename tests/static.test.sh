@@ -147,8 +147,8 @@ check "when init's step 4 is read, then it is for every level and offers allow_r
   '[[ -n "$init_gh" ]] && ! grep -q "(standard and full)" <<<"$init_gh" && grep -q "allow_rebase_merge=false" <<<"$init_gh" && grep -A3 "On lite" <<<"$init_gh" | grep -q "allow_merge_commit=false"'
 check "then for a PUBLIC repo it offers secret scanning with push protection and private vulnerability reporting, and branch protection is step 5 (standard and full)" \
   'grep -q "PUBLIC" <<<"$init_gh" && grep -q "secret_scanning_push_protection" <<<"$init_gh" && grep -q "private-vulnerability-reporting" <<<"$init_gh" && grep -q "^5\. \*\*Branch protection\*\* (standard and full)" skills/init/SKILL.md'
-check "when the docs are read, then the README CI row names (standard and full), the security doc says lite has no CI gate, and the design doc ties the one-revert promise to one commit per task PR" \
-  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -qF "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One task = one issue/,/^## /p" docs/design.md | grep -q "one commit per task PR"'
+check "when the docs are read, then the README CI row names (standard and full), the security doc says lite has no CI gate, and the design doc ties the one-revert promise to one landing commit per task" \
+  'grep -E "^\| \*\*every PR, and weekly\*\* \|" README.md | grep -qF "(standard and full)" && grep -q "On lite there is no CI gate" docs/security.md && sed -n "/^## One branch and one PR per feature/,/^## /p" docs/design.md | grep -q "one landing commit per task"'
 
 # Generated CI's first run: required jobs must have a way out, and a new advisory must not stop unrelated PRs.
 init_bp="$(sed -n '/^5\. \*\*Branch protection\*\*/,/^6\. /p' skills/init/SKILL.md)"
@@ -175,8 +175,6 @@ check "when the level skill is read, then going up from lite offers merge commit
   'grep -qF "allow_merge_commit=true" skills/level/SKILL.md && grep -qF "allow_merge_commit=false -F allow_squash_merge=true" skills/level/SKILL.md'
 check "when the reference Update and level.sh are read, then marked files are re-created, so commit first or delete the marker" \
   'grep -qF "commit your edits to those first, or delete the marker" docs/reference.md && ! grep -qF "touches nothing else" docs/reference.md && grep -qF "commit edits first, or delete the marker" extension/scripts/level.sh && ! grep -qF "existing files are never overwritten" extension/scripts/level.sh'
-check "when the review_model row is read, then it says the key is no longer read and the hook blocks a review launch on any model but opus" \
-  'grep -qF "a review launch on any model but \`opus\`" docs/reference.md && grep "^| \`review_model\` |" docs/reference.md | grep -qF "no longer read"'
 check "when the docs say what the scan proves, then it ran, never that it passed, and the review is the one fast pass" \
   'grep -qF "refuses the PR until \`security-scan.sh --changed\` ran" docs/security.md && grep -qF "the PR is refused until they ran" README.md && grep -qF "one fast pass on the diff" docs/security.md && ! grep -qF "one mutation" docs/security.md'
 # FR-013/#258: the plan gate is a layer of the security model, with what it checks and how far it holds.
@@ -256,8 +254,22 @@ check "when review.md lists the bugs to look for, then it names data reaching a 
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"reaches a log, including inside a helper the changed lines call with it"* \
    && "$f" == *"Open each helper a changed line passes personal data or a secret to"* && "$f" == *"names the helper'"'"'s own \`file:line\` that writes the log"* && "$f" == *"a test that fakes the component whose behavior it asserts"* \
    && "$f" == *"is **Medium** when it is the only proof of a privacy or security rule"* && "$f" == *"Personal data in a log is **High** when the project'"'"'s rules forbid it"* ]]'
-check "when docs/reference.md is read, then the Configuration table has a review_model row, and it says CLAUDE_CODE_SUBAGENT_MODEL_FORCE overrides it and the hook exists only where the plugin is installed" \
-  'grep -q "^| \`review_model\` |" docs/reference.md && grep -qF "CLAUDE_CODE_SUBAGENT_MODEL_FORCE" docs/reference.md && grep -qi "only where the plugin is installed" docs/reference.md'
+check "when docs/reference.md is read, then reviews run on Opus with no setting: the hook blocks any model but opus, CLAUDE_CODE_SUBAGENT_MODEL_FORCE overrides it and the hook exists only where the plugin is installed" \
+  'r="$(sed -n "/^### The reviewer.s model/,/^### /p" docs/reference.md)"; grep -qF "a review launch on any model but \`opus\`" <<<"$r" && grep -qF "CLAUDE_CODE_SUBAGENT_MODEL_FORCE" <<<"$r" && grep -qi "only where the plugin is installed" <<<"$r"'
+# T015 (FR-016): the design, reference and security docs describe one branch and one PR per feature.
+for d in design reference security; do
+  check "when docs/$d.md is read, then it names pr.sh feature, tasks built in parallel and the Opus review" \
+    'grep -qF "\`pr.sh feature" docs/'"$d"'.md && grep -qF "in parallel" docs/'"$d"'.md && grep -qF "Opus review" docs/'"$d"'.md'
+done
+check "when the reference Configuration table is read, then it has a task_rounds row and no review_model, issue_labels, milestone or project row" \
+  'c="$(sed -n "/^## Configuration/,/^### /p" docs/reference.md)"; grep -q "^| \`task_rounds\` | \`2\` |" <<<"$c" && ! grep -qE "^\| \`(review_model|issue_labels|milestone|project)\` \|" <<<"$c"'
+check "when docs/design.md is read, then the per-task sections are gone and one section is on one PR per feature" \
+  '! grep -qE "^## (One task = one issue|The spec is its own PR|Parallel tasks, stacked PRs)" docs/design.md && grep -q "^## One branch and one PR per feature" docs/design.md'
+check "when the security layers table is read, then Before a PR opens runs the scan and mutants once on the feature diff before ready, a high finding blocks, and the review hook row is Opus only" \
+  'r="$(grep -E "^\| Before a PR opens \|" docs/security.md)"; grep -qF "once, on the whole feature diff" <<<"$r" && grep -qF "pr.sh feature --ready" <<<"$r" && grep -qF "findings high" <<<"$r" \
+   && grep -E "^\| Every review Claude launches \|" docs/security.md | grep -qF "Opus only"'
+check "when docs/GUIDELINES.md is read, then parallel work is tasks on the one feature branch, not a branch and PR per task" \
+  '! grep -qF "Each gets its own branch and PR" docs/GUIDELINES.md && ! grep -qF "tasks, issues, reviewed PRs" docs/GUIDELINES.md && grep -qF "/landspec:implement" docs/GUIDELINES.md'
 # FR-001/FR-008: the passes review.md asks for are the ones review.sh checks, in the same order, and its Report names them.
 md_passes="$(grep -oE '^\*\*Pass `[a-z]+`\*\*' extension/commands/review.md | sed -E 's/.*`(.*)`.*/\1/' | tr '\n' ' ')"
 sh_passes="$(sed -n 's/^PASSES="\(.*\)"$/\1/p' extension/scripts/review.sh)"

@@ -150,10 +150,11 @@ none: it makes people trust the code.
 
 ## Working in parallel
 
-- **One task per branch, one branch per worktree.** Tasks marked `[P]` don't touch the same
-  files, so they can be built at the same time: `claude --worktree`, then
-  `/speckit-implement T00X` in each. Each gets its own branch and PR. landspec's analysis and
-  security reports live in the shared git directory, so every worktree sees them.
+- **One branch and one PR per feature; tasks in parallel on it.** `/landspec:implement` builds
+  every task whose dependencies are done at the same time, each on its own local task ref in its
+  own copy, and lands each one on the feature branch once its review passes. Tasks marked `[P]`
+  don't touch the same files, so they rarely conflict when they land. landspec's analysis and
+  security reports live in the shared git directory, so every copy sees them.
 - **Develop in a container when the team is more than one person:** a `.devcontainer/` gives
   everyone the same toolchain, and `compose.yaml` runs the production image with production's
   restrictions.
@@ -199,7 +200,7 @@ The checks run once, on the empty project, so the setup itself is proven to work
 ### 2. The foundation spec (suggested as the first `/speckit-specify`)
 
 What every project needs before its first real feature. It is written as a spec, so it gets
-tasks, issues, reviewed PRs and tests like everything else:
+tasks, reviewed tasks, its PR and tests like everything else:
 - **config** from the environment, validated once at startup (bad config exits 1 and names the
   variable); graceful shutdown on SIGTERM and Ctrl-C;
 - **one error type** with a single mapping to the outside: client errors keep their message;
