@@ -378,8 +378,8 @@ check "when the tree has uncommitted changes on top of a green one, then run_tes
   '(source "$SCRIPTS/lib.sh"; run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 3 ]]'
 git checkout --quiet -- search.ts
 git worktree add --quiet --detach "$TMP/copy2" HEAD; cp -R .specify "$TMP/copy2/" # ignored, so not checked out
-check "when another copy of the repo has the same tree, then its green run does not count there" \
-  '(cd "$TMP/copy2" && source "$SCRIPTS/lib.sh" && run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 4 ]]'
+check "when another copy of the repo has a tree tested green elsewhere, then run_tests there does not run it again" \
+  '(cd "$TMP/copy2" && source "$SCRIPTS/lib.sh" && run_tests) && [[ "$(wc -l < "$TMP/runs")" -eq 3 ]]'
 git worktree remove --force "$TMP/copy2"
 check "when pr.sh task runs again on an open PR, then the body is updated to the new patch id and no PR is created" \
   'grep -q "^pr edit https://github.com/acme/app/pull/99 --body " "$GH_LOG" && grep -qxF "Independent review recorded for this diff (patch id $id2)" "$GH_LOG" && ! grep -q "^pr create" "$GH_LOG"'

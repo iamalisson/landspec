@@ -396,7 +396,7 @@ diff.
 
 **Independent Test**: quickstart L5 (release cases), L9 and Q6.
 
-- [ ] T020 [US5] Run the tests once per tree, in extension/scripts/lib.sh and extension/scripts/implement.sh (depends on T017)
+- [X] T020 [US5] Run the tests once per tree, in extension/scripts/lib.sh and extension/scripts/implement.sh (depends on T017)
   - Comes from: FR-021, US5 scenario 2, SC-007; research R14; data-model "Test record"; contracts/scripts.md "lib.sh", "implement.sh"
   - What: `run_tests`' record key becomes the tree and the command only (drop the copy's path), so
     a tree tested green in the builder's worktree counts in the main checkout and in a detached
