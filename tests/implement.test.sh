@@ -24,10 +24,10 @@ commit_on() {
   git -C "$TMP/w" switch --quiet "$1"; echo "$RANDOM" >> "$TMP/w/${1//\//_}.txt"
   git -C "$TMP/w" add -A; git -C "$TMP/w" commit --quiet -m "feat: $1"; git -C "$TMP/w" switch --quiet --detach
 }
-# ready <branch>: a recorded ready review of its head, recorded by name from here.
+# ready <branch> [<findings>]: a recorded ready review of its head, recorded by name from here.
 ready() {
-  printf 'Reviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' \
-    "$(git merge-base "refs/heads/$1" "$(bash -c 'source "$0/lib.sh"; base_ref "$1"' "$SCRIPTS" "$1")")" "$(git rev-parse "refs/heads/$1")" > "$TMP/r.md"
+  printf 'Reviewed: %s..%s\nModel: claude-sonnet-4-7\n%s\nAssessment: ready\n' \
+    "$(git merge-base "refs/heads/$1" "$(bash -c 'source "$0/lib.sh"; base_ref "$1"' "$SCRIPTS" "$1")")" "$(git rev-parse "refs/heads/$1")" "${2:-}" > "$TMP/r.md"
   "$SCRIPTS/review.sh" record --branch "$1" "$TMP/r.md" >/dev/null
 }
 # Paths in REASON= are git's, resolved: on macOS $TMP is /var/... and git prints /private/var/....
@@ -567,16 +567,16 @@ fsetup
 check "when the plan has no ready review, then status on the feature branch refuses naming the plan review" \
   'one_refusal "no independent review recorded for the plan" "$I" status'
 plan_review >/dev/null 2>&1; fs
-check "when nothing is built, then T001 starts alone from the feature head on its task ref, and T002 waits for it" \
-  'grep -qx "START=T001 REF=$R1 FROM=$(head_fb)" <<<"$out" && [[ "$(grep -c "^START=" <<<"$out")" == 1 && "$(state_of T001)" == pending && "$(state_of T003)" == pending ]] \
+check "when nothing is built, then T001 and T003 start from the feature head on their task refs, and T002 waits for T001" \
+  'grep -qx "START=T001 REF=$R1 FROM=$(head_fb)" <<<"$out" && grep -qx "START=T003 REF=$R3 FROM=$(head_fb)" <<<"$out" && [[ "$(grep -c "^START=" <<<"$out")" == 2 && "$(state_of T001)" == pending && "$(state_of T003)" == pending ]] \
    && line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=waits for T001"'
 check "then it ends with CHECK=no PR=- ORDER=T001 T002 T003 DONE=0/3" \
   '[[ "$(tail -4 <<<"$out")" == "CHECK=no"$'"'"'\n'"'"'"PR=-"$'"'"'\n'"'"'"ORDER=T001 T002 T003"$'"'"'\n'"'"'"DONE=0/3" ]]'
-build "$R1"; echo findings > "$TMP/r.md"; "$I" mark T001 changes "$TMP/r.md" >/dev/null
-"$I" mark T001 changes "$TMP/r.md" >/dev/null; o3="$("$I" mark T001 changes "$TMP/r.md")"; fs
-check "when T001 gets its third changes, then mark prints FAILED=T001" 'grep -qx "FAILED=T001" <<<"$o3"'
+build "$R1"; echo findings > "$TMP/r.md"; o1="$("$I" mark T001 changes "$TMP/r.md")"; o2="$("$I" mark T001 changes "$TMP/r.md")"; fs
+check "when T001 gets its second changes (task_rounds 2 by default), then mark prints FAILED=T001, and not on the first" \
+  'grep -qx "FAILED=T001" <<<"$o2" && ! grep -q "^FAILED=" <<<"$o1"'
 check "then T001 is failed, T002 stays waiting, and the independent T003 starts" \
-  'line_of T001 | grep -q "STATE=failed ROUND=3 REASON=review rounds" && [[ "$(state_of T002)" == waiting ]] && grep -qx "START=T003 REF=$R3 FROM=$(head_fb)" <<<"$out"'
+  'line_of T001 | grep -q "STATE=failed ROUND=2 REASON=review rounds" && [[ "$(state_of T002)" == waiting ]] && grep -qx "START=T003 REF=$R3 FROM=$(head_fb)" <<<"$out"'
 git worktree add --quiet "$TMP/l" "$R1"; rf="$(git rev-parse --git-common-dir)/landspec-run/001-demo/T001"; cp "$rf" "$TMP/rec.before"
 check "when T001's ref is checked out in a worktree, then retry refuses it and leaves its record unchanged" \
   'one_refusal "is checked out in" "$I" retry T001 && cmp -s "$rf" "$TMP/rec.before" && git show-ref --verify --quiet "refs/heads/$R1"'
@@ -591,7 +591,8 @@ echo "task_rounds: 10" >> .specify/extensions/landspec/landspec-config.yml
 check "when task_rounds is 10, then mark changes refuses it and exits non-zero" 'one_refusal "task_rounds must be a number from 1 to 9" "$I" mark T001 changes "$TMP/r.md"'
 sed -i.bak '/^task_rounds:/d' .specify/extensions/landspec/landspec-config.yml
 fs --running T001
-check "when T001 is running, then it is building and no next step is given" '[[ "$(state_of T001)" == building ]] && ! grep -qE "^(START|REVIEW|FIX|LAND)=" <<<"$out"'
+check "when T001 is running, then it is building and only the independent T003 starts" \
+  '[[ "$(state_of T001)" == building && "$(grep -E "^(START|REVIEW|FIX|LAND)=" <<<"$out")" == "START=T003 REF=$R3 FROM=$(head_fb)" ]]'
 git worktree add --quiet "$TMP/l" "$R1"; git worktree lock "$TMP/l"; fs
 check "when T001's ref is checked out in a locked worktree, then it waits with the worktree named" \
   'line_of T001 | grep -qxF "TASK=T001 STATE=waiting REASON=locked worktree $(cd "$TMP/l" && pwd -P)"'
@@ -651,8 +652,8 @@ check "when the marker hashes tasks.md with its issue line, before the tick, the
 git checkout -- specs/001-demo/tasks.md; set_cfg level standard
 build "$R2" clash.txt task; "$I" mark T002 implemented >/dev/null; ready "$R2"; "$I" mark T002 ready >/dev/null
 echo dev > clash.txt; git add clash.txt; git commit --quiet -m "chore: a conflicting commit"; h="$(git rev-parse HEAD)"; r2="$(git rev-parse "refs/heads/$R2")"
-check "when the feature branch has a conflicting developer commit, then land aborts naming the file and changes nothing" \
-  'one_refusal "conflicts with $FB in clash.txt" "$I" land T002 && [[ "$(git rev-parse HEAD)" == "$h" && "$(git rev-parse "refs/heads/$R2")" == "$r2" && -z "$(git status --porcelain)" ]] \
+check "when the feature branch has a conflicting developer commit, then land prints CONFLICT= naming the file and leaves the branches as they were" \
+  'rc=0; o="$("$I" land T002 2>/dev/null)" || rc=$?; ((rc == 1)) && [[ "$o" == "CONFLICT=T002 FILES=clash.txt" ]] && [[ "$(git rev-parse HEAD)" == "$h" && "$(git rev-parse "refs/heads/$R2")" == "$r2" && -z "$(git status --porcelain)" ]] \
    && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
 # A pull merge in another clone: its local work (from before T001 landed) first, the landed branch second.
 L="$(git log -1 --format=%H --grep='^Landspec-Task: 001/T001$')"; X="$(git commit-tree "$L^1^{tree}" -p "$L^1" -m "chore: local work")"
@@ -687,4 +688,62 @@ for c in "squash 000/T001" "merge 000/T001" "squash T001"; do
     'git log --format=%B | grep -qx "Landspec-Task: $tr" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
   check "then land T001 is not refused as landed already ($how, $tr)" 'one_refusal "has no task ref" "$I" land T001'
 done
+
+# ── Spec 008 T017: every startable task starts at once, and a conflicting landing gets one round ──
+starts() { grep "^START=" <<<"$out" | tr '\n' ' '; }
+fsetup; plan_review >/dev/null 2>&1; fs
+check "when T001 and T003 are startable and T002 depends on T001, then status starts T001 and T003, not T002" \
+  '[[ "$(starts)" == "START=T001 REF=$R1 FROM=$(head_fb) START=T003 REF=$R3 FROM=$(head_fb) " ]]'
+cfg_set 1; fs
+check "when parallel_tasks is 1, then only START=T001" '[[ "$(starts)" == "START=T001 REF=$R1 FROM=$(head_fb) " ]]'
+fs --running T001
+check "when parallel_tasks is 1 and T001 is running, then nothing starts" '[[ -z "$(starts)" && "$(state_of T001)" == building ]]'
+cfg_set ""; fs --running T001
+check "when T001 is running, then only START=T003" '[[ "$(starts)" == "START=T003 REF=$R3 FROM=$(head_fb) " ]]'
+fs --running T001 --running T003
+check "when --running is given twice, then both tasks are building and nothing starts" \
+  '[[ -z "$(starts)" && "$(state_of T001)" == building && "$(state_of T003)" == building ]]'
+lows=$'\nFindings: 0 high, 0 medium, 2 low\n\n- Low: src/search.ts:3 a test gap on the empty query\n- Low: src/rank.ts:7 wording of the error\n'
+build "$R1" clash.txt one; "$I" mark T001 implemented >/dev/null; ready "$R1" "$lows"; "$I" mark T001 ready >/dev/null
+build "$R3" clash.txt three; "$I" mark T003 implemented >/dev/null; ready "$R3"; "$I" mark T003 ready >/dev/null; fs
+check "when T001 and T003 are both ready, then status prints LAND=T001 and LAND=T003" 'grep -qx "LAND=T001" <<<"$out" && grep -qx "LAND=T003" <<<"$out"'
+pid="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review/task-${R1//\//__}")"
+"$I" land T001 >/dev/null 2>&1; l1="$(head_fb)"
+check "when the review had two low findings, then the landing commit has two Low: lines above the trailers" \
+  '[[ "$(git log -1 --format=%B "$l1")" == "T001: Add search"$'"'"'\n\n'"'"'"Low: src/search.ts:3 a test gap on the empty query"$'"'"'\n'"'"'"Low: src/rank.ts:7 wording of the error"$'"'"'\n\n'"'"'"Landspec-Task: 001/T001"$'"'"'\n'"'"'"Landspec-Review: ready $pid" ]]'
+lrc=0; o="$("$I" land T003 2>/dev/null)" || lrc=$?; fs
+check "when T003 edits the line T001 landed, then land prints CONFLICT=T003 with the file, exits 1 and leaves the branch at T001's landing" \
+  '((lrc == 1)) && [[ "$o" == "CONFLICT=T003 FILES=clash.txt" && "$(head_fb)" == "$l1" && -z "$(git status --porcelain)" ]] && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
+check "then status prints FIX=T003 REASON=conflict, and the conflict takes no fix round" \
+  'grep -qx "FIX=T003 REASON=conflict" <<<"$out" && line_of T003 | grep -qx "TASK=T003 STATE=changes"'
+# resolve <ref>: the task's copy merges the feature branch into its ref and keeps both sides.
+resolve() {
+  git -C "$TMP/w" switch --quiet "$1"; git -C "$TMP/w" merge --quiet "$FB" >/dev/null 2>&1 || true
+  printf 'one\nthree\n' > "$TMP/w/clash.txt"; git -C "$TMP/w" add -A; git -C "$TMP/w" commit --quiet --no-edit; git -C "$TMP/w" switch --quiet --detach
+}
+resolve "$R3"; "$I" mark T003 implemented >/dev/null; ready "$R3"; "$I" mark T003 ready >/dev/null; fs
+check "when T003 has merged the feature branch and is ready again, then it is LAND=T003, not FIX" 'grep -qx "LAND=T003" <<<"$out" && ! grep -q "^FIX=" <<<"$out"'
+o="$("$I" land T003 2>&1)" || true
+check "then it lands" '[[ "$o" == "LANDED=T003 COMMIT=$(head_fb)" ]]'
+# T002 (now startable) conflicts twice: a developer commit on the same line before each landing.
+dev() { git switch --quiet "$FB"; printf '%s\n' "$1" >> clash.txt; git add clash.txt; git commit --quiet -m "chore: $1"; }
+build "$R2" clash.txt two; "$I" mark T002 ready >/dev/null 2>&1; ready "$R2"; "$I" mark T002 ready >/dev/null; dev dev1
+o="$("$I" land T002 2>/dev/null)" || true
+check "when T002 conflicts once, then CONFLICT=T002" '[[ "$o" == "CONFLICT=T002 FILES=clash.txt" ]]'
+git -C "$TMP/w" switch --quiet "$R2"; git -C "$TMP/w" merge --quiet "$FB" >/dev/null 2>&1 || true
+printf 'one\nthree\ndev1\ntwo\n' > "$TMP/w/clash.txt"; git -C "$TMP/w" add -A; git -C "$TMP/w" commit --quiet --no-edit; git -C "$TMP/w" switch --quiet --detach
+ready "$R2"; "$I" mark T002 ready >/dev/null; dev dev2; h="$(head_fb)"
+lrc=0; o="$("$I" land T002 2>/dev/null)" || lrc=$?; fs
+check "when T002 conflicts a second time, then land prints FAILED=T002, exits 1, and T002 is failed" \
+  '((lrc == 1)) && [[ "$o" == "FAILED=T002" && "$(head_fb)" == "$h" && "$(state_of T002)" == failed ]]'
+"$I" retry T002 >/dev/null; build "$R2" clash.txt two; ready "$R2"; "$I" mark T002 ready >/dev/null; dev dev3
+o="$("$I" land T002 2>/dev/null)" || true
+check "when T002 is retried, then its next conflict is a conflict round again, not FAILED" '[[ "$o" == "CONFLICT=T002 FILES=clash.txt" ]]'
+# The tick is made on the feature branch's side: a plan edit there after the ref was cut never conflicts.
+fsetup; build "$R1"; ready "$R1"; "$I" mark T001 ready >/dev/null
+sed 's/^- \[ \] T001 Add search in `src\/search.ts`$/& (edited)/' specs/001-demo/tasks.md > "$TMP/t.md"; cat "$TMP/t.md" > specs/001-demo/tasks.md
+git commit --quiet -am "docs(specs): edit T001"
+o="$("$I" land T001 2>&1)" || true
+check "when the feature branch edited T001's line after its ref was cut, then land succeeds and the edited line is ticked" \
+  '[[ "$o" == "LANDED=T001 COMMIT=$(head_fb)" ]] && git show "$FB:specs/001-demo/tasks.md" | grep -qxF -- "- [X] T001 Add search in \`src/search.ts\` (edited)" && [[ -z "$(git status --porcelain)" ]]'
 exit "$FAIL"
