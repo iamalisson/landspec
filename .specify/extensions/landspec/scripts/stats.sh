@@ -27,6 +27,14 @@ log="$(git rev-parse --git-common-dir)/landspec-events"
 
 # shortcut: events are grouped by branch name, so a reused name merges its PRs; split on start lines if reuse is common
 awk '
+  # fkey(name): the key of a feature branch or folder, as lib.sh feature_key reads it: its last path segment,
+  # a timestamp (20261104-153000-search) first, then 3+ digits (001-search). No {n}: old BSD awks lack it.
+  function fkey(s) {
+    sub("^.*/", "", s)
+    if (match(s, "^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-")) return substr(s, 1, 15)
+    if (match(s, "^[0-9][0-9][0-9]+-")) return substr(s, 1, RLENGTH - 1)
+    return ""
+  }
   {
     br = $3; ref = 0; delete f
     for (i = 5; i <= NF; i++) { k = $i; sub(/=.*/, "", k); v = $i; sub(/^[^=]*=/, "", v); f[k] = v }
@@ -40,11 +48,11 @@ awk '
     if (!(tk in t0)) t0[tk] = $1
     if (!(k in f0)) f0[k] = $1
     if ($4 == "review" && (f["round"] == "full" || f["round"] == "delta")) tr[tk, f["round"]]++
-    for (i = 1; i <= nf; i++) { s = fbr[i]; sub("^[^/]*/", "", s); if (index(s, k "-") == 1) br = fbr[i] }
+    for (i = 1; i <= nf; i++) if (fkey(fbr[i]) == k) br = fbr[i]
   }
-  # land and conflict are logged on the feature branch and name the task: the same key as its ref, <NNN>-t<nnn>.
+  # land and conflict are logged on the feature branch and name the task: the same key as its ref, <feature key>-t<nnn>.
   $4 == "land" || $4 == "conflict" {
-    k = $3; sub("^[^/]*/", "", k); sub("-.*", "", k); tk = k "-" tolower(f["task"])
+    k = fkey($3); tk = k "-" tolower(f["task"])
     if ($4 == "conflict") cf[tk] = 1
     else if (k != "") {
       if (!(k in fl)) { lf[++nl] = k; fname[k] = $3 }
@@ -52,7 +60,7 @@ awk '
       tl[tk] = $1; fl[k] = $1
     }
   }
-  $4 == "check" { k = f["feature"]; sub("-.*", "", k); chk[k]++ }
+  $4 == "check" { chk[fkey(f["feature"])]++ }
   # Plan events belong to a feature, not a branch, so they are read before the detached ones are skipped.
   $4 == "review" && f["round"] == "plan" {
     if (!(ft in pn)) pf[++np] = ft

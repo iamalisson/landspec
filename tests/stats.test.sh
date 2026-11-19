@@ -120,4 +120,27 @@ check "then the feature PR's own line and the totals print as before, a task's s
   '[[ "$(head -1 <<<"$out")" == "feat/010-timed start->pr ?m | reviews 2 full + 2 delta | first ready | tests 0s x0 | H+M 1" ]] \
    && [[ "$(tail -1 <<<"$out")" == "PRS=1 MEDIAN_START_TO_PR=?m MEAN_ROUNDS=4.0 READY_FIRST=1/1" ]]'
 
+# A feature numbered by timestamp, and one whose branch_prefix has a "/": the landing, logged on the feature
+# branch, is keyed like the task's ref, by the feature's whole key.
+cat > "$ev" <<'EOF'
+400 1970-01-01T00:06Z landspec/20261104-153000-t001-task start task=T001
+1300 1970-01-01T00:21Z - review round=full verdict=ready hm=0 branch=landspec/20261104-153000-t001-task
+1600 1970-01-01T00:26Z feat/20261104-153000-search land task=T001 commit=aaa
+1700 1970-01-01T00:28Z feat/20261104-153000-search check feature=20261104-153000-search round=1
+2000 1970-01-01T00:33Z landspec/010-t001-task start task=T001
+2300 1970-01-01T00:38Z - review round=full verdict=changes-needed hm=1 branch=landspec/010-t001-task
+2600 1970-01-01T00:43Z - review round=delta verdict=ready hm=0 branch=landspec/010-t001-task
+2700 1970-01-01T00:45Z team/feat/010-x conflict task=T001 files=a.txt
+3200 1970-01-01T00:53Z team/feat/010-x land task=T001 commit=bbb
+3300 1970-01-01T00:55Z team/feat/010-x pr mode=feature url=https://github.com/acme/app/pull/8
+EOF
+out="$("$s")"
+check "when a feature is numbered by timestamp, then its task and feature lines use its whole key, with the ref's minutes and rounds and its end check" \
+  'grep -qxF "TASK 20261104-153000/T001 first->land 20m | reviews 1 full + 0 delta | conflict no" <<<"$out" \
+   && grep -qxF "FEATURE feat/20261104-153000-search first->land 20m | tasks 1 | checks 1" <<<"$out"'
+check "when the branch prefix has a /, then the landing and the conflict still meet the task ref, and the feature PR line counts its reviews" \
+  'grep -qxF "TASK 010/T001 first->land 20m | reviews 1 full + 1 delta | conflict yes" <<<"$out" \
+   && grep -qxF "FEATURE team/feat/010-x first->land 20m | tasks 1 | checks 0" <<<"$out" \
+   && grep -qxF "team/feat/010-x start->pr ?m | reviews 1 full + 1 delta | first changes-needed | tests 0s x0 | H+M 1" <<<"$out"'
+
 exit "$FAIL"
