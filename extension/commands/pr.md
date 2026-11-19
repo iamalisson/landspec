@@ -10,6 +10,14 @@ the change does and why in place of the task's line, the commit has no `Refs #`,
 `pr.sh fix "<commit title>" <body-file>`. A raw `gh pr create` is blocked by the guard, except a
 promotion between long-lived branches (`develop` into `main`), whose PRs were each reviewed.
 
+**The feature PR** (a feature built on its own branch, `<branch_prefix>/<NNN>-<name>`): on that
+branch, after the scan (and mutation testing, with a `mutate` command) for its whole diff from the
+base, run `pr.sh feature "<title>" <body-file>`. It runs the same gates as `pr.sh fix` except the
+recorded branch review and `## Review`: each landed task's commit carries its own `ready` review.
+It refuses a task ticked `[X]` with no landing commit, adds a `## Tasks` table, `## End check`
+from the feature's end-check record when there is one, and `Closes #N` from the `**Issue**: #N`
+line of `tasks.md`, and opens a draft PR, or replaces the open one's body (`PR=<url> READY=no`).
+
 1. Read the level: `level:` in `.specify/extensions/landspec/landspec-config.yml` (default `standard`).
    - **lite**: ask "Review and open the PR now?" and continue only on yes.
    - **standard** and **full**: continue.
