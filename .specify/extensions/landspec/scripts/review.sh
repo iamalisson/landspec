@@ -4,7 +4,7 @@
 #   review.sh record --delta <report-file>  fix round: reviews <last reviewed>..HEAD, after any recorded round
 #   review.sh record --plan <report-file>   plan review: tied to every file of the feature folder (issue numbers aside);
 #                                           keeps the folder it recorded as plan-<feature>.reviewed
-#   review.sh record --feature <report-file>  feature review: the whole feature's check copy against its spec,
+#   review.sh record --feature <report-file>  feature review: the check ref (the feature head) against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
@@ -277,15 +277,16 @@ remove_copy() {
   fi
 }
 
-# The feature review: one record per feature, for the check copy's merge result (refs/landspec/check/<feature>).
-# Its verdict comes from its lines: any "not met" is "changes needed". Only a "ready" after a green run
-# resets the whole-feature check's round counter (implement.sh check-copy).
+# The feature review: one record per feature, for the commit at refs/landspec/check/<feature> (the feature
+# branch's head after implement.sh check; no check copy needed). Its verdict comes from its lines: any "not
+# met" is "changes needed". After implement.sh check it adds verdict:, reviewed: and the lines to the end-check
+# record and deletes nothing; after check-copy, only a "ready" after a green run resets that check's round counter.
 if $feat; then
   report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --feature <report-file>"
   [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
   fdir="$(feature_dir)"; fname="$(basename "$fdir")"
   c="$(git rev-parse --verify --quiet "refs/landspec/check/$fname^{commit}" || true)"
-  [[ -n "$c" ]] || die "no check copy for $fname: run implement.sh check-copy first"
+  [[ -n "$c" ]] || die "no check ref for $fname: run implement.sh check first"
   lre='^- (met|not met|not verifiable): '
   grep -qE "$lre" "$report" || die "the report has no '- met: …', '- not met: …' or '- not verifiable: …' line"
   verdict="$(grep -iE '^\**assessment\**: *(ready|changes needed)\**\.?$' "$report" | tail -1 | grep -oiE 'changes needed|ready' | tr '[:upper:]' '[:lower:]' || true)"
@@ -293,12 +294,17 @@ if $feat; then
   if grep -qE '^- not met: ' "$report"; then verdict="changes needed"; fi
   rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
   [[ "$(field reviewed)" =~ $rre && "$(commit "${BASH_REMATCH[2]}")" == "$c" ]] \
-    || die "the report must state Reviewed: <base>..$c (the check copy's merge result): run the feature review again"
+    || die "the report must state Reviewed: <base>..$c (the commit at refs/landspec/check/$fname): run the feature review again"
   model="$(field model)"; [[ -n "$model" ]] || die "the report must state Model: <id>: run the feature review again"
-  { echo "state: $c"; echo "assessment: $verdict"; echo "model: $model"; echo; cat "$report"; } > "$dir/feature-$fname.tmp"
-  mv "$dir/feature-$fname.tmp" "$dir/feature-$fname"
-  rf="$dir/feature-$fname-round"
-  if [[ "$verdict" == ready && -f "$rf" ]] && grep -qx 'outcome=green' "$rf"; then rm -f "$rf"; fi
+  fr="$dir/feature-$fname"
+  if [[ -f "$fr" ]] && grep -q '^head: ' "$fr"; then # the end-check record (implement.sh check): its fields stay
+    { grep -E '^(head|heads|tests): ' "$fr"; echo "verdict: $verdict"; echo "reviewed: $c"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
+  else
+    { echo "state: $c"; echo "assessment: $verdict"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
+    rf="$fr-round"
+    if [[ "$verdict" == ready && -f "$rf" ]] && grep -qx 'outcome=green' "$rf"; then rm -f "$rf"; fi
+  fi
+  mv "$fr.tmp" "$fr"
   remove_copy "$report" "$c"
   event review round=feature verdict="${verdict// /-}"
   echo "REVIEW=$verdict"; exit 0

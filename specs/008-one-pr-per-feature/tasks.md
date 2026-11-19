@@ -331,7 +331,7 @@ diff.
 
 **Independent Test**: quickstart L5 (check cases), L6 (ready cases) and Q5.
 
-- [ ] T008 [US4] Run the end check on the feature branch itself and file gaps as tasks on it, in extension/scripts/implement.sh (depends on T004)
+- [X] T008 [US4] Run the end check on the feature branch itself and file gaps as tasks on it, in extension/scripts/implement.sh (depends on T004)
   - Comes from: FR-008, FR-009, FR-019, US4 scenarios 1-2 and 4, edge cases (branch behind the base, a clean merge that breaks the tests); research R8; data-model "End check"
   - What: new `implement.sh check` (beside `check-copy`, which a later task removes): refuse while a task
     is not done; update the feature branch from `origin/<base>` (merge; a conflict aborts and dies
