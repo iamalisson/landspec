@@ -241,7 +241,7 @@ landed on the branch as each is ready; one draft PR per feature.
     passes with checks that `plan-review.md` names `review.sh record --plan` and no `gh issue`, and
     that the hooks name `speckit.landspec.plan-review`; `tests/run.sh` passes.
 
-- [ ] T006 [P] [US2] Show progress from the landing commits, in extension/scripts/next.sh (depends on T002)
+- [X] T006 [P] [US2] Show progress from the landing commits, in extension/scripts/next.sh (depends on T002)
   - Comes from: FR-007, FR-015, US2 scenario 2, US6 scenario 1; research R3, R11; contracts/scripts.md "next.sh"
   - What: `next.sh [feature]` per contracts/scripts.md: one `done|failed|pending|waiting Tnnn
     <summary>` line per task from `task_done` and the run records, read from the feature branch
