@@ -433,6 +433,16 @@ pr_skips_base() { # pr_skips_base <workflow> [<branch>]: its pull_request filter
   done <<<"$list"
 }
 
+# merged_pr <branch>: the number of this repository's merged PR from <branch>, or nothing (fails with gh's error).
+merged_pr() {
+  gh pr list --head "$1" --state merged --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].number // empty'
+}
+# refuse_merged <feature dir>: dies when the feature's PR is merged: after the merge only the release runs.
+refuse_merged() {
+  local n; n="$(merged_pr "$(feature_branch "$1")")" || die "cannot look up the feature's pull request; fix gh's error above"
+  [[ -z "$n" ]] || die "the feature PR #$n is merged: run implement.sh $(basename "$1") release-plan"
+}
+
 # closed_issues <feature dir>: " n1 n2 " the closed issues among its tasks' (fails with gh's error).
 # One API call per feature, by issue number, so a renamed issue still counts. None when no task
 # has an issue (an empty repository { } is an invalid query).

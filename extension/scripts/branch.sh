@@ -3,7 +3,8 @@
 # Usage: branch.sh [feature]   feature: a number (002) or folder name, else the active one
 #   A new one starts from the base with the spec folder's current content committed on it, and is
 #   pushed to origin at once. Tasks are built on the feature branch, never on a branch of their own.
-#   Prints: BRANCH=<name> FEATURE=<NNN> BASE=<base>
+#   Prints: BRANCH=<name> FEATURE=<NNN> BASE=<base>. Once the feature PR is merged, it neither makes
+#   nor pushes the branch: it refuses, naming implement.sh release-plan.
 set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -38,6 +39,7 @@ if [[ "$(git branch --show-current)" != "$branch" ]]; then
     elif git show-ref --verify --quiet "refs/heads/$base"; then from="$base"
     else die "base branch '$base' does not exist; run /landspec:level to set up the branch flow"
     fi
+    refuse_merged "$fdir" # GitHub deleted the merged branch: never make it again
     carry_switch "$fdir" "$branch" --no-track -c "$branch" "$from"
     git add -- "$fdir"
     git diff --cached --quiet || git commit --quiet -m "docs(specs): add $name spec"
@@ -45,8 +47,9 @@ if [[ "$(git branch --show-current)" != "$branch" ]]; then
   fi
 fi
 # A branch made here but never pushed (origin was down) is pushed on the next run.
+# Its upstream is also gone once GitHub deleted the merged branch: that one is never pushed back.
 git rev-parse --quiet --verify '@{u}' >/dev/null 2>&1 \
-  || git push --quiet -u origin "$branch" || die "could not push $branch to origin; run branch.sh again once origin is reachable"
+  || { refuse_merged "$fdir"; git push --quiet -u origin "$branch"; } || die "could not push $branch to origin; run branch.sh again once origin is reachable"
 mkdir -p .specify
 printf '{ "feature_directory": "%s" }\n' "$fdir" > .specify/feature.json
 echo "BRANCH=$branch FEATURE=$(feature_key "$fdir") BASE=$base"

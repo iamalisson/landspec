@@ -11,8 +11,9 @@ You are the main session: you start every agent, and no agent starts another. `I
 (or the one `next.sh` serves). If `.specify/extensions/landspec/` does not exist, tell the user to
 run `/landspec:init` first, and stop. Make sure the working tree is clean; if it isn't, stop and say
 so: never stash or discard. Then put this checkout on the feature's branch, where every task lands:
-`bash .specify/extensions/landspec/scripts/branch.sh <feature>`. Ask nothing while the loop runs:
-every question waits for the end.
+`bash .specify/extensions/landspec/scripts/branch.sh <feature>`. When it refuses with `the feature
+PR #<n> is merged`, go to "The release" (it makes and pushes no branch once the PR is merged). Ask
+nothing while the loop runs: every question waits for the end.
 
 Keep, for the whole run, the tasks whose agents (implementers and reviewers) are in flight (`in flight`), and for each task its
 copy (`Copy:`), its task ref (`REF=`), its implementer (to SendMessage it), the `REVIEWED=` sha its last review record printed, and
@@ -24,7 +25,9 @@ Each pass:
 
 1. `I status --running <id> --running <id> …`, one `--running` per implementer in flight (left out
    when none is): only implementers take `parallel_tasks:` slots, and a task under review is kept
-   from a second review by `in flight`, not by `status`. It prints one `TASK=` line per task, then
+   from a second review by `in flight`, not by `status`. When it prints `MERGED=<n>` (alone: the
+   developer merged the feature PR), the loop and the end check do not run: go to "The release".
+   Otherwise it prints one `TASK=` line per task, then
    one `START=`, `REVIEW=`, `FIX=` or `LAND=` line per task in that state, then `CHECK=`, `PR=`,
    `ORDER=` and `DONE=`.
 2. One step per listed task, in the order printed, skipping any task that is in `in flight` (a task
@@ -122,8 +125,8 @@ checked, across runs).
 
 ## The release
 
-When every task is `merged` and no gaps were filed (on this run or a later one), run `I release-plan`
-and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
+When `status` prints `MERGED=<n>` (or `branch.sh` refused naming the merged feature PR #<n>), and only
+then, run `I release-plan` and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
 next run reads where it stands from git and GitHub:
 
 - `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`

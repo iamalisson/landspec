@@ -27,7 +27,7 @@ argument-hint: "[feature]"
 3. Suggest `/landspec:implement <FEATURE>`, with the printed `FEATURE=`: it builds every ready task
    at once, each in its own copy, through its tests and an Opus review, and lands
    each one. When `NEXT` is empty and `DONE=y/y`, it checks the whole feature against the spec
-   (gaps become new tasks), audits it and makes the release, then opens or updates the feature's
-   one PR (each step once; a confirmed critical or high holds it and names `/landspec:security
-   <report>`). Then `/speckit-specify` for the next feature. Make sure the working tree is clean
+   (gaps become new tasks) and marks the feature's one PR ready; then, once the developer merged
+   it, the next run audits it and makes the release (each step once; a confirmed critical or high
+   holds it and names `/landspec:security <report>`). Then `/speckit-specify` for the next feature. Make sure the working tree is clean
    first; if it isn't, say so; never stash or discard.
