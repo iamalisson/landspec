@@ -3,7 +3,7 @@ schema_version: "1.0"
 extension:
   id: landspec
   name: "landspec"
-  version: "2.10.0"
+  version: "2.11.0"
   description: "One branch and one PR per feature, with defaults sized by project complexity"
   author: iamalisson
   repository: https://github.com/iamalisson/landspec
