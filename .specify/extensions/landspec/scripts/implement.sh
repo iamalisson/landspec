@@ -12,7 +12,7 @@
 #       [RESUME=yes], REVIEW=<id>, FIX=<id>, LAND=<id>, then CHECK=yes|no PR=<url|-> ORDER= DONE=.
 #   implement.sh [feature] land <task>
 #       On the feature's branch: commits the tick on the task ref, merges it --no-ff with the trailers
-#       Landspec-Task and Landspec-Review, pushes, deletes the ref. Prints LANDED=<id> COMMIT=<sha>.
+#       Landspec-Task: <NNN>/<id> and Landspec-Review, pushes, deletes the ref. Prints LANDED=<id> COMMIT=<sha>.
 #   implement.sh [feature] mark <task> implemented|changes|ready|pr [<report>]
 #       changes at task_rounds: (default 3) fix rounds also marks the task failed and prints FAILED=<id>.
 #   implement.sh [feature] mark <task> red   adds 1 to red= (tests red after its implementer said done), prints RED=<n>
@@ -241,7 +241,7 @@ land() {
   if [[ "$tree" != "$(git rev-parse "$rh^{tree}")" ]]; then
     c="$(git commit-tree "$tree" -p "$rh" -m "docs(specs): tick $t")"; git update-ref "refs/heads/$r" "$c" "$rh"
   fi
-  msg="$(printf '%s: %s\n\nLandspec-Task: %s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$t" "$pid")"
+  msg="$(printf '%s: %s\n\nLandspec-Task: %s/%s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$num" "$t" "$pid")"
   if ! err="$(git merge --quiet --no-ff --no-edit -m "$msg" "refs/heads/$r" 2>&1)"; then
     files="$(git diff --name-only --diff-filter=U | paste -sd, -)"
     git merge --abort 2>/dev/null || true

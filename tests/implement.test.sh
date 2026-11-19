@@ -611,7 +611,7 @@ pid="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review
 lo="$("$I" land T001 2>&1)" || true
 check "when T001 is ready, then land prints LANDED=T001 with the merge commit" '[[ "$lo" == "LANDED=T001 COMMIT=$(git rev-parse HEAD)" ]]'
 check "then the merge is --no-ff, titled T001: Add search, with both trailers" \
-  '[[ "$(git log -1 --format=%B)" == "T001: Add search"$'"'"'\n\n'"'"'"Landspec-Task: T001"$'"'"'\n'"'"'"Landspec-Review: ready $pid" && -n "$pid" && "$(git rev-parse HEAD^1)" == "$dev" ]] && git rev-parse --verify --quiet HEAD^2 >/dev/null'
+  '[[ "$(git log -1 --format=%B)" == "T001: Add search"$'"'"'\n\n'"'"'"Landspec-Task: 001/T001"$'"'"'\n'"'"'"Landspec-Review: ready $pid" && -n "$pid" && "$(git rev-parse HEAD^1)" == "$dev" ]] && git rev-parse --verify --quiet HEAD^2 >/dev/null'
 check "then its tree has the tick, the task's change and the developer's commit, and origin has it" \
   'git show HEAD:specs/001-demo/tasks.md | grep -q "^- \[X\] T001 " && git cat-file -e "HEAD:${R1//\//_}.txt" && git cat-file -e HEAD:dev.txt \
    && [[ "$(git ls-remote origin "refs/heads/$FB" | cut -f1)" == "$(git rev-parse HEAD)" && -z "$(git status --porcelain)" ]]'
@@ -641,6 +641,11 @@ echo dev > clash.txt; git add clash.txt; git commit --quiet -m "chore: a conflic
 check "when the feature branch has a conflicting developer commit, then land aborts naming the file and changes nothing" \
   'one_refusal "conflicts with $FB in clash.txt" "$I" land T002 && [[ "$(git rev-parse HEAD)" == "$h" && "$(git rev-parse "refs/heads/$R2")" == "$r2" && -z "$(git status --porcelain)" ]] \
    && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
+# A pull merge in another clone: its local work (from before T001 landed) first, the landed branch second.
+L="$(git log -1 --format=%H --grep='^Landspec-Task: 001/T001$')"; X="$(git commit-tree "$L^1^{tree}" -p "$L^1" -m "chore: local work")"
+git reset --quiet --hard "$(git commit-tree "$h^{tree}" -p "$X" -p "$h" -m "Merge branch '$FB' of origin into $FB")"; fs
+check "when a pull merge joins T001's landing as its second parent, then T001 is still done" \
+  '! git rev-list --first-parent HEAD | grep -qx "$L" && [[ "$(state_of T001)" == done ]] && grep -qx "DONE=1/3" <<<"$out"'
 git push --quiet origin "$(git commit-tree "$FB^{tree}" -p origin/develop -p "$FB" -m "Merge pull request #99 from $FB"):refs/heads/develop"; git fetch --quiet origin; fs
 check "when this feature's PR is merged into the base with a merge commit and fetched, then its landed task is still done" \
   'git merge-base --is-ancestor "$FB" origin/develop && [[ "$(state_of T001)" == done ]] && grep -qx "DONE=1/3" <<<"$out" && one_refusal "T001 is landed already" "$I" land T001'
@@ -649,24 +654,24 @@ check "when the feature was started under the per-task flow, then status prints 
   'rc=0; o="$("$I" status 2>/dev/null)" || rc=$?; ((rc != 0)) && [[ "$o" == LEGACY=001-demo ]]'
 git checkout -- specs/001-demo/tasks.md
 
-# An earlier feature's landings on the base never count: task ids restart at T001 in every feature.
-OLD="T001: an earlier feature's task"$'\n\n'"Landspec-Task: T001"
-# on_base <how>: a fresh repo whose develop holds another feature's T001, squashed or merged by its PR's merge commit;
-# then this feature's branch is cut from it, with a ready plan review, and status runs.
+# Another feature's landings on the base never count: task ids restart at T001 in every feature, so the
+# trailer names the feature (000/T001 here, this feature being 001); nor does the old bare trailer.
+# on_base <how> <trailer>: a fresh repo whose develop holds a T001 landing with that trailer, squashed or merged by its
+# PR's merge commit; then this feature's branch is cut from it, with a ready plan review, and status runs.
 on_base() {
   cd "$TMP"; rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/w"; new_repo standard
-  local b t s l; b="$(git rev-parse HEAD)"; t="$(git rev-parse 'HEAD^{tree}')"
-  if [[ "$1" == squash ]]; then s="$(git commit-tree "$t" -p "$b" -m "$OLD")"
-  else l="$(git commit-tree "$t" -p "$b" -p "$(git commit-tree "$t" -p "$b" -m "feat: old work")" -m "$OLD")" # its landing
+  local b t s l m="T001: an earlier task"$'\n\n'"Landspec-Task: $2"; b="$(git rev-parse HEAD)"; t="$(git rev-parse 'HEAD^{tree}')"
+  if [[ "$1" == squash ]]; then s="$(git commit-tree "$t" -p "$b" -m "$m")"
+  else l="$(git commit-tree "$t" -p "$b" -p "$(git commit-tree "$t" -p "$b" -m "feat: old work")" -m "$m")" # its landing
     s="$(git commit-tree "$t" -p "$b" -p "$l" -m "Merge pull request #1 from feat/000-old")"; fi
   git push --quiet origin "$s:refs/heads/develop"; git fetch --quiet origin
   printf '%s\n' "$TASKS3" > specs/001-demo/tasks.md; printf '# Plan\n' > specs/001-demo/plan.md
   "$SCRIPTS/branch.sh" >/dev/null 2>&1; plan_review >/dev/null 2>&1; fs
 }
-for how in squash merge; do
-  on_base "$how"
-  check "when the base holds another feature's T001 landing ($how), then this feature's T001 is pending and starts" \
-    'git log --format=%B | grep -qx "Landspec-Task: T001" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
-  check "then land T001 is not refused as landed already ($how)" 'one_refusal "has no task ref" "$I" land T001'
+for c in "squash 000/T001" "merge 000/T001" "squash T001"; do
+  how="${c% *}"; tr="${c#* }"; on_base "$how" "$tr"
+  check "when the base holds a T001 landing with Landspec-Task: $tr ($how), then this feature's T001 is pending and starts" \
+    'git log --format=%B | grep -qx "Landspec-Task: $tr" && [[ "$(state_of T001)" == pending ]] && grep -q "^START=T001 " <<<"$out" && grep -qx "DONE=0/3" <<<"$out"'
+  check "then land T001 is not refused as landed already ($how, $tr)" 'one_refusal "has no task ref" "$I" land T001'
 done
 exit "$FAIL"

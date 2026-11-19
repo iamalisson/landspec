@@ -153,9 +153,12 @@ review, a legacy feature (`LEGACY=`) or, on `full`, the analyzed marker; prints 
 STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per task, then at most
 one of `START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]`, `REVIEW=`, `FIX=`
 or `LAND=`, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. A task is `done` when the
-branch holds its landing commit (a message line `Landspec-Task: <id>`). `implement.sh land <task>`
+branch's history holds its landing commit (a message line `Landspec-Task: <NNN>/<id>`, such as
+`Landspec-Task: 008/T001`). The feature's number is in it because task ids restart at `T001` in every
+feature: however the branch was joined (a PR merge, a pull merge, a squash), its own landings are found
+and never another feature's. `implement.sh land <task>`
 lands a `ready` task whose review matches its ref: it commits the tick in `tasks.md` on the ref, merges
-it `--no-ff` as `<id>: <summary>` with the trailers `Landspec-Task: <id>` and `Landspec-Review: ready
+it `--no-ff` as `<id>: <summary>` with the trailers `Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready
 <patch id>`, pushes the branch and deletes the ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted
 changes in the feature folder, and a conflict aborts the merge naming the files. `retry` also deletes
 the task ref. The plan review ignores task ticks and the `**Issue**: #N` line. On upgrade, a plan
