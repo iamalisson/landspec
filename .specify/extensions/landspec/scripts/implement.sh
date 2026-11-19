@@ -4,7 +4,8 @@
 #       Once the feature PR is merged: MERGED=<n> alone, on any branch (the release's turn: release-plan).
 #       On the feature's branch (<branch_prefix>/<NNN>-<name>) only, read from its landing commits:
 #       One "TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=<n>] [REASON=<why>]"
-#       line per task, then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
+#       line per task (waiting REASON=: "waits for <Tnnn>" it depends on, "shares <file> with <Tnnn>" for an earlier task
+#       that can run or is running and whose line names the same backticked path, or "locked worktree <path>"), then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
 #       per startable task while fewer than parallel_tasks: (default 4) are in flight (--running, repeatable),
 #       one REVIEW=<id>, FIX=<id> [REASON=conflict] or LAND=<id> per task in that state, then
 #       CHECK=yes|no PR=<url|-> ORDER= DONE=.
@@ -96,9 +97,14 @@ valid_task() { [[ "$1" =~ ^T[0-9]{3,}$ && -n "$(task_line "$fdir" "$1")" ]] || d
 deps() { grep -oiE 'depends on T[0-9]{3,}([, ]+(and )?T[0-9]{3,})*' <<<"$1" | grep -oE 'T[0-9]{3,}' || true; }
 
 # feature_status: status on the feature's branch (contracts/scripts.md "implement.sh"); every startable
-# task starts at once, up to parallel_tasks in flight.
+# task starts at once, up to parallel_tasks in flight. A startable task waits while an earlier task that
+# can run or is running (pending, building, built, review, changes) names the same backticked path on its
+# line: both would conflict at landing. A waiting or failed task holds nothing, so the first startable
+# task in order is never held by a task that cannot move. A path is a token with a / or a . and no space.
+# shortcut: a later task already in progress does not hold an earlier one that becomes startable; that
+# pair can still conflict at landing (one conflict round), upgrade if it shows up in real builds.
 feature_status() {
-  local line t r rh w st why f fh phase round d marker plain acts="" starts="" fly=0 ids="" out="" n=0 done_n=0 pr
+  local line t r rh w st why f fh phase round d marker plain p ht hp paths held="" acts="" starts="" fly=0 ids="" out="" n=0 done_n=0 pr
   refuse_legacy "$fdir"
   # first, so any clone, on any branch, sees the merge: only the release runs after it
   pr="$(merged_pr "$fb")" || die "cannot look up the feature's pull request; fix gh's error above"
@@ -129,11 +135,23 @@ feature_status() {
       for d in $(deps "$line"); do task_done "$fdir" "$d" || { st=waiting; why="waits for $d"; break; }; done
       if [[ -n "$st" ]]; then :
       elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == changes ]]; then st=changes
-      elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == ready ]] \
-           && bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1; then st=review
+      elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == ready ]]; then
+        # a ready mark whose review check fails keeps its code: the review is run again, not the build
+        if bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1; then st=review; else st=built; fi
       elif [[ -n "$rh" && "$fh" == "$rh" && "$phase" == implemented ]]; then st=built
       else st=pending
       fi
+    fi
+    paths="$(grep -o '`[^` ]*`' <<<"$line" | tr -d '`' | grep '[./]' || true)"
+    if [[ "$st" == pending && -n "$held" && -n "$paths" ]]; then
+      while IFS= read -r p && [[ "$st" == pending ]]; do
+        while IFS=$'\t' read -r ht hp; do
+          [[ "$hp" != "$p" ]] || { st=waiting; why="shares $p with $ht"; break; }
+        done <<<"$held"
+      done <<<"$paths"
+    fi
+    if [[ "$st" != "done" && "$st" != failed && "$st" != waiting && -n "$paths" ]]; then
+      while IFS= read -r p; do held+="$t"$'\t'"$p"$'\n'; done <<<"$paths"
     fi
     out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == "done" ]] || out+=" ROUND=$round"
     out+="${why:+ REASON=$why}"$'\n'
@@ -180,8 +198,9 @@ land() {
     || die "$r is already in $fb's history (merged by hand?), so it has no landing commit: undo that merge on $fb, then land again"
   [[ "$(rec "$t" phase)" == ready && "$(rec "$t" head)" == "$rh" && -z "$(rec "$t" failed)" ]] \
     || die "$t is not ready at its ref's head: review it and mark it (implement.sh mark $t ready <report>)"
-  bash "$(dirname "$0")/review.sh" check --branch "$r" >/dev/null 2>&1 \
-    || die "$r changed since its ready review: review it again and record it (review.sh record --branch $r <report>)"
+  err="$(bash "$(dirname "$0")/review.sh" check --branch "$r" 2>&1 >/dev/null)" \
+    || { err="$(tail -1 <<<"$err" | sed 's/^landspec: //')" # review.sh's messages say to review again and record it
+         die "$r: ${err:-its review check failed: review it again and record it} (review.sh record --branch $r <report>)"; }
   [[ -z "$(git status --porcelain -- "$fdir")" ]] || die "uncommitted changes in $fdir: commit them on $fb first"
   w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then land again"
   pid="$(diff_id "$r")" || exit 1

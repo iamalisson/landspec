@@ -138,7 +138,10 @@ then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. The main session tak
   (`branch.<ref>.landspec-parent` names the feature branch, so its diff and its review are against
   the feature head). `RESUME=yes`: the ref exists from an interrupted run, and the implementer goes
   on from it. A ref checked out in a locked worktree makes the task `waiting` with `REASON=locked
-  worktree <path>`. The implementer works to the reviewer's checklist (`pr.md` step 2's test rules
+  worktree <path>`. A startable task is `waiting` with `REASON=shares <file> with <Tnnn>` while an
+  earlier task that can run or is running (`pending`, `building`, `built`, `review`, `changes`; a
+  `waiting` or failed one holds nothing) names the same backticked path on its task line (an exact
+  match; a path is a token with a `/` or a `.` and no space), so they do not conflict at landing. The implementer works to the reviewer's checklist (`pr.md` step 2's test rules
   and `review.md`'s Method step 2) and runs the tests through `run_tests` after its last commit:
   `implement.sh mark <task> implemented` refuses a task ref whose head tree has no recorded green
   run (`no green test run for <ref> at <sha>`; with no test command it is accepted), and the tests
