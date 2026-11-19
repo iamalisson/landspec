@@ -11,6 +11,8 @@
 #   trivy        Dockerfile / Terraform / Kubernetes misconfiguration (only when such files exist)
 # Reports go to .git/landspec-security/<timestamp>/ so they are never committed or pushed.
 # Prints one line per scanner: "<tool> ok|findings|missing|skipped <detail>", then REPORT_DIR=<dir>.
+# A high or critical finding (gitleaks: every finding) prints "<tool> findings high <detail>". The
+# --changed record is read by pr.sh feature --ready, which refuses on a "findings high" line.
 set -uo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
@@ -25,6 +27,11 @@ summary="$dir/summary.txt"; : > "$summary"
 
 report() { printf '%-12s %-9s %s\n' "$1" "$2" "$3" | tee -a "$summary"; }
 missing() { report "$1" missing "install: $2"; }
+# found <tool> <report> <regex>: findings, marked high when the report's own severity field matches
+# the regex (grep: busybox has no jq or python3).
+found() {
+  if grep -qE "$3" "$2" 2>/dev/null; then report "$1" findings "high $2"; else report "$1" findings "$2"; fi
+}
 # With --changed, the summary lines become this diff's record, which pr.sh task requires. Copied
 # only once the scan is done, so an interrupted scan records nothing.
 finish() { if $changed; then cp "$summary" "$rec"; fi; echo "REPORT_DIR=$dir"; exit 0; }
@@ -42,7 +49,7 @@ if command -v gitleaks >/dev/null; then
   if $changed; then gl=(git --log-opts="$(git merge-base HEAD "$ref" 2>/dev/null || echo HEAD~1)..HEAD"); else gl=(git); fi
   if gitleaks "${gl[@]}" --redact --no-banner --report-format json --report-path "$dir/gitleaks.json" >/dev/null 2>&1; then
     report gitleaks ok "no secrets"
-  else report gitleaks findings "$dir/gitleaks.json"; fi
+  else report gitleaks findings "high $dir/gitleaks.json"; fi
 else missing gitleaks "https://github.com/gitleaks/gitleaks#installing (brew install gitleaks)"; fi
 
 # osv-scanner: exit 1 = vulnerabilities, 128 = no lockfiles
@@ -51,7 +58,8 @@ if command -v osv-scanner >/dev/null; then
   case $? in
     0) report osv-scanner ok "no known vulnerable dependencies" ;;
     128) report osv-scanner skipped "no lockfiles found" ;;
-    *) report osv-scanner findings "$dir/osv.json" ;;
+    # max_severity: a group's CVSS score (7.0 and up is high); severity: the advisory's own label
+    *) found osv-scanner "$dir/osv.json" '"max_severity"[[:space:]]*:[[:space:]]*"(7|8|9|10)(\.[0-9]*)?"|"severity"[[:space:]]*:[[:space:]]*"(HIGH|CRITICAL)"' ;;
   esac
 else missing osv-scanner "https://google.github.io/osv-scanner/installation/ (brew install osv-scanner)"; fi
 
@@ -61,7 +69,7 @@ if command -v semgrep >/dev/null; then
   rc=0; semgrep scan --config p/default --config p/owasp-top-ten --error --quiet --metrics off \
        --json --output "$dir/semgrep.json" "${targets[@]}" >/dev/null 2>"$dir/semgrep.log" || rc=$?
   if [[ $rc == 0 ]]; then report semgrep ok "no code findings"
-  elif [[ $rc == 1 ]]; then report semgrep findings "$dir/semgrep.json"
+  elif [[ $rc == 1 ]]; then found semgrep "$dir/semgrep.json" '"severity"[[:space:]]*:[[:space:]]*"(ERROR|HIGH|CRITICAL)"'
   elif [[ -s "$dir/semgrep.log" ]]; then report semgrep failed "exit $rc from semgrep: code patterns not scanned; see $dir/semgrep.log"
   else
     # With --json --output semgrep puts its error in the JSON. Only the text after "errors" is read,
@@ -82,7 +90,7 @@ if compgen -G ".github/workflows/*.y*ml" >/dev/null; then
   if command -v zizmor >/dev/null; then
     if zizmor --format json .github/workflows > "$dir/zizmor.json" 2>/dev/null; then
       report zizmor ok "workflows clean"
-    else report zizmor findings "$dir/zizmor.json"; fi
+    else found zizmor "$dir/zizmor.json" '"severity"[[:space:]]*:[[:space:]]*"High"'; fi
   else missing zizmor "uv tool install zizmor (or brew install zizmor)"; fi
 else report zizmor skipped "no GitHub workflows"; fi
 
@@ -92,7 +100,7 @@ if [[ -n "$(infra_files)" || -n "$(git ls-files '*.yaml' '*.yml' 2>/dev/null | g
   if command -v trivy >/dev/null; then
     if trivy config --exit-code 1 --severity HIGH,CRITICAL --format json --output "$dir/trivy.json" . >/dev/null 2>&1; then
       report trivy ok "no high/critical misconfiguration"
-    else report trivy findings "$dir/trivy.json"; fi
+    else found trivy "$dir/trivy.json" '"Severity"[[:space:]]*:[[:space:]]*"(HIGH|CRITICAL)"'; fi
   else missing trivy "https://trivy.dev (verify the release; trivy-action was compromised in March 2026)"; fi
 else report trivy skipped "no Dockerfile/Terraform/Kubernetes files"; fi
 
