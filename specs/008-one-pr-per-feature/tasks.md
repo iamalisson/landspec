@@ -167,7 +167,7 @@ landed on the branch as each is ready; one draft PR per feature.
     `land` prints `CONFLICT=` with the file, leaves the feature branch at the first landing, and
     `status` prints `FIX=<id> REASON=conflict`; after the ref merges the feature branch and is
     marked ready again it lands; a second conflict prints `FAILED=`; the second `changes` (default
-    2) prints `FAILED=`; a review with two low findings gives two `Low:` lines in the landing commit;
+    2) prints `FAILED=`; `retry` clears `conflict=1`, so a retried task gets its conflict round again; a review with two low findings gives two `Low:` lines in the landing commit;
     `tests/run.sh` passes.
 
 - [ ] T004 [US1] Rewrite the implement loop to build every startable task at once and land each as it is ready, in skills/implement/SKILL.md (depends on T003, T017, T018, T020)
@@ -185,7 +185,7 @@ landed on the branch as each is ready; one draft PR per feature.
     each run; the End report (task states, failed tasks with their findings, the PR, what is left).
     Drop restack, stack, OPEN per task, the stacked-draft rules, the per-task PR handover, the
     "fix grew past its 20 lines" fallback, `issues.sh`, `SIMPLIFY=` and the per-task scan and
-    mutants. `agents/implementer.md`: step 1 becomes `git switch -c <REF> <FROM>` (or
+    mutants. `extension/scripts/pr.sh`: feature mode without `--ready` needs no scan or mutants record (the draft after the first landing would refuse otherwise; T009 adds them to `--ready`). `agents/implementer.md`: step 1 becomes `git switch -c <REF> <FROM>` (or
     `git switch <REF>` on `RESUME=yes`) in its copy and `git config branch.<REF>.landspec-parent
     <feature branch>`; the tests run through `run_tests` after the last commit; no `branch.sh`, no
     push, no `security-scan.sh`, no `mutants.sh`, no `Elsewhere:`; on a conflict round, `git merge
@@ -295,16 +295,16 @@ medium, one fix round checked by a delta.
   - What: `review.sh check --plan` passes when the plan record is current and its findings count
     has no high (was: `Assessment: ready`); `check --branch` passes when the branch record is
     current and has no high or medium finding; `record --delta` drops its "at most 20 lines outside
-    the previous findings' files" refusal (the other refusals stay). `extension/commands/review.md`:
+    the previous findings' files" refusal (the other refusals stay). `record --plan` keeps its refusal of a `ready` report with a failing pass row or an open earlier-findings row only when that row is a high finding (`review.sh:226`, `:229`). `extension/commands/review.md`:
     the Assessment rule: a plan review ends `changes needed` only with a high finding, a task
     review only with a high or medium; a delta of a conflict round reads the merge's resolution
     (`git show --remerge-diff <merge>`) and the commits after it, not the other tasks' code; the
-    20-line paragraph goes.
+    20-line paragraph goes. Its two paragraphs on failing rows and open earlier findings in a `ready` plan report (`review.md:167-171`, `:239-240`) say the same: only a high row blocks `ready`.
   - Impact: `tests/review.test.sh` (plan and branch gate cases, the 20-line delta refusal case
     goes); `tests/pr.test.sh` (`pr.sh fix` reads `review.sh report`, whose gate follows);
     `tests/static.test.sh` checks of `review.md`; `docs/reference.md`.
   - Completed when: `bash tests/review.test.sh` passes: `check --plan` passes on a record with
-    `Findings: 0 high, 2 medium, 3 low` and fails on `1 high`; `check --branch` fails on `1 medium`
+    `Findings: 0 high, 2 medium, 3 low` and fails on `1 high`; `record --plan` records a `ready` report with one medium `MISSING` row and `check --plan` then passes; `check --branch` fails on `1 medium`
     and passes on `0 high, 0 medium, 2 low`; a delta whose fix changes 40 lines outside the earlier
     files is recorded; `bash tests/static.test.sh` passes with checks that `review.md` states both
     Assessment rules and has no "20 lines", each seen failing on the old text; `tests/run.sh` passes.
@@ -543,13 +543,13 @@ only one PR per feature, with no issues.
   - Comes from: FR-016, US6 scenario 3
   - What: `README.md` (the tagline, the loop, the review model, the per-task PR and issue lines);
     `skills/help/SKILL.md`; and the one negative check: a `tests/static.test.sh` case that runs
-    `grep -rnE 'pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|restack|check-copy|review_model|issues\.sh|landspec\.issues|issue_labels|SIMPLIFY|answer --plan|task PR|spec PR|one task = one issue|one issue per (task|feature)|feature issue'`
+    `grep -rnE 'pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|restack|check-copy|review_model|issues\.sh|landspec[.-]issues|issue_labels|SIMPLIFY|answer --plan|task PR|spec PR|one task = one issue|one issue per (task|feature)|feature issue'`
     over `README.md docs skills agents extension preset hooks examples` and fails on any line
     outside one allow-list (release notes under `docs/releases/`, the history rows of
     `docs/GUARDRAILS.md`, the legacy R11 messages, the legacy release-plan text `implement.sh`
     keeps for per-task features, and the check itself); before it, the leftovers it would find are
     rewritten: `review_model()` in `lib.sh` becomes `reviewer_model()` (it returns `opus`; its
-    caller in `review.sh` follows), and the comments in `lib.sh`, `review.sh`, `next.sh` and
+    caller in `review.sh` follows), `extension/commands/review.md` lines that name the issues command (`:11`, `:25`, `:159`), and the comments in `lib.sh`, `review.sh`, `next.sh` and
     `stats.sh` that name task or spec PRs or issues; `examples/README.md` and `examples/github/*`
     (one feature PR replaces `issue-T001.md` and `task-pr-T001.md`; `spec-pr.md` is removed);
     remove `assets/flow-*.svg` that show task PRs, or redraw them with the README's new loop.
