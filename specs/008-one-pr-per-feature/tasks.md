@@ -451,7 +451,7 @@ only one PR per feature, with no issues.
 
 **Independent Test**: quickstart L8 and US6 scenario 3.
 
-- [ ] T011 [US6] Remove pr.sh's task and spec modes, in extension/scripts/pr.sh (depends on T004, T005, T009)
+- [X] T011 [US6] Remove pr.sh's task and spec modes, in extension/scripts/pr.sh (depends on T004, T005, T009)
   - Comes from: FR-003, FR-012, FR-016, SC-005; research R9; plan "Design notes" 3
   - What: delete `pr.sh task` and `pr.sh spec`, the stacked-parent logic, the issue lookup and its
     `Closes #N`, and the spec PR body (`pr_skips_base` stays in `lib.sh`: `level.sh` uses it for

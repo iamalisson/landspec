@@ -10,7 +10,7 @@
 # unavailable: the command exited 126 or 127, so it never ran. A wrapper (uv run) exits otherwise,
 # so a tool missing behind one stays survivors.
 # Output goes to .git/landspec-mutants/<timestamp>/ so it is never committed; the result line is also
-# this diff's record (.git/landspec-mutants/<diff id>), which pr.sh task requires.
+# this diff's record (.git/landspec-mutants/<diff id>), which pr.sh fix and pr.sh feature --ready require.
 set -uo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"

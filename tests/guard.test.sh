@@ -23,6 +23,8 @@ check "when the push hides in a chain or uses -C, then it is still blocked" \
   'blocked "npm test && git -C . push origin develop"'
 check "when Claude opens a PR with gh pr create, then it is blocked at every level (pr.sh checks the review)" \
   'blocked "gh pr create --base develop --title x --body y" && blocked "cd . && gh -R o/r pr create -t x" && blocked "bash -c \"gh pr create --fill\""'
+check "when gh pr create is blocked, then the message names pr.sh feature and pr.sh fix and no per-task mode" \
+  'out="$("$g" "gh pr create --title x" 2>&1 || true)"; [[ "$out" == *"pr.sh feature \"<title>\" <body-file>"* && "$out" == *"pr.sh fix \"<title>\" <body-file>"* && "$out" != *"pr.sh task"* ]]'
 check "when the PR is a promotion from a long-lived branch, then gh pr create is allowed" \
   '"$g" "gh pr create --base main --head develop --title x" && "$g" "gh pr create -B main -H develop -t x"'
 check "when gh ends in -R or uses --repo=, then the guard ends (a loop hangs the job) and still blocks the PR" \

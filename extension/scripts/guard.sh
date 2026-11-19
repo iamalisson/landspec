@@ -326,7 +326,7 @@ check_gh() {
   enter_repo "${dir:-$start}" || return 0
   # The guard is the plugin's copy, pr.sh the project's: before /landspec:init updates a project,
   # its pr.sh has no fix mode, and blocking would leave a small fix no way to open.
-  grep -qF 'task|fix)' .specify/extensions/landspec/scripts/pr.sh 2>/dev/null || return 0
+  grep -qF '|fix)' .specify/extensions/landspec/scripts/pr.sh 2>/dev/null || return 0
   shift 2
   while (($#)); do
     case "$1" in
@@ -338,7 +338,7 @@ check_gh() {
   [[ -n "$head" ]] || head="$(git branch --show-current 2>/dev/null)"
   head="${head##*:}" # owner:branch
   if [[ -n "$head" ]] && is_protected "$head"; then return 0; fi
-  block "a PR opens after the independent review, through pr.sh: pr.sh task Tnnn \"<title>\" <body-file> for a task, pr.sh fix \"<title>\" <body-file> for anything else (/speckit-landspec-review first)"
+  block "a PR opens after the independent review, through pr.sh: pr.sh feature \"<title>\" <body-file> for a feature, pr.sh fix \"<title>\" <body-file> for anything else (/speckit-landspec-review first)"
 }
 
 # aws_on: the AWS layer is on in the repository the command runs in. Its aws, aws_prod_profiles and
