@@ -496,7 +496,7 @@ only one PR per feature, with no issues.
     the usage error (`tests/implement.test.sh`), and T017's parallel `status` cases still pass;
     `tests/run.sh` passes.
 
-- [ ] T014 [P] [US6] Describe one branch and one PR per feature, with no issues, in the generated constitution text, templates and scaffolds, in extension/levels/lite.md (depends on T005, T013)
+- [X] T014 [P] [US6] Describe one branch and one PR per feature, with no issues, in the generated constitution text, templates and scaffolds, in extension/levels/lite.md (depends on T005, T013)
   - Comes from: FR-016, US6 scenario 3
   - What: the "Way of working" block of `extension/levels/lite.md` (the only level file with one;
     `standard.md` and `full.md` add rules with no task or PR bullet): one feature = one branch = one

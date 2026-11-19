@@ -9,7 +9,7 @@
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
-#   review.sh outside --plan <n>            log the real findings the spec PR's outside reviewers found (OUTSIDE=<n>)
+#   review.sh outside --plan <n>            log the real findings the feature PR's outside reviewers found (OUTSIDE=<n>)
 #   review.sh check [--plan]                exit 0 when the recorded review matches the current state and counts
 #                                           no high finding (a plan) or no high or medium one (a task)
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)

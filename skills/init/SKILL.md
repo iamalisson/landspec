@@ -1,6 +1,6 @@
 ---
 name: init
-description: "Set up the current project (new or existing) with spec-kit and landspec: one task = one issue = one branch = one PR, security checks on every commit, push and PR, and best-practice defaults sized by complexity level (lite, standard, full)."
+description: "Set up the current project (new or existing) with spec-kit and landspec: one feature = one branch = one PR, no GitHub issues, security checks on every commit, push and PR, and best-practice defaults sized by complexity level (lite, standard, full)."
 argument-hint: "[lite|standard|full]"
 disable-model-invocation: true
 ---
@@ -12,10 +12,10 @@ disable-model-invocation: true
      `uv tool install specify-cli --from git+https://github.com/github/spec-kit.git@v1.2.5`.
      If `uv` is missing too, point to https://docs.astral.sh/uv/ and stop.
    - If `gh auth status` fails, ask the user to run `! gh auth login` and stop.
-   - If `gh repo view` fails, there is no GitHub repository yet, and issues and PRs need one: ask
+   - If `gh repo view` fails, there is no GitHub repository yet, and PRs need one: ask
      its name and visibility and offer `gh repo create <name> --private --source . --remote origin`
      (`--public` for a public one; `git init -b main` first if there is no git repo). On no, go on
-     without steps 4 and 5, and say that `/speckit-tasks` stops at creating the issues until there is one.
+     without steps 4 and 5, and say that no feature PR can open until there is one.
 2. **Level.** Use the argument if it is `lite`, `standard` or `full`. If the project already has
    `.specify/extensions/landspec/landspec-config.yml`, this is an update: keep its `level:` and skip the
    question. Otherwise ask with these options, recommending one from what the repo shows:
@@ -38,11 +38,11 @@ disable-model-invocation: true
 4. **GitHub settings** (every level). Read the visibility with
    `gh repo view --json visibility -q .visibility`. Offer each one, explain it in one line, and run
    it only on yes:
-   - Rebase merges off, so a task PR never lands as several commits and one revert removes it:
+   - Rebase merges off, so a feature PR never lands as several commits and one revert removes it:
      `gh api -X PATCH repos/{owner}/{repo} -F allow_rebase_merge=false`.
-   - On lite, merge commits off too (squash only: each task PR is one commit on `main`):
+   - On lite, merge commits off too (squash only: each feature PR is one commit on `main`):
      `gh api -X PATCH repos/{owner}/{repo} -F allow_merge_commit=false -F allow_squash_merge=true -f squash_merge_commit_title=PR_TITLE -f squash_merge_commit_message=PR_BODY`.
-     Standard and full keep merge commits for the promotion PRs (`develop` → `main`); their task
+     Standard and full keep merge commits for the promotion PRs (`develop` → `main`); their feature
      PRs are squashed by convention.
    - Only when the visibility is `PUBLIC` (both are free there):
      - Secret scanning with push protection:
@@ -84,15 +84,15 @@ disable-model-invocation: true
    and protections enabled, and the next command. If the script said the git hooks are "not active in this clone
    yet", repeat the command it gave; if it said "add these lines to it", repeat those lines and
    where they go: without either, nothing checks commits locally. A machine-wide `core.hooksPath`
-   stays in charge: never replace it. If it said a workflow "never runs on a task PR", repeat that
-   line: until that branch is added, the project's own CI does not check task PRs. If the script
+   stays in charge: never replace it. If it said a workflow "never runs on the feature PR", repeat that
+   line: until that branch is added, the project's own CI does not check feature PRs. If the script
    created `.claude/settings.json`, say in one line that its `"attribution"` block removes Claude's
    commit and PR attribution lines for everyone who clones the repo, and that deleting the block
    keeps them (docs/reference.md, "AI attribution").
 8. **Offer to commit it**, in one question: "Commit this on `chore/landspec-<version>` and open
    the PR into `<base>`?" (the version is `version:` in `.specify/extensions/landspec/extension.yml`;
    `<base>` is `base_branch:` in `landspec-config.yml`, or when that is `auto`, `develop` on standard and
-   full and the default branch on lite). Task branches start from `<base>` and scripts read the
+   full and the default branch on lite). Feature branches start from `<base>` and scripts read the
    level from the tree, so the setup has to land there, on an update too: anywhere else, the next
    branch loses `.specify` and the git hooks, or keeps the old version. The default branch gets it
    at the next promotion. On yes: `git fetch origin`, then `git switch -c <branch> origin/<base>` as its own command
@@ -102,8 +102,7 @@ disable-model-invocation: true
    never `git add -A`), commit `chore: landspec <version> (level <level>)`, and open the PR as a
    small fix (`.specify/extensions/landspec/commands/pr.md`, "Not a task"): the review, then
    `pr.sh fix "chore: landspec <version> (level <level>)" <body-file>`, which opens it into `<base>`, with a
-   two-line body saying what moved and that nothing else changed, plus its `## Review`. No spec, no
-   issue; the hooks and CI still apply. Then
+   two-line body saying what moved and that nothing else changed, plus its `## Review`. No spec; the hooks and CI still apply. Then
    `/landspec:adopt` (step 6) runs on that branch. If `origin/<base>` does not exist yet (the
    script said a branch is "not created yet"), there is no PR to open: tell the user to commit, push
    the default branch and run `/landspec:level <level>`. On no: leave it uncommitted for the user
