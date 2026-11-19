@@ -122,6 +122,13 @@ the parent first. A workflow whose `pull_request` branches leave out the parent 
 PR, and `pr.sh` warns about each one (landspec's generated CI has no such filter). `security-scan.sh
 --changed` scans only the stacked branch's own files.
 
+`security-scan.sh` prints one line per scanner, `<tool> ok|findings|missing|skipped|failed <detail>`,
+and keeps them with `--changed` as the diff's record. A finding the tool rates high or critical
+prints `<tool> findings high <report>`: gitleaks for every finding, osv-scanner for a group
+`max_severity` of 7.0 or more or an advisory `severity` of `HIGH` or `CRITICAL`, semgrep for a result
+`severity` of `ERROR`, `HIGH` or `CRITICAL`, zizmor for a `High` severity, trivy for `HIGH` or
+`CRITICAL`. `pr.sh feature --ready` refuses on a `findings high` line and lists the others.
+
 `/landspec:implement [feature]` runs a feature's tasks in parallel instead of one per `/landspec:next`.
 Each pass it runs `implement.sh restack`, then `implement.sh status --running <in flight>`, and takes
 one step per listed task: `START` launches an implementer (`landspec:implementer`, in the background,
@@ -130,9 +137,9 @@ the review's report, and `OPEN` `pr.sh task` in the task's copy, parents first. 
 to the reviewer's checklist (`pr.md` step 2's test rules and `review.md`'s Method step 2), and runs
 `security-scan.sh --changed` and `mutants.sh` on its branch before it returns; `OPEN` runs them only
 for a diff that has no record of them (after a restack, say). A fix round's review is a delta
-(`review.sh record --delta --branch <branch>`), and a full review when the delta refuses (a restack
-rebased the branch, or the fix grew past 20 lines; lines a merge of the base brought in do not count, a
-conflict resolution's and another branch's do, and a git before 2.38 counts them all). An implementer that returns nothing is marked
+(`review.sh record --delta --branch <branch>`), of any size, and a full review when the delta
+refuses (a restack rebased the branch). `review.sh check` passes a task review with no High or
+Medium finding on its `Findings:` line, and a plan review with no High. An implementer that returns nothing is marked
 `red` and started again once, then `failed`. A task
 that depends on an unmerged one starts stacked on its branch (`branch.sh --from`), and its PR is a draft
 into the parent's. It asks nothing while it runs, never merges, and ends with the PRs to merge in
@@ -238,7 +245,7 @@ branches on origin.
 | the feature PR | `pr.sh feature "<title>" <body-file>`, on the feature's branch only (elsewhere it refuses, naming `branch.sh <feature>`): the gates of `pr.sh fix` on the whole diff from `origin/<base>` (clean tree, `## Evidence` on `full`, `## Test changes`, mutants, the scan, the Terraform plan, the test command), but no recorded branch review and no `## Review`, since every landing commit carries its task's `ready` review. It refuses a task ticked `[X]` with no landing commit (`untick it or run /landspec:implement`), and adds to the body a `## Tasks` table (task, summary, `done`, `failed` or `pending`, landing commit, review assessment), `## End check` from the feature's end-check record (`.git/landspec-review/feature-<feature>`) when it has a `head:` (head, round, tests, assessment, its `met` / `not met` / `not verifiable` lines, and `checked at <reviewed>; the branch is now at <sha>` once the branch moved), and `Closes #N` from the `**Issue**: #N` line of `tasks.md`. It opens a draft PR, or replaces the open one's body; where drafts are not available it warns `do not merge this PR before pr.sh feature --ready` and opens a normal PR. Prints `PR=<url> READY=no` |
 | an open PR, before it is handed over | `pr.sh state <pr>` (a number or the PR's URL) reads it in one GraphQL query and prints `CONFLICT=no\|yes\|unknown` (`unknown` while GitHub has not computed it), `CI=pending` (a check not completed), `fail <name> (<conclusion>),…` (failed, cancelled, timed out, action required or startup failure; a failed or errored status), `pass`, or `none` (no check: CI is shown, never waited for), and `COPILOT=`, in this order: `pending` (a Copilot review request is open), `comments <n> REPORT=<file> [RESOLVE=<id>,…]` (`n` unresolved threads Copilot opened with no comment after Copilot's own, written to `.git/landspec-review/copilot-<pr>` as `## Findings` with `- <path>:<line> thread=<id> [(outdated)] <first line>` and the comment below; `RESOLVE=` the unresolved ones already replied to), `unavailable <first sentence>` (Copilot's newest review or comment says it was unable to review), `clean` (Copilot reviewed, nothing left) or `none`. Copilot is any login matching `copilot`. It only reads: it never requests a review, and reads no clock, so in the seconds after a push, before a ruleset's request appears, a PR can read ready. `pr.sh state <pr> --reply <thread id> [<file>]` posts the file as the reply to that thread's first comment and resolves it (`REPLIED=<id>`), or only resolves a thread already replied to (`RESOLVED=<id>`); it refuses, posting nothing, a thread not on that PR, not Copilot's, already resolved, or unreplied with no or an empty file; a failed post resolves nothing, and a failed resolve exits 1 after `REPLIED=`. Limits: 100 checks, threads and reviews, 30 comments per query |
 | every PR | assigned to you (a failure only warns; no milestone or project, no issue); no AI attribution lines; long output folded into `<details>` |
-| a task PR that changes existing tests | refused unless the body has a `## Test changes` section saying why: adding tests to an existing file needs no explanation; a deletion, an edit or an added skip does. An added line can still weaken a test in ways this rule cannot see: the review reads it, and `review.sh risk` still flags gate lines. Tests are files under `tests/`, `test/`, `Tests/`, `__tests__/`, `spec/`, `e2e/`, `cypress/` or a `*.Tests/` folder, and files named `*.test.*`, `*.spec.*` (or with `_`, `-`), `*.cy.*`, `tests.py`, `test_*.py` or `FooTests.swift` (case-sensitive). For any other layout, add a line `tests: <regex>` (`grep -E`) to the constitution; an invalid one makes `pr.sh`, `mutants.sh` and `review.sh record` refuse. The same files are what a review's `- proven:` line may name, and what a fix round (`review.sh record --delta`) may change beyond its 20-line limit outside the previous findings |
+| a task PR that changes existing tests | refused unless the body has a `## Test changes` section saying why: adding tests to an existing file needs no explanation; a deletion, an edit or an added skip does. An added line can still weaken a test in ways this rule cannot see: the review reads it, and `review.sh risk` still flags gate lines. Tests are files under `tests/`, `test/`, `Tests/`, `__tests__/`, `spec/`, `e2e/`, `cypress/` or a `*.Tests/` folder, and files named `*.test.*`, `*.spec.*` (or with `_`, `-`), `*.cy.*`, `tests.py`, `test_*.py` or `FooTests.swift` (case-sensitive). For any other layout, add a line `tests: <regex>` (`grep -E`) to the constitution; an invalid one makes `pr.sh`, `mutants.sh` and `review.sh record` refuse. The same files are what a review's `- proven:` line may name |
 
 These are spec-kit hooks, so you never type them. If you skip one, run it yourself:
 `/speckit-landspec-plan-review`, `/speckit-landspec-pr`.
@@ -320,12 +327,12 @@ findings of the spec PR's outside reviewers),
 script. The file stays in `.git`: it is never pushed, and nothing from it reaches an issue or a PR.
 Nothing rotates it (about 10 lines per PR).
 
-`bash .specify/extensions/landspec/scripts/stats.sh` prints one row per branch that opened a task
-or fix PR (minutes from start to its first `pr` event, so a later `pr.sh` run that finds the open
-PR does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
-then one `PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> … | first->issues <m>m | outside <n>`
-line per feature with plan events (the counts of each plan round, `?` when its report had none;
-the minutes from its first plan round to its first `issues` event, `?` before one; plan events
+`bash .specify/extensions/landspec/scripts/stats.sh` prints one row per feature PR and per fix PR
+(and per task PR of the per-task flow); a feature PR's row also counts its tasks' refs
+(`landspec/<NNN>-t<nnn>-task`), so the review rounds of every task add up on it (minutes from start to its first `pr` event, `?` with no `start` event, so a later `pr.sh` run that finds the open
+PR, or marks the draft ready, does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
+then one `PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> … | outside <n>`
+line per feature with plan events (the counts of each plan round, `?` when its report had none; plan events
 written by 2.7.0 name no feature and are grouped under `?`),
 then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
 the first review. Spec PRs are left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used

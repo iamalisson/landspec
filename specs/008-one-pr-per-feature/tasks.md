@@ -290,7 +290,7 @@ medium, one fix round checked by a delta.
     with checks that `agents/reviewer.md` has `model: opus` and that `review.md` names `opus` and
     not `review_model`, each seen failing on the old text; `tests/run.sh` passes.
 
-- [ ] T018 [P] [US3] Gate the plan review on high findings and the task review on high and medium, with deltas of any size, in extension/scripts/review.sh and extension/commands/review.md (depends on T002)
+- [X] T018 [P] [US3] Gate the plan review on high findings and the task review on high and medium, with deltas of any size, in extension/scripts/review.sh and extension/commands/review.md (depends on T002)
   - Comes from: FR-006, FR-019, FR-020, US3 scenarios 1, 3 and 4, SC-003; research R6, R13; contracts/scripts.md "review.sh"
   - What: `review.sh check --plan` passes when the plan record is current and its findings count
     has no high (was: `Assessment: ready`); `check --branch` passes when the branch record is
@@ -413,7 +413,7 @@ diff.
     ref's tree and accepted after `run_tests` on it; with no test command it is accepted;
     `tests/run.sh` passes.
 
-- [ ] T021 [P] [US5] Record a high scanner finding as such, in extension/scripts/security-scan.sh
+- [X] T021 [P] [US5] Record a high scanner finding as such, in extension/scripts/security-scan.sh
   - Comes from: FR-022, US5 scenario 3; research R15; contracts/scripts.md "security-scan.sh"
   - What: a scanner whose report has a high or critical finding prints `<tool> findings high
     <detail>` (gitleaks: every finding; osv-scanner, semgrep, zizmor, trivy: their own severity
@@ -426,7 +426,7 @@ diff.
     findings` without `high`, any gitleaks finding gives `findings high`, a missing scanner stays
     `missing`; `tests/run.sh` passes.
 
-- [ ] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
+- [X] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
   - Comes from: FR-013, FR-015, US5 scenario 4, SC-004; research R10, R11
   - What: `release-plan`: PRs merged whose head starts with `<branch_prefix>/<NNN>-` (not
     `/<NNN>-t`), the merge commit of the feature PR as `M`; no issue read; a legacy feature
