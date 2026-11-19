@@ -254,14 +254,25 @@ diff_record() {
   mkdir -p "$d"; echo "$d/${id:-empty}"
 }
 
+# test_key <tree> <cmd>: the name of a green run's record under .git/landspec-test. The tree and the
+# command only, not the copy's path: a tree tested in one worktree counts in every copy of the repo.
+test_key() { printf '%s %s' "$1" "$2" | sha256; }
+
+# tests_green <tree>: run_tests recorded a green run of the test command on <tree>, or there is no test command.
+tests_green() {
+  local cmd; cmd="$(constitution_cmd test)"; [[ -n "$cmd" ]] || return 0
+  [[ -f "$(git rev-parse --git-common-dir)/landspec-test/$(test_key "$1" "$cmd")" ]]
+}
+
 # run_tests: run the constitution's test command (none: return 0, the caller says so), logged under
-# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by copy, tree and
-# command, and that triple is not run again; any edit, commit or other command runs it again. Red
-# records nothing. Ignored files (deps, .env) and the environment are not part of the key.
+# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by tree and command
+# (test_key), and that pair is not run again in any copy of the repo; any edit, commit or other
+# command runs it again. Red records nothing. Ignored files (deps, .env) and the environment are not
+# part of the key.
 run_tests() {
   local cmd d key log clean=false; cmd="$(constitution_cmd test)"; [[ -n "$cmd" ]] || return 0
   d="$(git rev-parse --git-common-dir)/landspec-test"; mkdir -p "$d"
-  key="$(printf '%s %s %s' "$(git rev-parse --show-toplevel)" "$(git rev-parse 'HEAD^{tree}')" "$cmd" | sha256)"
+  key="$(test_key "$(git rev-parse 'HEAD^{tree}')" "$cmd")"
   [[ -z "$(git status --porcelain -- . ':(exclude).claude/worktrees')" ]] && clean=true
   if $clean && [[ -f "$d/$key" ]]; then echo "landspec: tests already green for this tree ($cmd)"; return 0; fi
   log="$(git branch --show-current)"; log="${log:-$key}" # a detached copy logs by key

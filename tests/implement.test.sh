@@ -800,4 +800,16 @@ printf 'Reviewed: %s..%s\nDelta from: %s\nModel: claude-opus-5-5\n\n- Low: src/e
 o="$("$I" land T003 2>&1)" || true
 check "when T003 lands after a delta review, then its message has the first round's lows and the delta's, a low in both once" \
   '[[ "$o" == LANDED=T003* ]] && git log -1 --format=%B "$FB" | grep -x "Low: .*" | tr "\n" "|" | grep -qxF "Low: src/export.ts:0 only in round one|Low: src/export.ts:1 kept from round one|Low: src/export.ts:9 new in the delta|"'
+# Tests once per tree: mark implemented needs run_tests' green record for the ref's head tree, from any copy.
+fsetup; mkdir -p .specify/memory; printf 'echo run >> "%s/runs"\n' "$TMP" > "$TMP/count.sh"; : > "$TMP/runs"
+printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_COMMAND]`\n' "$TMP/count.sh" > .specify/memory/constitution.md
+build "$R1"
+check "when T001's ref has no green test run for its head tree, then mark implemented refuses it naming the ref and its head" \
+  'one_refusal "no green test run for $R1 at $(git rev-parse "refs/heads/$R1")" "$I" mark T001 implemented'
+cp -R .specify "$TMP/w/"; git -C "$TMP/w" switch --quiet "$R1" # .specify is ignored, so not checked out there
+(cd "$TMP/w" && source "$SCRIPTS/lib.sh" && run_tests >/dev/null); git -C "$TMP/w" switch --quiet --detach
+check "when run_tests was green on that tree in the implementer's copy, then mark implemented accepts it" \
+  '"$I" mark T001 implemented >/dev/null && [[ "$(wc -l < "$TMP/runs")" -eq 1 ]]'
+build "$R1"; printf '**Commands**: build `[BUILD_COMMAND]` · test `[TEST_COMMAND]` · lint `[LINT_COMMAND]`\n' > .specify/memory/constitution.md
+check "when there is no test command, then mark implemented accepts a tree never tested" '"$I" mark T001 implemented >/dev/null'
 exit "$FAIL"

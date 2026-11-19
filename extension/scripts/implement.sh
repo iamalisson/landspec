@@ -298,6 +298,9 @@ case "$action" in
       red="$(rec "$t" red)"; red=$((${red:-0} + 1)); write_rec "$t" "red=$red"; echo "MARKED=$t PHASE=red RED=$red"; exit 0
     fi
     head="$(git rev-parse "refs/heads/$b")"; round="$(rec "$t" round)"; round="${round:-0}"
+    if [[ "$phase" == implemented && "$b" == "$(task_ref "$t")" ]] && ! tests_green "$(git rev-parse "$head^{tree}")"; then
+      die "no green test run for $b at $head: the implementer runs the tests through run_tests after its last commit"
+    fi
     # A failure a new commit lifted (its head is not this one) is gone, its rounds with it; one
     # recorded before the branch existed (empty head) stays until retry.
     oldh="$(rec "$t" head)"
