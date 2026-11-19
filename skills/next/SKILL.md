@@ -25,8 +25,8 @@ argument-hint: "[feature]"
    - **waiting**: its line says "depends on Txxx" and that task has not landed yet.
    - **pending**: can be built now; `NEXT` is the first one.
    - If `ISSUE=-`, the feature has no issue yet: suggest `/speckit-landspec-issues` first.
-3. Suggest `/landspec:implement <FEATURE>`, with the printed `FEATURE=`: it builds the pending
-   tasks one at a time on the feature branch, each through its tests and an Opus review, and lands
+3. Suggest `/landspec:implement <FEATURE>`, with the printed `FEATURE=`: it builds every ready task
+   at once, each in its own copy, through its tests and an Opus review, and lands
    each one. When `NEXT` is empty and `DONE=y/y`, it checks the whole feature against the spec
    (gaps become new tasks), audits it and makes the release, then opens or updates the feature's
    one PR (each step once; a confirmed critical or high holds it and names `/landspec:security

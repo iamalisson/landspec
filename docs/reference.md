@@ -98,8 +98,8 @@ GitHub issue. It prints one `done|failed|pending|waiting Tnnn <summary>` line pe
 record says so, `waiting` while a task its line depends on has not landed, else `pending`; `NEXT` is
 the first pending one, and `/landspec:next` offers `/landspec:implement <FEATURE>`. A feature
 started under the per-task flow (a task line ends in ` — #N`) named explicitly prints `LEGACY=` and
-stops with the way to continue it (exit 1); with no argument such features are left out of the
-scan, never asked about and never a stop. GitHub closes a PR's `Closes #N` issues only on a merge
+stops with the way to continue it (exit 1); with no argument such features (and their per-task branches) are left
+out of the scan and never asked about, and `LEGACY=` stops it only when no other feature is left. GitHub closes a PR's `Closes #N` issues only on a merge
 into the default branch; on standard and full, the managed `close-linked-issues.yml` closes them on a
 merge into `develop` or `staging`, and its job fails, naming `could not close: #N`, when one of them
 cannot be closed.
