@@ -703,14 +703,33 @@ check "when T001 is running, then only START=T003" '[[ "$(starts)" == "START=T00
 fs --running T001 --running T003
 check "when --running is given twice, then both tasks are building and nothing starts" \
   '[[ -z "$(starts)" && "$(state_of T001)" == building && "$(state_of T003)" == building ]]'
-lows=$'\nFindings: 0 high, 0 medium, 2 low\n\n- Low: src/search.ts:3 a test gap on the empty query\n- Low: src/rank.ts:7 wording of the error\n'
+# The lows in the shapes recorded reviews write them, beside list items that are not lows.
+lows='
+- deep: src/search.ts — gate
+- Lower bound is checked
+| 1 | Low | src/x.ts:1 | resolved |
+
+Findings: 0 high, 0 medium, 5 low
+
+1. **Low** — `src/search.ts:3` — a test gap on the empty query
+- **Low** src/rank.ts:7 wording of the error
+1. Low — docs/r.md:342: the refusal names no fix
+- Low: a.sh:84-91: the range is not checked
+- Low, `docs/reference.md` (the table) is stale
+'
+wantlows='Low: src/search.ts:3 a test gap on the empty query
+Low: src/rank.ts:7 wording of the error
+Low: docs/r.md:342 the refusal names no fix
+Low: a.sh:84-91 the range is not checked
+Low: docs/reference.md (the table) is stale'
 build "$R1" clash.txt one; "$I" mark T001 implemented >/dev/null; ready "$R1" "$lows"; "$I" mark T001 ready >/dev/null
 build "$R3" clash.txt three; "$I" mark T003 implemented >/dev/null; ready "$R3"; "$I" mark T003 ready >/dev/null; fs
 check "when T001 and T003 are both ready, then status prints LAND=T001 and LAND=T003" 'grep -qx "LAND=T001" <<<"$out" && grep -qx "LAND=T003" <<<"$out"'
 pid="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review/task-${R1//\//__}")"
 "$I" land T001 >/dev/null 2>&1; l1="$(head_fb)"
-check "when the review had two low findings, then the landing commit has two Low: lines above the trailers" \
-  '[[ "$(git log -1 --format=%B "$l1")" == "T001: Add search"$'"'"'\n\n'"'"'"Low: src/search.ts:3 a test gap on the empty query"$'"'"'\n'"'"'"Low: src/rank.ts:7 wording of the error"$'"'"'\n\n'"'"'"Landspec-Task: 001/T001"$'"'"'\n'"'"'"Landspec-Review: ready $pid" ]]'
+msg1="T001: Add search"$'\n\n'"$wantlows"$'\n\n'"Landspec-Task: 001/T001"$'\n'"Landspec-Review: ready $pid"
+check "when the review wrote five lows in five shapes (bold, numbered, dash, range, backticks, no line), then the landing commit has one Low: line each above the trailers" \
+  '[[ "$(git log -1 --format=%B "$l1")" == "$msg1" ]]'
 lrc=0; o="$("$I" land T003 2>/dev/null)" || lrc=$?; fs
 check "when T003 edits the line T001 landed, then land prints CONFLICT=T003 with the file, exits 1 and leaves the branch at T001's landing" \
   '((lrc == 1)) && [[ "$o" == "CONFLICT=T003 FILES=clash.txt" && "$(head_fb)" == "$l1" && -z "$(git status --porcelain)" ]] && ! git rev-parse --verify --quiet MERGE_HEAD >/dev/null'
@@ -746,4 +765,13 @@ git commit --quiet -am "docs(specs): edit T001"
 o="$("$I" land T001 2>&1)" || true
 check "when the feature branch edited T001's line after its ref was cut, then land succeeds and the edited line is ticked" \
   '[[ "$o" == "LANDED=T001 COMMIT=$(head_fb)" ]] && git show "$FB:specs/001-demo/tasks.md" | grep -qxF -- "- [X] T001 Add search in \`src/search.ts\` (edited)" && [[ -z "$(git status --porcelain)" ]]'
+# After a delta, the record holds only the delta's report: the first round's lows come from the report mark changes kept.
+fsetup; build "$R3"; h1="$(git rev-parse "refs/heads/$R3")"
+ready "$R3" $'\n- Low: src/export.ts:0 only in round one\n- Low: src/export.ts:1 kept from round one\n- High: src/export.ts:2 broken\n'; cp "$TMP/r.md" "$TMP/r1.md"
+"$I" mark T003 changes "$TMP/r1.md" >/dev/null; build "$R3"; h2="$(git rev-parse "refs/heads/$R3")"
+printf 'Reviewed: %s..%s\nDelta from: %s\nModel: claude-opus-5-5\n\n- Low: src/export.ts:1 kept from round one\n- Low: src/export.ts:9 new in the delta\n\nAssessment: ready\n' "$h1" "$h2" "$h1" > "$TMP/d.md"
+"$SCRIPTS/review.sh" record --delta --branch "$R3" "$TMP/d.md" >/dev/null 2>&1; "$I" mark T003 ready >/dev/null
+o="$("$I" land T003 2>&1)" || true
+check "when T003 lands after a delta review, then its message has the first round's lows and the delta's, a low in both once" \
+  '[[ "$o" == LANDED=T003* ]] && git log -1 --format=%B "$FB" | grep -x "Low: .*" | tr "\n" "|" | grep -qxF "Low: src/export.ts:0 only in round one|Low: src/export.ts:1 kept from round one|Low: src/export.ts:9 new in the delta|"'
 exit "$FAIL"

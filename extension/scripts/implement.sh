@@ -223,9 +223,24 @@ feature_status() {
   echo "PR=${pr:--}"; echo "ORDER=${ids# }"; echo "DONE=$done_n/$n"
 }
 
+# low_lines <report>...: "Low: <path:line[-line]> <title>" (or "Low: <title>" with no location) per low finding,
+# deduped. Reviewers write lows loosely: a list item (-, * or N.) whose first word, past ** and backticks, is Low.
+low_lines() {
+  awk '{ s = $0
+      if (!sub(/^[[:space:]]*([-*]|[0-9]+\.)[[:space:]]+/, "", s)) next
+      gsub(/\*\*|`/, "", s)
+      if (!sub(/^[[:space:]]*[Ll]ow([^A-Za-z]|$)/, "", s)) next
+      loc = ""; n = split(s, w, " ")
+      for (i = 1; i <= n; i++) if (w[i] ~ /^[^ ]+:[0-9]+(-[0-9]+)?[:,;.]?$/) { loc = w[i]; sub(/[:,;.]$/, "", loc); w[i] = ""; break }
+      s = ""; for (i = 1; i <= n; i++) if (w[i] != "") s = s (s == "" ? "" : " ") w[i]
+      while (sub(/^(—|–|-|:|,)[[:space:]]*/, "", s)) {}
+      l = "Low: " (loc == "" ? "" : loc (s == "" ? "" : " ")) s
+      if (!seen[l]++) print l }' "$@"
+}
+
 # land <task>: the reviewed task ref merged into the feature branch (data-model "Landing commit").
 land() {
-  local t="$1" r rh line pid c msg files err w lows
+  local t="$1" r rh line pid c msg files err w lows rv
   on_feature_branch || die "land merges into the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
   task_done "$fdir" "$t" && die "$t is landed already; push the branch if origin lacks it: git push origin $fb"
   r="$(task_ref "$t")"; git show-ref --verify --quiet "refs/heads/$r" || die "$t has no task ref $r in this clone: start it first"
@@ -241,8 +256,9 @@ land() {
   w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then land again"
   pid="$(diff_id "$r")" || exit 1
   line="$(task_line "$fdir" "$t")"
-  # shortcut: a low finding is a "- Low: <file>:<line> <title>" line of the recorded report, the form the reviewer writes
-  lows="$(sed -nE 's/^[-*] +\**Low\**:\**:? *([^ ]+:[0-9]+) +(.*)$/Low: \1 \2/p' "$(git rev-parse --git-common-dir)/landspec-review/task-${r//\//__}")"
+  rv="$(git rev-parse --git-common-dir)/landspec-review/task-${r//\//__}"
+  # A delta's record holds only the delta's report: the first round's lows are in the report mark changes kept.
+  if grep -qx 'round: delta' "$rv" && [[ -f "$rdir/$t.report" ]]; then lows="$(low_lines "$rdir/$t.report" "$rv")"; else lows="$(low_lines "$rv")"; fi
   [[ -z "$lows" ]] || lows+=$'\n\n' # a paragraph of their own, above the trailers
   msg="$(printf '%s: %s\n\n%sLandspec-Task: %s/%s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$lows" "$num" "$t" "$pid")"
   # The tick goes into the merge commit, on the feature branch's side, so a tasks.md edit there never

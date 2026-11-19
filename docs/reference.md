@@ -148,20 +148,27 @@ or "CI failed: <jobs>" is shown beside each, and every PR is written `[#N](<url>
 requests a Copilot review: a repository's ruleset, or a person, does.
 
 On the feature's own branch (`<branch_prefix>/<NNN>-<name>`, made by `branch.sh <feature>`),
-`implement.sh status` builds one task at a time instead: it refuses without a current `ready` plan
+`implement.sh status [--running <task>]…` starts every startable task at once instead: it refuses without a current `ready` plan
 review, a legacy feature (`LEGACY=`) or, on `full`, the analyzed marker; prints one `TASK=<id>
-STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per task, then at most
-one of `START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]`, `REVIEW=`, `FIX=`
-or `LAND=`, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. A task is `done` when the
+STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per task, then one
+`START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]` line per task whose
+dependencies are done, in `ORDER`, while fewer than `parallel_tasks` are in flight (the `--running`
+ones count), one `REVIEW=<id>`, `FIX=<id> [REASON=conflict]` or `LAND=<id>` line per task in that
+state, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. A task is `done` when the
 branch's history holds its landing commit (a message line `Landspec-Task: <NNN>/<id>`, such as
 `Landspec-Task: 008/T001`). The feature's number is in it because task ids restart at `T001` in every
 feature: however the branch was joined (a PR merge, a pull merge, a squash), its own landings are found
 and never another feature's. `implement.sh land <task>`
-lands a `ready` task whose review matches its ref: it commits the tick in `tasks.md` on the ref, merges
-it `--no-ff` as `<id>: <summary>` with the trailers `Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready
-<patch id>`, pushes the branch and deletes the ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted
-changes in the feature folder, and a conflict aborts the merge naming the files. `retry` also deletes
-the task ref. The plan review ignores task ticks and the `**Issue**: #N` line. On upgrade, a plan
+lands a `ready` task whose review matches its ref: it merges the ref `--no-ff` and ticks `tasks.md` on
+the feature branch's side in the same merge commit (so a plan edit on the branch never conflicts with
+a ref that did not touch it), titled `<id>: <summary>`, with one `Low: <file>:<line> <title>` line per
+low finding of the task's review (a delta's and its first round's) and the trailers
+`Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready <patch id>`, pushes the branch and deletes the
+ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted changes in the feature folder. A conflict
+aborts the merge, prints `CONFLICT=<id> FILES=<files>` and exits 1: the task gets one conflict round
+(`FIX=<id> REASON=conflict`, outside `task_rounds`: merge the feature branch into the ref, test,
+review); a second conflict marks it failed (`FAILED=<id>`). `retry` also deletes the task ref and
+gives back the conflict round. The plan review ignores task ticks and the `**Issue**: #N` line. On upgrade, a plan
 review recorded on a `tasks.md` that already had `- [X]` ticks or that line goes stale once: review the plan again.
 
 When every task has its PR, `/landspec:implement` checks them **together**: `implement.sh check-copy`
