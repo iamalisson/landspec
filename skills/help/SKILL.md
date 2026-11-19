@@ -19,7 +19,8 @@ question needs:
 - "what's the current way to do X?": the matching entry in `${CLAUDE_PLUGIN_ROOT}/docs/references.yaml`.
 
 1. **No argument**: show a short overview.
-   - The loop: what you run once per feature, and what you run once per task.
+   - The loop: what you run once per feature (`/landspec:implement` builds, reviews and lands its
+     tasks on the feature branch, in one draft PR).
    - The commands in one table: `/landspec:new`, `init`, `adopt`, `level`, `next`, `implement`,
      `security`, `aws`, `report`, `remove`, `help`, and the spec-kit commands they hook into.
    - The levels in one line each.

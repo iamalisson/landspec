@@ -18,6 +18,13 @@ check "when set to lite, then only the PR template is scaffolded" \
   '[[ -f .github/pull_request_template.md && -f .github/copilot-instructions.md && ! -f .github/workflows/ci.yml && ! -f .github/dependabot.yml ]]'
 check "then the constitution has one landspec block for lite" '[[ "$(blocks)" == 1 ]] && grep -q "level: lite" .specify/memory/constitution.md'
 check "then the branch flow targets main" 'grep -qF "feat/* → main" .specify/memory/constitution.md'
+way="$(sed -n '/^### Way of working/,/^<!-- landspec:end/p' .specify/memory/constitution.md | tr '\n' ' ')"
+check "then Way of working describes one branch and one PR per feature, no issues: tasks in parallel, done when landed with their review, the PR ready after its feature review and one scan" \
+  'grep -qF "One feature = one branch = one pull request" <<<"$way" && grep -qF "no GitHub issues" <<<"$way" && grep -qF "in parallel" <<<"$way" && grep -qF "lands on the feature branch with its review" <<<"$way" && grep -qF "marked ready only after its feature review" <<<"$way" && grep -qF "one scan of the feature diff" <<<"$way" && grep -qF "pr.sh fix" <<<"$way"'
+check "then it names no issue per task, no Closes #N and no task PR" \
+  '[[ -n "$way" ]] && ! grep -qiE "one task = one issue|Closes #|pr\.sh task|issue is closed|or issue needed" <<<"$way"'
+check "then the scaffolded PR template has no Closes line and the review instructions name one feature PR, no issue and no spec PR" \
+  '! grep -q "Closes #" .github/pull_request_template.md && grep -qF "A feature is one pull" .github/copilot-instructions.md && ! grep -qiE "issue|spec PR|task PR" .github/copilot-instructions.md'
 check "then the config gets no issue_labels, milestone or project line" \
   '! grep -qE "^(issue_labels|milestone|project):" .specify/extensions/landspec/landspec-config.yml'
 check "then Claude settings drop AI attribution from commits and PRs" 'grep -q "\"attribution\"" .claude/settings.json'
@@ -203,13 +210,13 @@ for none in none None N/A -; do
     '! grep -qF -- "run: $none" $ci_yml && grep -q "run: make check" $ci_yml && (source "$SCRIPTS/lib.sh"; [[ -z "$(constitution_cmd mutate)" ]])'
 done
 
-# A kept workflow filtered to other branches never runs on a task PR.
+# A kept workflow filtered to other branches never runs on the feature PR.
 gate_repo() { # gate_repo <the workflow's on: block> [<level>]
   rm -rf "$TMP/repo" "$TMP/origin.git"; cd "$TMP"; new_repo lite; mkdir -p .github/workflows
   printf 'name: Tests\non:\n%b\njobs:\n  t:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo branches\n' "$1" > .github/workflows/tests.yml
   out="$("$l" "${2:-standard}" --no-branches)"
 }
-says_skipped='warning: .github/workflows/tests.yml never runs on a task PR into develop'
+says_skipped='warning: .github/workflows/tests.yml never runs on the feature PR into develop'
 gate_repo '  pull_request:\n    branches: [master]'
 check "when kept CI is filtered to master (inline list), then it names the workflow and the branch to add" \
   'grep -qF "$says_skipped" <<<"$out" && grep -qF "add develop to its pull_request branches" <<<"$out" && [[ ! -f .github/workflows/ci.yml ]]'

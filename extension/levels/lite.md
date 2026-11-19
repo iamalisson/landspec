@@ -26,12 +26,15 @@
 
 ### Way of working
 
-- One task = one issue = one branch = one pull request. A task is done when its issue is closed
-  by the merged PR (`Closes #N`); a ticked checkbox alone is not done.
+- One feature = one branch = one pull request; landspec creates no GitHub issues. The feature's
+  tasks run in parallel, and a task is done when it lands on the feature branch with its review;
+  a ticked checkbox alone is not done.
 - Features go through specs and tasks. A small fix (a typo, a one-line bug, a dependency bump)
-  goes on a normal branch and PR: no spec or issue needed, but the review, hooks and CI still apply.
+  goes on a normal branch and PR: no spec needed, but the review, hooks and CI still apply.
 - Branch flow: `{{BRANCH_FLOW}}`, always through a pull request.
-- Before a PR opens, a fresh reader reviews it against the whole repository
-  (`/speckit-landspec-review`); High and Medium findings are fixed, the review is recorded for the
-  exact diff, and the PR's `## Review` section says what was found and done. No PR opens without
-  it, at any level: a task through `pr.sh task`, anything else through `pr.sh fix`.
+- Each task's diff is reviewed by a fresh reader against the whole repository before it lands
+  (`/speckit-landspec-review`); High and Medium findings block it. The feature PR opens as a
+  draft (`pr.sh feature`) and is marked ready only after its feature review, recorded for its
+  head, and one scan of the feature diff; it merges once. Any other PR goes through `pr.sh fix`:
+  its review is recorded for the exact diff and its `## Review` section says what was found and
+  done.

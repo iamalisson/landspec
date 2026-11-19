@@ -60,7 +60,7 @@ check "when set up, then the five hooks are registered" \
   'for h in after_tasks after_converge after_analyze before_implement after_implement; do grep -q "^  $h:" .specify/extensions.yml || exit 1; done'
 check "then spec-kit registers the hook commands as skills" '[[ -d .claude/skills/speckit-landspec-branch && -d .claude/skills/speckit-landspec-plan-review && ! -e .claude/skills/speckit-landspec-issues && -d .claude/skills/speckit-landspec-review ]]'
 check "then the preset templates win over the core ones" 'out="$(specify preset resolve tasks-template)"; grep -q "from: landspec" <<<"$out"'
-check "then spec-kit's implement command ends with landspec's one-task, no-tick override" \
+check "then spec-kit's implement command ends with landspec's whole-feature, no-tick override" \
   'f=.claude/skills/speckit-implement/SKILL.md; grep -q "Do not mark tasks \`\[X\]\`" "$f" && [[ "$(grep -n "mark the task off as \[X\]" "$f" | cut -d: -f1)" -lt "$(grep -n "Do not mark tasks" "$f" | cut -d: -f1)" ]]'
 check "then the constitution starts from the landspec template with a standard block" \
   'grep -q "\[PROJECT_NAME\] Constitution" .specify/memory/constitution.md && grep -q "^## Project$" .specify/memory/constitution.md && grep -q "level: standard" .specify/memory/constitution.md'

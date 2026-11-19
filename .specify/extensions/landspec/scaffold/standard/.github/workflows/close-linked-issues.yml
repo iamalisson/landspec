@@ -1,6 +1,6 @@
 # landspec: managed file. /landspec:level re-creates it while this line stays; delete the line to keep your own edits.
 # GitHub only auto-closes "Closes #N" issues when a PR merges into the default branch.
-# Task PRs merge into develop/staging, so this closes them on merge there too.
+# This closes the issues a PR names itself when it merges into develop/staging; landspec creates none.
 name: Close linked issues
 
 on:

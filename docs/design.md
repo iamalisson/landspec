@@ -46,7 +46,8 @@ Design decisions, each with its reason. The what is in the [README](../README.md
   in feature mode reports each FR, scenario and SC as `met`, `not met` or `not verifiable`. Each
   `not met` line becomes a new task on the same branch; rounds are capped (`feature_rounds`, default
   3) so a fix that changes nothing never loops. One record, kept per feature, decides the PR:
-  `pr.sh feature` opens a draft and keeps its body current (tasks, low findings, end check), and
+  `pr.sh feature` opens a draft after the first landing, with no scan yet, and keeps its body current
+  (tasks, low findings, test changes, end check), and
   `pr.sh feature --ready` marks it ready only when every task is done, the latest feature review is
   `ready` for the current head and the scan and mutants are recorded for that diff.
 

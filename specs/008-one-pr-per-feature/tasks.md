@@ -170,7 +170,7 @@ landed on the branch as each is ready; one draft PR per feature.
     2) prints `FAILED=`; `retry` clears `conflict=1`, so a retried task gets its conflict round again; a review with two low findings gives two `Low:` lines in the landing commit;
     `tests/run.sh` passes.
 
-- [ ] T004 [US1] Rewrite the implement loop to build every startable task at once and land each as it is ready, in skills/implement/SKILL.md (depends on T003, T017, T018, T020)
+- [X] T004 [US1] Rewrite the implement loop to build every startable task at once and land each as it is ready, in skills/implement/SKILL.md (depends on T003, T017, T018, T020)
   - Comes from: FR-004, FR-005, FR-006, FR-010, FR-018, FR-020, FR-021, US1, US3 scenarios 2-5; plan "Design notes" 2; research R7, R9, R13, R14
   - What: `skills/implement/SKILL.md`: the loop of plan design note 2: `status`; for every `START`,
     one background implementer in its own worktree on the task ref (resumed on `RESUME=yes`),
@@ -496,7 +496,7 @@ only one PR per feature, with no issues.
     the usage error (`tests/implement.test.sh`), and T017's parallel `status` cases still pass;
     `tests/run.sh` passes.
 
-- [ ] T014 [P] [US6] Describe one branch and one PR per feature, with no issues, in the generated constitution text, templates and scaffolds, in extension/levels/lite.md (depends on T005, T013)
+- [X] T014 [P] [US6] Describe one branch and one PR per feature, with no issues, in the generated constitution text, templates and scaffolds, in extension/levels/lite.md (depends on T005, T013)
   - Comes from: FR-016, US6 scenario 3
   - What: the "Way of working" block of `extension/levels/lite.md` (the only level file with one;
     `standard.md` and `full.md` add rules with no task or PR bullet): one feature = one branch = one

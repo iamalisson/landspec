@@ -404,7 +404,7 @@ for l in "${levels[@]}"; do
               if [[ -n "$gate" ]]; then
                 echo "kept:    $(tr '\n' ' ' <<<"$gate")(already checks pull requests; no ci.yml generated)"
                 while IFS= read -r w; do
-                  if pr_skips_base "$w"; then echo "warning: $w never runs on a task PR into $(base_branch): add $(base_branch) to its pull_request branches"; fi
+                  if pr_skips_base "$w"; then echo "warning: $w never runs on the feature PR into $(base_branch): add $(base_branch) to its pull_request branches"; fi
                 done <<<"$gate"
               else ci_yaml | put .github/workflows/ci.yml generated; fi
               security_yaml | put .github/workflows/security.yml generated
