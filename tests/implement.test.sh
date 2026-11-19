@@ -430,7 +430,7 @@ rl_setup() {
 rel() { printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$@" >> "$GH_REL"; } # rel <n> <title> <head> <state> <merge sha> <merged at>
 
 rl_setup; rp
-check "when every task issue is closed, then release-plan prints bump 1.5.0 with the files, the notes path and the merged task PRs" \
+check "when a legacy feature's task PRs are merged and every task issue is closed, then release-plan prints bump 1.5.0 with the files, the notes path and the merged task PRs" \
   '[[ "$out" == "RELEASE=bump 1.5.0 FILES=package.json,extension.yml NOTES=docs/releases/1.5.0.md PRS=11,12,13" ]] && [[ "$(git rev-parse HEAD)" == "$DEV" && -z "$(git status --porcelain --untracked-files=no)" ]]'
 # set_tasks <content>: specs/001-demo/tasks.md on origin's main only; this checkout's copy stays as it was.
 set_tasks() { local c="${1//\\/\\\\}"; on_main tasks specs/001-demo/tasks.md "${c//%/%%}\n" >/dev/null; }
@@ -485,6 +485,32 @@ sed -i.bak 's/^version_files:.*/version_files: package.json, notes.txt/' .specif
 check "when a listed file has no version line, then release-bump refuses and changes nothing" \
   'fails_with "notes.txt has no version line" "$I" release-bump 1.5.0 && [[ -z "$(git diff -- package.json)" ]]'
 rm -f notes.txt
+
+# ── Spec 008 T010: the release is keyed on the feature PR, and no issue is read ──
+# fp_setup <title> <state>: a feature with no task issues, its feature PR #40 (feat/001-demo) in that state,
+# beside a task PR of the old flow, another feature's PR and a fix PR, all merged.
+fp_setup() {
+  rs_setup; : > "$GH_REL"; : > "$GH_RELEASES"
+  on_main version package.json '{\n  "name": "x",\n  "version": "1.4.2"\n}\n' >/dev/null
+  on_main tasks specs/001-demo/tasks.md '- [ ] T001 Add search in `a`\n- [ ] T002 Add filters in `b` (depends on T001)\n' >/dev/null
+  git switch --quiet --detach origin/main; git branch --quiet -f main origin/main; git switch --quiet main
+  echo 'version_files: package.json' >> .specify/extensions/landspec/landspec-config.yml
+  mkb feat/001-demo origin/main a; squash feat/001-demo 0
+  mc="$(git rev-parse origin/main)"; [[ "$2" == MERGED ]] || mc=""
+  rel 40 "$1" feat/001-demo "$2" "$mc" "${mc:+2026-11-12T10:00:00Z}"
+  rel 41 "feat: a task of the old flow" feat/001-t001-add-search MERGED "$(git rev-parse origin/main^)" 2026-11-11T10:00:00Z
+  rel 42 "feat: another feature" feat/002-other MERGED "$(git rev-parse origin/main^)" 2026-11-11T11:00:00Z
+  rel 43 "fix: a typo" fix/typo MERGED "$(git rev-parse origin/main^)" 2026-11-11T12:00:00Z
+  : > "$GH_LOG"
+}
+fp_setup "feat: one PR per feature" MERGED; rp
+check "when the feature PR is merged, then release-plan prints bump 1.5.0 with PRS= that PR alone, and gh reads no issue" \
+  '[[ "$out" == "RELEASE=bump 1.5.0 FILES=package.json NOTES=- PRS=40" ]] && ! grep -qE "^(issue|api graphql)" "$GH_LOG"'
+fp_setup "fix(search): one PR per feature" MERGED; rp
+check "when the feature PR's title starts with fix, then it is a patch: bump 1.4.3" '[[ "$out" == "RELEASE=bump 1.4.3 FILES=package.json NOTES=- PRS=40" ]]'
+fp_setup "feat: one PR per feature" OPEN; rp
+check "when the feature PR is still open, then no bump: release-plan says the feature PR #40 is not merged yet" \
+  'grep -qF "the feature PR #40 of 001-demo is not merged yet" <<<"$out" && ! grep -q "^RELEASE=" <<<"$out" && ! grep -qE "^(issue|api graphql)" "$GH_LOG"'
 
 # ── Spec 004 T012: with every task merged, the whole-feature check runs on the base, once per base commit ──
 # fbase <from> [<item line>]: a feature review of the check ref, Reviewed: <from>..<check ref> (ready unless a not met line).
