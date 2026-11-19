@@ -4,8 +4,8 @@
 #       Once the feature PR is merged: MERGED=<n> alone, on any branch (the release's turn: release-plan).
 #       On the feature's branch (<branch_prefix>/<NNN>-<name>) only, read from its landing commits:
 #       One "TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=<n>] [REASON=<why>]"
-#       line per task (waiting REASON=: "waits for <Tnnn>" it depends on, "shares <file> with <Tnnn>" for an earlier unlanded
-#       task whose line names the same backticked path, or "locked worktree <path>"), then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
+#       line per task (waiting REASON=: "waits for <Tnnn>" it depends on, "shares <file> with <Tnnn>" for an earlier task
+#       that can run or is running and whose line names the same backticked path, or "locked worktree <path>"), then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
 #       per startable task while fewer than parallel_tasks: (default 4) are in flight (--running, repeatable),
 #       one REVIEW=<id>, FIX=<id> [REASON=conflict] or LAND=<id> per task in that state, then
 #       CHECK=yes|no PR=<url|-> ORDER= DONE=.
@@ -94,7 +94,11 @@ deps() { grep -oiE 'depends on T[0-9]{3,}([, ]+(and )?T[0-9]{3,})*' <<<"$1" | gr
 
 # feature_status: status on the feature's branch (contracts/scripts.md "implement.sh"); every startable
 # task starts at once, up to parallel_tasks in flight. A startable task waits while an earlier task that
-# is not done or failed names the same backticked path on its line: both would conflict at landing.
+# can run or is running (pending, building, built, review, changes) names the same backticked path on its
+# line: both would conflict at landing. A waiting or failed task holds nothing, so the first startable
+# task in order is never held by a task that cannot move. A path is a token with a / or a . and no space.
+# shortcut: a later task already in progress does not hold an earlier one that becomes startable; that
+# pair can still conflict at landing (one conflict round), upgrade if it shows up in real builds.
 feature_status() {
   local line t r rh w st why f fh phase round d marker plain p ht hp paths held="" acts="" starts="" fly=0 ids="" out="" n=0 done_n=0 pr
   refuse_legacy "$fdir"
@@ -134,15 +138,15 @@ feature_status() {
       else st=pending
       fi
     fi
-    paths="$(grep -o '`[^`]*`' <<<"$line" | tr -d '`' || true)"
-    if [[ "$st" == pending && -n "$held" ]]; then
+    paths="$(grep -o '`[^` ]*`' <<<"$line" | tr -d '`' | grep '[./]' || true)"
+    if [[ "$st" == pending && -n "$held" && -n "$paths" ]]; then
       while IFS= read -r p && [[ "$st" == pending ]]; do
         while IFS=$'\t' read -r ht hp; do
           [[ "$hp" != "$p" ]] || { st=waiting; why="shares $p with $ht"; break; }
         done <<<"$held"
       done <<<"$paths"
     fi
-    if [[ "$st" != "done" && "$st" != failed && -n "$paths" ]]; then
+    if [[ "$st" != "done" && "$st" != failed && "$st" != waiting && -n "$paths" ]]; then
       while IFS= read -r p; do held+="$t"$'\t'"$p"$'\n'; done <<<"$paths"
     fi
     out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == "done" ]] || out+=" ROUND=$round"
@@ -191,7 +195,8 @@ land() {
   [[ "$(rec "$t" phase)" == ready && "$(rec "$t" head)" == "$rh" && -z "$(rec "$t" failed)" ]] \
     || die "$t is not ready at its ref's head: review it and mark it (implement.sh mark $t ready <report>)"
   err="$(bash "$(dirname "$0")/review.sh" check --branch "$r" 2>&1 >/dev/null)" \
-    || die "$r: $(tail -1 <<<"$err" | sed 's/^landspec: //'): review it again and record it (review.sh record --branch $r <report>)"
+    || { err="$(tail -1 <<<"$err" | sed 's/^landspec: //')" # review.sh's messages say to review again and record it
+         die "$r: ${err:-its review check failed: review it again and record it} (review.sh record --branch $r <report>)"; }
   [[ -z "$(git status --porcelain -- "$fdir")" ]] || die "uncommitted changes in $fdir: commit them on $fb first"
   w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then land again"
   pid="$(diff_id "$r")" || exit 1

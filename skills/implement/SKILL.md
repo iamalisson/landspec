@@ -67,8 +67,9 @@ Each pass:
      `PR=-`, open the draft (below). `CONFLICT=<id> FILES=<files>`: the next `status` lists the task
      in `FIX=` with `REASON=conflict`. `status` again after every landing: a landing can make
      another task startable (one `waiting` with `REASON=waits for Tnnn`, or with `REASON=shares
-     <file> with <Tnnn>`: an earlier task not yet landed names the same backticked file on its
-     line, so the two never conflict at landing).
+     <file> with <Tnnn>`: an earlier task that can run or is running names the same backticked
+     path on its line, so the two do not conflict at landing; a `waiting` or failed task holds
+     nothing).
 
    Any `FAILED=<id>`: reported, and the run goes on with every task that does not depend on it (its
    dependants stay `waiting`); `mark`, `land` and `fail` print it.

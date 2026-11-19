@@ -25,7 +25,7 @@ Design decisions, each with its reason. The what is in the [README](../README.md
   (`landspec/<NNN>-<tnnn>-task`, never pushed) in its own copy. A feature takes the time of its
   longest chain of dependent tasks, not the sum of all of them, and a task that depends on another
   simply starts once that one has landed: nothing is stacked. A task whose line names a file an
-  earlier unlanded task also names waits for it too (`REASON=shares <file> with <Tnnn>`): a landing
+  earlier task that can run or is running also names waits for it too (`REASON=shares <file> with <Tnnn>`): a landing
   conflict costs a whole fix round.
 - **Landing is one commit.** `implement.sh land` merges a reviewed task ref `--no-ff` into the
   feature branch with its tick in `tasks.md`, the review's low findings as `Low:` lines and the
