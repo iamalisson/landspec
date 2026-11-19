@@ -400,6 +400,12 @@ check "when the implementer starts, then it makes its task ref from FROM= (or sw
   '[[ "$agf" == *"\`git switch -c <REF> <FROM>\`"* && "$agf" == *"\`git switch <REF>\` on \`RESUME=yes\`"* && "$agf" == *"\`git config branch.<REF>.landspec-parent <feature branch>\`"* ]]'
 check "then it runs the tests through run_tests after its last commit, merges the feature branch on a conflict round, and returns Copy: and REF=" \
   '[[ "$agf" == *"run_tests"* && "$agf" == *"After your last commit"* && "$agf" == *"\`git merge <feature branch>\`"* && "$agf" == *"\`Copy: <git rev-parse --show-toplevel>\` and \`REF=<ref>\`"* ]]'
+check "then a fix or conflict round switches the detached copy to its ref first" \
+  '[[ "$(sed -n "/^5\. /p" <<<"$ag")" == *"\`git switch <REF>\` first"* ]]'
+check "then it returns one Test changes: reason per existing test file it changed, or Test changes: none" \
+  '[[ "$agf" == *"\`Test changes: <file> <why>\` line per existing test file you changed (edited, renamed, skipped or deleted), or \`Test changes: none\`"* ]]'
+check "then the draft PR keeps each implementer's Test changes: lines and writes ## Test changes when the feature diff changes existing tests" \
+  'd="$(sed -n "/^## The draft PR/,/^## T/p" <<<"$im" | flat)"; [[ "$d" == *"when the feature diff changes an existing test, \`## Test changes\`: each landed task'"'"'s \`Test changes:\` lines under its task id"* ]] && grep -qF "the \`Test changes:\` lines its implementer returned" <<<"$imf"'
 check "then it never runs branch.sh, git push, security-scan.sh or mutants.sh, and returns no Elsewhere:" \
   '! grep -qE "branch\.sh|git push|security-scan\.sh|mutants\.sh|Elsewhere:" <<<"$ag"'
 check "when the implementer works, then it reads the test rules and Method step 2 it is held to" \

@@ -16,7 +16,7 @@ every question waits for the end.
 
 Keep, for the whole run, the tasks whose agents (implementers and reviewers) are in flight (`in flight`), and for each task its
 copy (`Copy:`), its task ref (`REF=`), its implementer (to SendMessage it), the `REVIEWED=` sha its last review record printed, and
-the `Skills:` line its implementer returned.
+the `Skills:` line and the `Test changes:` lines its implementer returned (a later round's replace them).
 
 ## The loop
 
@@ -76,7 +76,7 @@ One draft PR for the whole feature: opened after the first landing, and updated 
 run in which a task landed. Here, on the feature branch, write the body to a `mktemp` file: one or
 two sentences on what the feature does, and `## Evidence`: the test result and each implementer's
 `Skills:` line, as it returned it, under its task id; an implementer that returned none, or a run
-resumed after the line was lost, gives `Skills: not reported`, never `none matched`. Then
+resumed after the line was lost, gives `Skills: not reported`, never `none matched`; and, when the feature diff changes an existing test, `## Test changes`: each landed task's `Test changes:` lines under its task id (a task whose lines were lost: read its landing commit's diff of the test files and say why from its task line), since `pr.sh feature` refuses a changed test without it. Then
 `pr.sh feature "<title>" <body-file>` (`bash .specify/extensions/landspec/scripts/pr.sh`), the title
 a conventional one for the feature (`feat(<scope>): <what it does>`), as
 `.specify/extensions/landspec/commands/pr.md` says for the feature PR: no scan and no mutation
@@ -192,7 +192,7 @@ prints. The base is audited once per commit: a later run reuses the recorded res
 
 When it says it is done: its `Copy: <path>` is the task's copy from now on, and its `REF=` the task
 ref. A missing `Copy:` (or a path that is gone) is recreated beside the repository:
-`git worktree add --detach <repo>-<feature>-<task> <REF>`. Keep its `Skills:` line. Then
+`git worktree add --detach <repo>-<feature>-<task> <REF>`. Keep its `Skills:` and `Test changes:` lines. Then
 `I mark <task> implemented`. It refuses with `no green test run` when the implementer's run of the
 tests was not recorded for the ref's head: then, in that copy, run the project's test command as
 `bash -c 'source .specify/extensions/landspec/scripts/lib.sh; landspec_cd_root; run_tests'`:
