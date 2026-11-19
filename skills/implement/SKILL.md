@@ -125,10 +125,12 @@ checked, across runs).
 
 ## The release
 
+The release and its audit work in the run's worktree `<repo>-<feature>-run`, beside the repository:
+first `git fetch origin`, then, when it is missing, `git worktree add --detach <repo>-<feature>-run origin/<base>`.
+
 When `status` prints `MERGED=<n>` (or `branch.sh` refused naming the merged feature PR #<n>), and only
 then, run `I release-plan` and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
-next run reads where it stands from git and GitHub. The release and its audit work in the run's
-worktree `<repo>-<feature>-run`, beside the repository: `git fetch origin`, then, when it is missing, `git worktree add --detach <repo>-<feature>-run origin/<base>`.
+next run reads where it stands from git and GitHub:
 
 - `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
   (`git fetch origin`, then `git switch -c chore/release-X.Y.Z origin/<base>` as its own command): `I release-bump X.Y.Z`

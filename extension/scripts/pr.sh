@@ -200,6 +200,7 @@ add a '## Test changes' section to the PR body saying why (spec changed, test wa
     fi
     if $need_review; then body+=$'\n\n<details><summary>Independent review</summary>\n\n'"$review"$'\n\n</details>'; fi
     body+="$extra"
+    [[ "$mode" != feature ]] || refuse_merged "$fdir" # again: the feature PR may have merged during the test run
     git push --quiet -u origin "$branch"
     open_pr "$title" "$body" "$body_file"
     ;;

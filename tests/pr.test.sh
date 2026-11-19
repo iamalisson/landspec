@@ -670,6 +670,13 @@ if command -v jq >/dev/null; then # GH_PR_JSON runs the script's own --jq
     'GH_PR_JSON="$TMP/merged.json" one_refusal "the feature PR #77 is merged" "$p" feature "feat: demo" "$TMP/fbody.md" \
      && GH_PR_JSON="$TMP/merged.json" one_refusal "the feature PR #77 is merged" "$p" feature "feat: demo" "$TMP/fbody.md" --ready \
      && [[ -z "$(git ls-remote origin "refs/heads/$FB")" ]] && ! grep -qE "^pr (create|edit|ready)" "$GH_LOG"'
+  # The developer merges while the test command runs: the check before the push catches it.
+  echo '[]' > "$TMP/late.json"
+  printf '**Commands**: build `[BUILD_COMMAND]` · test `cp %s %s` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' "$TMP/merged.json" "$TMP/late.json" > .specify/memory/constitution.md
+  check "when the feature PR merges during the test run, then pr.sh feature refuses before the push and opens no PR" \
+    'GH_PR_JSON="$TMP/late.json" one_refusal "the feature PR #77 is merged" "$p" feature "feat: demo" "$TMP/fbody.md" \
+     && [[ -z "$(git ls-remote origin "refs/heads/$FB")" ]] && ! grep -qE "^pr (create|edit|ready)" "$GH_LOG"'
+  rm .specify/memory/constitution.md
 fi
 
 exit "$FAIL"
