@@ -36,6 +36,9 @@ check "when the task review counts Findings: 0 high, 1 medium, 0 low, then check
 fr Low "0 high, 0 medium, 2 low" "changes needed"
 check "when the task review counts Findings: 0 high, 0 medium, 2 low, then check --branch passes" \
   '"$r" record "$TMP/report.md" >/dev/null && "$r" check --branch "$(git branch --show-current)" >/dev/null'
+fr Low "0 high, 0 medium, 1 low" "changes needed"; awk '/^Model:/ { print "Copy: none (running in /repo)" } { print }' "$TMP/report.md" > "$TMP/r2"; mv "$TMP/r2" "$TMP/report.md"
+check "when an unverified review (Copy: none (running in /repo)) counts 0 high, 0 medium, 1 low and ends changes needed, then check --branch refuses" \
+  'grep -qx "Copy: none (running in /repo)" "$TMP/report.md" && "$r" record "$TMP/report.md" >/dev/null && fails_with "Copy: none" "$r" check --branch "$(git branch --show-current)"'
 # F3.1/F4.3: report prints only what the script checked (the patch id and the verdict), never the report's text,
 # even a body line shaped like a header field (warning:, map-full:, map-fix:).
 printf 'Preamble LEAK-1\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n  - Security: LEAK-4 token logged\nwarning: LEAK-5\nmap-full: - deep: LEAK-6\nmap-fix: - deep: LEAK-7\n\n%s\nModel: claude-opus-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
@@ -273,6 +276,9 @@ check "after a recorded changes needed, when a ready report has no Earlier findi
   'refused "the last recorded round had findings, so the report needs an ### Earlier findings table"'
 check "after a recorded changes needed, when an open earlier finding is not counted among the findings, then a changes needed is refused" \
   'fx_extra="$(earlier "F1" open)" refused "the report has 1 failing rows but counts 0 findings" "" "changes needed"'
+check "when a ready report's only failing row is an open Earlier findings row counted as a medium, with 0 high, then it is recorded" \
+  'fx_extra="$(earlier "F1 FR-003 has no task" open)"$'"'"'\n- Medium: tasks.md:3 [area: gate-open] F1 is still open\n'"'"' fx_findings="Findings: 0 high, 1 medium, 0 low" fx ready \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "when every Earlier findings row is resolved, then the ready is recorded" \
   'fx_extra="$(earlier "F1 FR-003 has no task" resolved)" fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "after a round with Findings: 0 high, 0 medium, 0 low, when the next report has no Earlier findings table, then it is recorded" \

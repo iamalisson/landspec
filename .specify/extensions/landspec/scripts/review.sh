@@ -437,6 +437,10 @@ case "$action" in
       || die "$what changed since the last review; run /speckit-landspec-review again and record it"
     # The gate is the recorded Findings: count (R13); a record without one (before 2.9) keeps its Assessment line.
     hml="$(findings_hml "$record")"
+    # A reviewer that could not verify (review.md step 0) says so on its Copy: line; its counts prove nothing.
+    if [[ "$(sed -nE 's/^\**Copy\**: *//p' "$record" | tail -1)" == none* ]]; then
+      die "the last review could not verify the diff (Copy: none): run /speckit-landspec-review again in its own copy and record it"
+    fi
     if [[ -z "$hml" ]]; then
       [[ "$(hdr assessment)" == ready ]] || die "the last review said 'changes needed'; fix the findings, then review again and record it"
     else

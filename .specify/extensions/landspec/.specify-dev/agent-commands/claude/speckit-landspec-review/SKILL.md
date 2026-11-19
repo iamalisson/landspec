@@ -81,7 +81,7 @@ Facts the author passes:
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
 changes how a function fails makes every caller of that function part of the fix (step 2's caller
 account applies to them, in the diff or not). A bug it notices outside those
-commits is reported at its true severity and does not change the assessment. `record --delta` refuses it unless a round was
+commits is reported at its true severity, is not counted on the `Findings:` line and does not change the assessment. `record --delta` refuses it unless a round was
 recorded on this branch, `<sha>` is still on the branch, and something was committed since;
 otherwise run a new full review. A fix of any size is a delta. The delta of a conflict round (the
 feature branch merged into the task's branch) reads the merge's resolution (`git show

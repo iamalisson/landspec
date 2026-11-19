@@ -243,6 +243,8 @@ check "when review.md's Report is read, then a plan review ends changes needed o
 check "when review.md is read, then a delta has no 20-line limit and a conflict round's delta reads the merge's resolution" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; ! grep -qF "20 lines" extension/commands/review.md \
    && [[ "$f" == *"reads the merge'"'"'s resolution (\`git show --remerge-diff <merge>\`) and the commits after it"* ]]'
+check "when review.md's delta is read, then a bug it notices outside its fix commits is not counted on the Findings: line" \
+  'tr "\n" " " < extension/commands/review.md | tr -s " " | grep -qF "is reported at its true severity, is not counted on the \`Findings:\` line and does not change the assessment"'
 check "when review.md's plan review is read, then only a High failing row or open earlier finding blocks a ready" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"refuses a \`ready\` with a failing row only when the report counts a High finding"* \
    && "$f" == *"and a \`ready\` with an \`open\` row only when it counts a High finding"* ]]'
