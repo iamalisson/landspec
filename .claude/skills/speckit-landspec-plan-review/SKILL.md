@@ -1,0 +1,1 @@
+../../../.specify/extensions/landspec/.specify-dev/agent-commands/claude/speckit-landspec-plan-review/SKILL.md

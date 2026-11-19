@@ -4,7 +4,7 @@ extension:
   id: landspec
   name: "landspec"
   version: "2.9.0"
-  description: "One task = one issue = one branch = one PR, with defaults sized by project complexity"
+  description: "One branch and one PR per feature, with defaults sized by project complexity"
   author: iamalisson
   repository: https://github.com/iamalisson/landspec
   license: MIT
@@ -16,13 +16,13 @@ requires:
       required: true
     - name: gh
       required: true
-      description: "GitHub CLI, used for issues and pull requests"
+      description: "GitHub CLI, used for pull requests"
 
 provides:
   commands:
-    - name: speckit.landspec.issues
-      file: commands/issues.md
-      description: "Create one GitHub issue per task and open the spec PR"
+    - name: speckit.landspec.plan-review
+      file: commands/plan-review.md
+      description: "Ground the plan in the code, review it once and commit the spec folder on the feature branch"
     - name: speckit.landspec.analyzed
       file: commands/analyzed.md
       description: "Record that analysis ran on the current tasks"
@@ -42,13 +42,13 @@ hooks:
     optional: false
     description: "Make the feature's branch and commit the spec on it"
   after_tasks:
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     optional: false
-    description: "Create one GitHub issue per task"
+    description: "Review the plan once and commit the spec folder on the feature branch"
   after_converge:
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     optional: false
-    description: "Create issues for the tasks /speckit-converge added"
+    description: "Review the tasks /speckit-converge added and commit them on the feature branch"
   after_analyze:
     command: speckit.landspec.analyzed
     optional: false
@@ -62,4 +62,4 @@ hooks:
     optional: false
     description: "Open the task's pull request"
 
-tags: ["github", "issues", "branching", "workflow", "best-practices"]
+tags: ["github", "branching", "workflow", "best-practices"]
