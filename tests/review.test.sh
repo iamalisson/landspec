@@ -8,8 +8,8 @@ range() { echo "Reviewed: $(git merge-base HEAD origin/develop)..$(git rev-parse
 report() { printf 'What changed: x\n\nFindings: none\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: %s\n' "$(range)" "$1" > "$TMP/report.md"; }
 
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"
 
 check "when no review was recorded, then check refuses and says how to record one" 'fails_with "no independent review" "$r" check'
@@ -79,8 +79,8 @@ check "when no plan review was recorded, then check --plan refuses" 'fails_with 
 check "then the plan hint keeps --plan" 'fails_with "record its report: review.sh record --plan <report-file>" "$r" check --plan'
 plan_report
 check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/plan.md" >/dev/null && "$r" check --plan'
-sedi 's/ — #5$/ — #9/' specs/001-demo/tasks.md
-check "when only the issue numbers changed, then the plan review still holds" '"$r" check --plan'
+sedi 's/^\(- \[ \] T001 .*\)$/\1 — #9/' specs/001-demo/tasks.md
+check "when only an issue number is added, then the plan review still holds" '"$r" check --plan'
 sedi 's/^- \[ \] T001 /- [X] T001 /' specs/001-demo/tasks.md
 check "when a task is ticked [X] after the plan review, then the plan review still holds" \
   'grep -q "^- \[X\] T001 " specs/001-demo/tasks.md && "$r" check --plan'
@@ -343,8 +343,8 @@ rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"
 # rep <assessment> <line...>: a full-round report for HEAD with the given lines (risk map, findings).
 rep() { local v="$1"; shift; { echo 'What changed: x'; echo; printf '%s\n' "$@"; echo; range; echo 'Model: claude-sonnet-4-7'; echo; echo "Assessment: $v"; } > "$TMP/report.md"; }
@@ -527,8 +527,8 @@ git switch --quiet -
 # ── FR-022: the rules that decide a review, one case each, on a branch of their own ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir -p src tests; echo 'export const search = 1' > search.ts; echo 'export const login = 1' > src/login.ts
 printf 'assert 1\nassert 2\nassert 3\n' > tests/p.test.sh
 git add search.ts src tests; git commit --quiet -m "feat: search"
@@ -570,8 +570,8 @@ done
 rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/shallow"; cd "$TMP"
 new_repo standard
 git commit --quiet --allow-empty -m one; git commit --quiet --allow-empty -m two # so depth 3 leaves the clone shallow
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo a > a.txt; git add a.txt; git commit --quiet -m "feat: a"
 task_record() { echo ".git/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')"; }
 shallow_repo
@@ -584,7 +584,7 @@ cd "$TMP/repo"; git switch --quiet --orphan feat/001-t001-unrelated
 echo b > b.txt; git add b.txt; git commit --quiet -m "feat: unrelated"
 check "when a full clone's branch shares no history with the base, then check refuses without naming git fetch --unshallow" \
   'one_refusal "no history" "$r" check && out="$("$r" check 2>&1 || true)" && [[ "$out" != *unshallow* ]]'
-git switch --quiet feat/001-t001-add-search
+git switch --quiet feat/001-demo
 git revert --no-edit HEAD >/dev/null
 shallow_repo 3
 check "on a shallow clone that has the merge base, then a commit and its revert are an empty diff, not a refusal" \
@@ -593,8 +593,8 @@ check "on a shallow clone that has the merge base, then a commit and its revert 
 # ── Spec 003: record removes the reviewer's copy when it is surely the one made for this review ──
 rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/out" "$TMP/linked"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo a > a.txt; git add a.txt; git commit --quiet -m "feat: a"
 author() { git status --porcelain -- . ':(exclude).claude/worktrees'; }
 # copy <name> [<commit>] [detach]: a worktree like Claude Code's, with an uncommitted change in it.
@@ -655,14 +655,14 @@ cd "$main"
 # ── Spec 004 T002: a stacked branch is diffed against its parent; any branch is read by name ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5
-- [ ] T002 Add filters in `src/filters.ts` — #6'
-P=feat/001-t001-add-search; C=feat/001-t002-add-filters
-"$SCRIPTS/branch.sh" T001 >/dev/null 2>&1
+commit_tasks '- [ ] T001 Add search in `src/search.ts`
+- [ ] T002 Add filters in `src/filters.ts`'
+P=feat/001-demo; C=landspec/001-t002-task
+"$SCRIPTS/branch.sh" 001 >/dev/null 2>&1
 mkdir -p .github/workflows; echo 'on: push' > .github/workflows/x.yml; git add .github; git commit --quiet -m "ci: parent change"
 printf -- '- deep: .github/workflows/x.yml — ci: read\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
 "$r" record "$TMP/report.md" >/dev/null
-"$SCRIPTS/branch.sh" T002 --from "$P" >/dev/null 2>&1
+git switch --quiet -c "$C" "$P"; git config "branch.$C.landspec-parent" "$P" # a task ref, as the implementer makes it
 echo 'export const f = 1' > filters.ts; git add filters.ts; git commit --quiet -m "feat: filters"
 check "on a stacked branch, then review.sh risk covers only its own commit (not the parent's workflow)" \
   '[[ "$("$r" risk)" == "RISK=none" ]]'

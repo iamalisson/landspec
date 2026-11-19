@@ -46,7 +46,7 @@ hooks:
     optional: false
     priority: 10
     prompt: Execute speckit.landspec.branch?
-    description: Switch to the task's branch
+    description: Switch to the feature's branch
     condition: null
   after_implement:
   - extension: landspec

@@ -15,14 +15,14 @@ reviewed() {
 scanned() { no_scanners; PATH="$TMP/none" bash "$SCRIPTS/security-scan.sh" --changed >/dev/null; }
 
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
 
 printf 'Adds search.\n\n## Review\n\nready: no findings\n\n## Evidence\n\n`npm test` passed\n' > "$TMP/body.md"
 printf 'Adds search.\n\n## Evidence\n\n`npm test` passed\n' > "$TMP/unreviewed.md"
 check "when pr.sh task or pr.sh spec runs, then it exits with the usage error naming pr.sh feature" \
   'fails_with "usage: pr.sh feature" "$p" task T001 "feat: add search" "$TMP/body.md" && fails_with "usage: pr.sh feature" "$p" spec'
 
-"$SCRIPTS/branch.sh" T001 >/dev/null
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts
 check "when there are uncommitted changes, then it refuses and names the files" 'fails_with "uncommitted changes; commit the work first (or git-ignore what the tests create): search.ts" "$p" fix "feat: add search" "$TMP/body.md"'
 git add search.ts; git commit --quiet -m "feat(search): add search"
@@ -49,9 +49,9 @@ check "when the constitution's test command exits 1, then it refuses, prints its
   '((red != 0)) && grep -qxF "landspec: the test command failed (bash $TMP/red.sh); fix it before opening the PR" <<<"$out" \
    && grep -qx "red line 30" <<<"$out" && grep -qx "red line 11" <<<"$out" && ! grep -qx "red line 10" <<<"$out" \
    && [[ "$(git ls-remote origin "refs/heads/$(git branch --show-current)")" == "$claim" ]] && ! grep -q "^pr create" "$GH_LOG" \
-   && grep -qx "red line 1" "$(git rev-parse --git-common-dir)/landspec-test/feat__001-t001-add-search.log"'
+   && grep -qx "red line 1" "$(git rev-parse --git-common-dir)/landspec-test/feat__001-demo.log"'
 check "then the red run is logged as a tests event with ok=0 before the refusal" \
-  'grep -qE " feat/001-t001-add-search tests secs=[0-9]+ ok=0$" "$(git rev-parse --git-common-dir)/landspec-events"'
+  'grep -qE " feat/001-demo tests secs=[0-9]+ ok=0$" "$(git rev-parse --git-common-dir)/landspec-events"'
 check "then a red run records nothing, so the next run tests again" \
   '[[ -z "$(find "$(git rev-parse --git-common-dir)/landspec-test" -type f ! -name "*.log")" ]]'
 check "when a scan was recorded for this diff, then the scan check lets the PR through" \
@@ -62,7 +62,7 @@ out="$("$p" fix "feat(search): add search" "$TMP/body.md" 2>"$TMP/pr.err")" || t
 check "when the constitution's test command exits 0, then it opens the PR with no warning" \
   '[[ -f "$TMP/green.ran" && "$out" == *"PR=https://github.com/acme/app/pull/99" ]] && grep -q "^pr create" "$GH_LOG" && ! grep -q "^landspec:" "$TMP/pr.err"'
 check "then the green run and the PR are logged, in that order" \
-  'tail -2 "$(git rev-parse --git-common-dir)/landspec-events" | cut -d" " -f3- | tr "\n" "|" | grep -qE "^feat/001-t001-add-search tests secs=[0-9]+ ok=1\|feat/001-t001-add-search pr mode=fix url=https://github.com/acme/app/pull/99\|$"'
+  'tail -2 "$(git rev-parse --git-common-dir)/landspec-events" | cut -d" " -f3- | tr "\n" "|" | grep -qE "^feat/001-demo tests secs=[0-9]+ ok=1\|feat/001-demo pr mode=fix url=https://github.com/acme/app/pull/99\|$"'
 check "then the body names each scanner that did not run" \
   'grep -qxF "Scanners not run: gitleaks (missing), osv-scanner (missing), semgrep (missing)" "$GH_LOG"'
 rm -f "$TMP/green.ran"
@@ -112,8 +112,8 @@ check "when the code changed after the review, then the PR is refused until a ne
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
 mkdir -p tests src; echo 'assert 1 == 1' > tests/test_price.py; echo 'x' > src/keep.test.ts
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 printf 'Adds search.\n\n## Review\n\nready: no findings\n' > "$TMP/plain.md"
 
 echo 'assert True' > tests/test_price.py; git commit --quiet -am "feat: weaken"
@@ -149,8 +149,8 @@ rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
 mkdir -p tests; printf 'check one\nexit "$FAIL"\n' > tests/a.test.sh; printf 'it("a")\n' > tests/b.test.js
 printf 'one\n' > tests/xfail.test.sh; printf '\0\1' > tests/data.test.bin
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 fresh() { git push --quiet origin --delete "$(git branch --show-current)" 2>/dev/null || true; git reset --quiet --hard origin/develop; rm -f "$GH_PR"; }
 opens() { git commit --quiet -am "test: change"; reviewed; scanned; "$p" fix "test: change" "$TMP/plain.md" | grep -q "^PR="; }
 refused() { git commit --quiet -am "test: change"; fails_with "existing tests were changed: $1" "$p" fix "test: change" "$TMP/plain.md"; }
@@ -183,8 +183,8 @@ rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
 mkdir -p app Tests/AppTests src checks
 echo 'assert 1 == 1' > app/tests.py; echo 'XCTAssertEqual(1, 1)' > Tests/AppTests/AppTests.swift; echo 'x' > src/latest.ts; echo 'check 1' > checks/price.sh
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'pass' > app/tests.py; echo '// nothing checked' > Tests/AppTests/AppTests.swift; git commit --quiet -am "feat: weaken"; reviewed; scanned
 check "when an existing app/tests.py or Tests/AppTests/AppTests.swift is edited and the body says nothing, then it refuses and names the file" \
   'fails_with "app/tests.py" "$p" fix "feat(search): add search" "$TMP/plain.md" && fails_with "Tests/AppTests/AppTests.swift" "$p" fix "feat(search): add search" "$TMP/plain.md"'
@@ -203,8 +203,8 @@ check "when the constitution's tests: regex is invalid, then it refuses and name
 # ── Mutation testing ran on this diff, when the constitution has a mutate command ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir -p src .specify/memory; echo 'export const search = 1' > src/search.ts; git add src; git commit --quiet -m "feat: search"; reviewed
 mutate() { printf '**Commands**: build `[BUILD_COMMAND]` · test `[TEST_COMMAND]` · lint `[LINT_COMMAND]` · mutate `%s`\n' "$1" > .specify/memory/constitution.md; }
 mutate true
@@ -234,8 +234,8 @@ check "when there is no mutate command, then the body says mutation testing was 
 # ── FR-030–FR-033: the review block carries the record's facts: model, warning, both risk maps ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir -p db/migrations; echo 'DROP TABLE users;' > db/migrations/002_drop.sql; git add db; git commit --quiet -m "feat: drop"; h1="$(git rev-parse HEAD)"
 printf 'What changed: x\n\n- deep: db/migrations/002_drop.sql — PROSE-1 drops users: checked the backup\n\n%s\n\nAssessment: changes needed\n' "$(range)" > "$TMP/review.md"
 "$SCRIPTS/review.sh" record "$TMP/review.md" >/dev/null 2>&1 || true
@@ -259,8 +259,8 @@ check "when Model: is outside the configured family, then the warning reaches th
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"
 new_repo standard
 seq 1 40 | sed '4s/.*//; 16s/.*//' > big.txt; echo one > a.conv; printf '*.conv diff=conv\n' > .gitattributes
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 sed -i.bak '5s/.*/five/; 15s/.*/fifteen/' big.txt; rm big.txt.bak; mkdir sub
 git update-index --add --cacheinfo "160000,$(git rev-parse HEAD),sub"; git add big.txt; git commit --quiet -m "feat: edit"
 printf '#!/usr/bin/env bash\necho same\n' > "$TMP/same.sh"; chmod +x "$TMP/same.sh"
@@ -291,8 +291,8 @@ cd "$TMP"
 # ── FR-009: an open PR stays true to its diff ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir -p .specify/memory; printf 'echo run >> "%s/runs"\n' "$TMP" > "$TMP/count.sh"; : > "$TMP/runs"
 printf '**Commands**: build `[BUILD_COMMAND]` · test `bash %s` · lint `[LINT_COMMAND]` · mutate `[MUTATE_COMMAND]`\n' "$TMP/count.sh" > .specify/memory/constitution.md
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"; reviewed; scanned
@@ -332,8 +332,8 @@ check "when a report's map names a token outside the diff, then it never reaches
 # ── FR-022: the review gate and the refusals, found by their messages, on a scan recorded for the diff ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR"; : > "$GH_LOG"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"
 scanned # the scan is there from the start, so only the check under test can refuse
 branch="$(git branch --show-current)"
@@ -401,9 +401,9 @@ export TF_PLAN_JSON="$TMP/plan.json" TF_PLAN_TEXT="$TMP/plan.txt"
 later() { local s=$(($(date +%s) + 2)); touch -d "@$s" "$1" 2>/dev/null || touch -t "$(date -r "$s" +%Y%m%d%H%M.%S)" "$1"; }
 new_repo standard
 echo tfplan >> .gitignore
-commit_tasks '- [ ] T001 Add infra in `infra/main.tf` — #5'
+commit_tasks '- [ ] T001 Add infra in `infra/main.tf`'
 printf 'aws: on\n' >> .specify/extensions/landspec/landspec-config.yml
-"$SCRIPTS/branch.sh" T001 >/dev/null
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir infra; echo 'resource "aws_s3_bucket" "logs" {}' > infra/main.tf; git add infra; git commit --quiet -m "feat: infra"
 reviewed; scanned
 check "when aws is on, the level standard and the diff touches infra/main.tf with no plan recorded, then it refuses and opens nothing" \
@@ -426,9 +426,9 @@ check "when aws is off, then the same diff opens with no plan and no Terraform s
 # ── Spec 006 T009: a diff of infrastructure code that is not Terraform says the plan gate was skipped ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"
 new_repo standard
-commit_tasks '- [ ] T001 Add the stack in `cdk/cdk.json` — #5'
+commit_tasks '- [ ] T001 Add the stack in `cdk/cdk.json`'
 printf 'aws: on\n' >> .specify/extensions/landspec/landspec-config.yml
-"$SCRIPTS/branch.sh" T001 >/dev/null
+"$SCRIPTS/branch.sh" 001 >/dev/null
 # swap <path>...: the branch's one commit now adds exactly these files, reviewed and scanned again.
 swap() { git reset --quiet --hard "$(git merge-base HEAD origin/develop)"; local f; for f; do mkdir -p "$(dirname "$f")"; echo x > "$f"; done
   git add -- "$@"; git commit --quiet -m "feat: stack"; git push --quiet --force origin HEAD 2>/dev/null; reviewed; scanned; rm -f "$GH_PR" "$GH_PR.head"; : > "$GH_LOG"; }
