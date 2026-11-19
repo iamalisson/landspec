@@ -1,6 +1,6 @@
 ---
-description: 'Implement one task from tasks.md, on its own branch and PR (landspec:
-  one task per run)'
+description: 'Build the feature''s tasks and land each on the feature branch (landspec:
+  as /landspec:implement does)'
 scripts:
   sh: scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks
   ps: scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks
@@ -225,14 +225,15 @@ Report final status with summary of completed work.
 
 
 
-## landspec: one task per run
+## landspec: the whole feature, as /landspec:implement does
 
-This project uses landspec (one task = one issue = one branch = one PR). It **overrides** the
-instructions above where they differ:
+This project uses landspec (one branch and one PR per feature). It **overrides** the instructions
+above where they differ:
 
-- Implement **only the task given** in the arguments (for example `T003`), never the others,
-  even when they are open. The `before_implement` hook has already put you on its branch.
-- **Do not mark tasks `[X]` in `tasks.md`.** A task is done when its issue closes, through the
-  merged PR's `Closes #N`. A tick would dirty the tree or make parallel task PRs conflict.
-- The completion check above ("all tasks completed") means: this one task's *Completed when* is
-  met, and its tests pass.
+- Build the feature's tasks as `/landspec:implement` does: run it for this feature. It builds every
+  startable task at once, each on its own task ref, reviews it, and lands it on the feature branch
+  as soon as it is ready.
+- **Do not mark tasks `[X]` in `tasks.md`.** `implement.sh land` ticks a task in its landing commit;
+  never by hand (`pr.sh feature` refuses a ticked task with no landing commit).
+- The completion check above ("all tasks completed") means: every task is landed (`DONE=` of
+  `implement.sh status`), or reported failed by the run.

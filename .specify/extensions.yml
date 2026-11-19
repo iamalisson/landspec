@@ -28,7 +28,8 @@ hooks:
     optional: false
     priority: 10
     prompt: Execute speckit.landspec.plan-review?
-    description: Review the tasks /speckit-converge added and commit them on the feature branch
+    description: Review the tasks /speckit-converge added and commit them on the feature
+      branch
     condition: null
   after_analyze:
   - extension: landspec
@@ -55,5 +56,5 @@ hooks:
     optional: false
     priority: 10
     prompt: Execute speckit.landspec.pr?
-    description: Open the task's pull request
+    description: Open or update the feature's draft pull request
     condition: null
