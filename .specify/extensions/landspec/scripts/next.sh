@@ -3,7 +3,7 @@
 #   next.sh [feature]    feature: a number (002) or folder name (002-reports); it becomes the active one
 # tasks.md and the landing commits are read from the feature branch (local, else origin's; before
 # it exists, the checkout's tasks.md). A task is done when that branch holds its landing commit
-# (Landspec-Task: Tnnn), failed when its run record says so, waiting while a task its line
+# (Landspec-Task: <NNN>/Tnnn, lib.sh task_done), failed when its run record says so, waiting while a task its line
 # "depends on" is not done, else pending. No GitHub issue is read.
 # Prints "done|failed|pending|waiting Tnnn <summary>" per task, then
 # FEATURE=<num> BRANCH=<branch> ISSUE=<#N|-> PR=<url|->, then DONE=x/y NEXT=<first pending Tnnn, or empty>.

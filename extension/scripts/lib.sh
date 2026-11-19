@@ -167,9 +167,11 @@ feature_ref() {
 }
 
 # task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
-# landing commit, a commit whose message has the line "Landspec-Task: <Tnnn>".
+# landing commit: anywhere in its history, a commit whose message has the line "Landspec-Task: <NNN>/<Tnnn>".
+# The feature's number is in it because task ids restart at T001 in every feature: however the branch was
+# joined (a PR merge, a pull merge, a squash), its own landings are found and never another feature's.
 task_done() {
-  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $2\$" "$(feature_ref "$1")" -- 2>/dev/null)" ]]
+  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $(feature_key "$1")/$2\$" "$(feature_ref "$1")" -- 2>/dev/null)" ]]
 }
 
 # plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"

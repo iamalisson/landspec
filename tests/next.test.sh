@@ -5,7 +5,7 @@ source "$(dirname "$0")/helpers.sh"
 fake_gh
 n="$SCRIPTS/next.sh"
 # land <Tnnn>: a landing commit of the task on the current branch, as implement.sh land makes it.
-land() { git commit --quiet --allow-empty -m "$1: landed" -m "Landspec-Task: $1"$'\n'"Landspec-Review: ready abc123"; }
+land() { git commit --quiet --allow-empty -m "$1: landed" -m "Landspec-Task: 001/$1"$'\n'"Landspec-Review: ready abc123"; }
 
 new_repo standard
 commit_tasks '# Tasks
@@ -28,7 +28,7 @@ check "then the last two lines name the feature, its branch, issue and PR, then 
 check "then no GitHub issue is read, and there is no parallel, RUN= or CHOOSE= line" \
   '! grep -q "^issue " "$GH_LOG" && ! grep -q "^api graphql" "$GH_LOG" && ! grep -qE "^(parallel|RUN=|CHOOSE=)" <<<"$out"'
 check "when a commit only mentions a task, then it is not done" \
-  'git switch --quiet feat/001-demo; git commit --quiet --allow-empty -m "T002: wip" -m "see Landspec-Task: T002 later"; git switch --quiet main; out="$("$n")"; grep -qx "pending T002 Second" <<<"$out"'
+  'git switch --quiet feat/001-demo; git commit --quiet --allow-empty -m "T002: wip" -m "see Landspec-Task: 001/T002 later"; git switch --quiet main; out="$("$n")"; grep -qx "pending T002 Second" <<<"$out"'
 
 rec="$(git rev-parse --git-common-dir)/landspec-run/001-demo"; mkdir -p "$rec"
 printf 'phase=implemented\nfailed=tests red twice\n' > "$rec/T002"

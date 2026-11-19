@@ -28,7 +28,7 @@ sub-bullets (`Comes from`, `What`, `Impact`, `Completed when`). No ` — #N` suf
 | building | an implementer is in flight on its task ref | the main session's in-flight list |
 | built | its tests are green on the task ref | run record `landspec-run/<feature>/<task>` (`phase=implemented`) |
 | in review / changes | its Opus review is running / asked for changes | run record (`phase=ready` or `changes`, round count) |
-| done | its landing commit is on the feature branch | `git log --grep '^Landspec-Task: Tnnn$' <branch>` |
+| done | its landing commit is on the feature branch | `git log --grep '^Landspec-Task: NNN/Tnnn$' <branch>` |
 | failed | tests red twice, or review still `changes needed` after the fix rounds | run record (`failed=<reason>`); `implement.sh retry` lifts it |
 
 Transitions: pending → building → built → in review → (changes → building → built → in review)* →
@@ -54,9 +54,13 @@ A `--no-ff` merge of the task ref into the feature branch, made by the main sess
 ```
 Tnnn: <task summary>
 
-Landspec-Task: Tnnn
+Landspec-Task: NNN/Tnnn
 Landspec-Review: ready <patch id of the reviewed diff>
 ```
+
+The trailer names the feature (`NNN`, its number) as well as the task, because task ids restart at
+T001 in every feature: a search of the branch's whole history then finds this feature's landings
+however the branch was joined (a PR merge, a pull merge, a squash) and never another feature's.
 
 Before the merge, `land` commits the tick (`- [X] Tnnn` in `tasks.md`) on the task ref, so the merge
 brings the code and the tick together. The merge commit's presence on the branch is what "done"
