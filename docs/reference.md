@@ -19,7 +19,7 @@ review method, scaffold) under `.specify/`, and only `init` refreshes it. It kee
 level, and it re-creates every file that still has the `# landspec: managed file` marker, so
 commit your edits to those first, or delete the marker to keep the file as it is. Skip it and the project keeps running the old version, whatever
 the plugin says. Its commit goes to the base branch (`develop` on standard and full, through the
-PR `init` offers), because that is where task branches start.
+PR `init` offers), because that is where feature branches start.
 
 From 1.8.0 on, `init` refuses to take a project back to an older version (`this plugin copy is
 <plugin>, the project is at <project>; run /reload-plugins (or setup.sh --downgrade)`), for
@@ -63,7 +63,7 @@ Your stack (Rust, Node with npm/pnpm/yarn, Python with uv/pip, Go) is detected a
 and the constitution; the constitution's **Commands** line, once `/landspec:adopt` fills it,
 is what the generated CI runs. A repo whose workflows already check pull requests gets no second
 CI; one whose `pull_request` filter leaves out the base branch is named
-("never runs on a task PR"), so you can add that branch. Your files are never overwritten: the ones landspec generates carry a
+("never runs on the feature PR into <base>"), so you can add that branch. Your files are never overwritten: the ones landspec generates carry a
 `# landspec: managed file` first line and are re-created on `/landspec:level`; delete that
 line to make one yours. Repos that run hooks through the pre-commit framework or husky get landspec's
 two checks added there.
@@ -81,14 +81,14 @@ implementer returns `Failed: formatter <hook> rewrote <n> files outside the task
 
 ## Several features at once
 
-Every feature is its own folder (`specs/001-login/`, `specs/002-reports/`), and everything landspec
-creates carries its number: issues `[001] T003: ...`, branches `feat/001-t003-...`, the spec PR
-`spec/001-login`. They never collide. The **active feature** is per clone (`.specify/feature.json`,
-git-ignored): `/speckit-specify` sets it to the new feature, and `/landspec:next 002` or
-`/speckit-implement 002 T001` set it explicitly. With no argument, `next` serves the active
-feature; when more than one feature has tasks to build, it lists them and asks, and when only one
-does, it serves that one without changing the active feature. On a task ref or the feature branch
-the branch name decides, for `next` too, so a worktree never follows the main checkout.
+Every feature is its own folder (`specs/001-login/`, `specs/002-reports/`) and its own branch,
+`<branch_prefix>/<NNN>-<short-name>` (`feat/001-login`), with one PR. They never collide. The
+**active feature** is per clone (`.specify/feature.json`, git-ignored): `/speckit-specify` sets it
+to the new feature, and `/landspec:next 002` or `/landspec:implement 002` set it explicitly. With no
+argument, `next` serves the active feature; when more than one feature has tasks to build, it lists
+them and asks, and when only one does, it serves that one without changing the active feature. On a
+task ref or the feature branch the branch name decides, for `next` too, so a worktree never follows
+the main checkout.
 
 `next.sh [feature]` reads `tasks.md` and the landing commits from the feature branch (the local
 one, else origin's after a fetch; before the branch exists, the checkout's `tasks.md`) and reads no
@@ -96,141 +96,139 @@ GitHub issue. It prints one `done|failed|pending|waiting Tnnn <summary>` line pe
 `FEATURE=<NNN> BRANCH=<branch> PR=<url|->` and `DONE=x/y NEXT=<Tnnn|>`. A task is
 `done` when the branch's history holds its landing commit (`Landspec-Task: <NNN>/<id>`), `failed` while its run
 record says so, `waiting` while a task its line depends on has not landed, else `pending`; `NEXT` is
-the first pending one, and `/landspec:next` offers `/landspec:implement <FEATURE>`. A feature
-started under the per-task flow (a task line ends in ` — #N`) named explicitly prints `LEGACY=` and
-stops with the way to continue it (exit 1); with no argument such features (and their per-task branches) are left
-out of the scan and never asked about, and `LEGACY=` stops it only when no other feature is left. GitHub closes a PR's `Closes #N` issues only on a merge
-into the default branch; on standard and full, the managed `close-linked-issues.yml` closes them on a
-merge into `develop` or `staging`, and its job fails, naming `could not close: #N`, when one of them
-cannot be closed.
+the first pending one, and `/landspec:next` offers `/landspec:implement <FEATURE>`. `NEXT` empty with
+`DONE=y/y` means the end check or the PR is what is left.
 
-A task whose line says `(depends on T003)` **waits** until T003 has landed, so `next`
-never offers work whose prerequisite is not done. The clause is not part of the task's summary:
-a trailing `(depends on …)` (any case) is left out of the issue title, the branch slug and the text
-`next` shows, before the ` in <path>` part is cut; one in the middle of a line stays. So a task
-line may gain or lose a dependency: run the plan review again and record it.
+A task whose line says `(depends on T003)` **waits** until T003 has landed, so no task starts on
+work whose prerequisite is not done. The clause is not part of the task's summary: a trailing
+`(depends on …)` (any case) is left out of the text `next` shows and the landing commit's title,
+before the ` in <path>` part is cut; one in the middle of a line stays. So a task line may gain or
+lose a dependency: run the plan review again and record it.
 
-A task branch can also start **stacked** on another task's branch: `branch.sh [feature] T003 --from
-<branch>` starts it from that branch's head, only when that head has a recorded `ready` review, and
-records the parent (`branch.<new>.landspec-parent`). Until it is moved onto the base, the stacked
-branch's diff, review range and risk map are against its parent, not the base, so each task's PR
-shows only its own work. `review.sh check|report|record --branch <b>` reads any branch by name, from
-any checkout. Its PR (`pr.sh task`) opens into the parent's branch as a **draft**, so GitHub cannot
-merge it into the parent, with `Stacked on #<parent's PR> (merge it first)` in the body; it refuses
-until the parent has a PR. Where drafts are not available, it opens a normal PR and warns to merge
-the parent first. A workflow whose `pull_request` branches leave out the parent never runs on that
-PR, and `pr.sh` warns about each one (landspec's generated CI has no such filter). `security-scan.sh
---changed` scans only the stacked branch's own files.
+Teammates need nothing but `/landspec:init` once in their clone: the shared state is the feature
+branch on origin, its `tasks.md` and its landing commits. Task refs, run records and test records
+are local to a clone; a task with no landing commit is simply built again from the feature head.
+
+**Per-task features (legacy).** A feature started under the old per-task flow (a `tasks.md` line
+ending in ` — #N`) is not migrated. `next.sh`, `implement.sh` and `branch.sh` named on it print
+`LEGACY=<feature>` and stop (exit 1) with what to do: finish its open PRs as ordinary PRs, then
+delete the ` — #N` suffix (and close the issue) of each remaining task to continue it under this
+flow. With no argument such features (and their branches) are left out of `next`'s scan and never
+asked about, and `LEGACY=` stops it only when no other feature is left. `release-plan` keeps the old
+path for them, so a feature finished that way still releases. GitHub closes a PR's `Closes #N`
+issues only on a merge into the default branch; on standard and full, the managed
+`close-linked-issues.yml` closes them on a merge into `develop` or `staging`, and its job fails,
+naming `could not close: #N`, when one of them cannot be closed.
+
+## Building a feature: `/landspec:implement`
+
+`/landspec:implement [feature]` builds every task of a feature on its one branch, in parallel, and
+keeps one draft PR up to date. It asks nothing while it runs and never merges. Each pass it runs
+`implement.sh status [--running <task>]…`, which refuses without a current plan review with no high
+finding (`review.sh check --plan`), a legacy feature (`LEGACY=`) or, on `full`, the analyzed marker.
+It prints one `TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]`
+line per task, then one `START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]`
+line per task whose dependencies are done and which is not done, failed or running, in `ORDER`, while
+fewer than `parallel_tasks` implementers are in flight (the `--running` ones count; reviewers take no
+slot), one `REVIEW=<id>`, `FIX=<id> [REASON=conflict]` or `LAND=<id>` line per task in that state,
+then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. The main session takes one step per line:
+
+- `START` launches an implementer (`landspec:implementer`, in the background, in its own copy) on
+  the task ref, a local branch that starts at the feature head and is never pushed
+  (`branch.<ref>.landspec-parent` names the feature branch, so its diff and its review are against
+  the feature head). `RESUME=yes`: the ref exists from an interrupted run, and the implementer goes
+  on from it. A ref checked out in a locked worktree makes the task `waiting` with `REASON=locked
+  worktree <path>`. The implementer works to the reviewer's checklist (`pr.md` step 2's test rules
+  and `review.md`'s Method step 2) and runs the tests through `run_tests` after its last commit:
+  `implement.sh mark <task> implemented` refuses a task ref whose head tree has no recorded green
+  run (`no green test run for <ref> at <sha>`; with no test command it is accepted), and the tests
+  are not run again for that tree. When that run is missing, the main session runs the tests in the
+  task's copy: red marks the task `red` and sends the output back to its implementer once; red again
+  (`RED=2`) fails it, and so does an implementer that returns nothing twice. The implementer returns
+  its `Copy:`, its `REF=`, its `Skills:` line and one `Test changes: <file> <why>` line per existing
+  test file it changed (or `Test changes: none`); the main session keeps them for the PR body.
+- `REVIEW` launches one Opus review of the task ref's diff, in the background, and the task stays
+  in flight until it returns (so it never gets a second reviewer; only implementers are passed as
+  `--running`). Its report is recorded with `review.sh record --branch <ref>` (a fix or conflict
+  round with `--delta`); when `record` refuses, the task is failed with its message. Then
+  `implement.sh mark <task> ready <report>`, or `mark <task> changes <report>` on a high or medium
+  finding; low findings never hold a task. `review.sh check --branch <ref>` passes with no high or
+  medium finding on its `Findings:` line, and a review that could not run in its own copy (`Copy:
+  none`) never passes.
+- `FIX` sends the report back to the implementer for its one fix round, then a **delta** review
+  (`review.sh record --delta --branch <ref>`) of the commits since the reviewed head, whatever the
+  fix's size. At `task_rounds` (default 2: the first review and one delta) a `changes` mark fails
+  the task (`FAILED=<id>`); it is named at the end, and the run goes on with the others.
+- `LAND` runs `implement.sh land <task>`: it refuses unless the task is `ready` and its review
+  passes for the ref's head, and refuses uncommitted changes in the feature folder. It merges the
+  ref `--no-ff` into the feature branch, with the tick in `tasks.md`, titled `<id>: <summary>`, one
+  `Low: <file>:<line> <title>` line per low finding of the task's review (a delta's and its first
+  round's) and the trailers `Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready <patch id>`,
+  pushes the branch and deletes the ref (`LANDED=<id> COMMIT=<sha>`). The feature's number is in the
+  trailer because task ids restart at `T001` in every feature: however the branch was joined (a PR
+  merge, a pull merge, a squash), its own landings are found and never another feature's. A
+  conflict aborts the merge, prints `CONFLICT=<id> FILES=<files>` and exits 1: the task gets one
+  conflict round (`FIX=<id> REASON=conflict`, outside `task_rounds`: merge the feature branch into
+  the ref, test, review); a second conflict marks it failed (`FAILED=<id>`).
+
+`implement.sh fail <task> "<reason>"` marks a task failed; `implement.sh retry <task>` lifts it and
+deletes the task ref, so the task starts fresh from the feature head (and gets its conflict round
+back). The plan review ignores task ticks and the `**Issue**: #N` line, so landing a task never makes
+it stale. On upgrade, a plan review recorded on a `tasks.md` that already had `- [X]` ticks or that
+line goes stale once: review the plan again.
+
+**The end check.** Each task review reads one diff. When every task is done (`CHECK=yes`),
+`implement.sh check` checks the whole feature once, on the feature branch itself: it merges
+`origin/<base>` into the branch and pushes it (a conflict stops it, naming the files), points
+`refs/landspec/check/<feature>` at the head and prints `CHECK=<head> ROUND=<n>`; or `UNCHANGED=<n>`
+when this head's own tests or its own feature review already failed, or `ROUNDS_EXHAUSTED=<n>` once
+`feature_rounds` heads were checked. On either of those it stops: the PR stays a draft, its body keeps
+what is not met, and the developer is asked at the end. The test command runs on that head through
+`run_tests`, in a detached worktree (a tree already green is not run again), and `implement.sh
+check-result green|red` records it. Then an Opus review in **feature mode** reads the spec against
+the whole diff from `origin/<base>` and reports each FR, scenario and SC as `met`, `not met` or `not
+verifiable`; `review.sh record --feature` adds its `verdict:`, `reviewed:` (the head it reviewed) and
+lines. One record per feature, `.git/landspec-review/feature-<feature>`, never deleted, holds `head:`,
+`heads:` (every head checked so far; the round is their count), `tests:`, `verdict:`, `reviewed:` and
+the lines; a new head has no verdict until it is reviewed, so a stale `ready` never passes. Each `not
+met` line, and red tests as one task, becomes a new task appended to `tasks.md` on the branch
+(`Comes from:` the line), given one plan review pass, committed (`docs(specs): file the end check's
+gaps`) and pushed; the same run builds, reviews and lands it like the others, then checks again. A
+pass (green tests, no `not met` line) runs `security-scan.sh --changed` and `mutants.sh` once on the
+whole feature diff, then `pr.sh feature --ready`.
+
+**The PR.** After the first landing, `pr.sh feature "<title>" <body-file>` opens the feature's one PR
+as a draft, with no scan and no mutation testing, and at the end of each run in which a task landed
+it replaces the body (see "What happens automatically"). The body holds a short summary, `## Evidence`
+(the test result and each task's `Skills:` line) and, when the feature diff changes an existing
+test, `## Test changes` from the implementers' `Test changes:` lines under each task id. When every task is done and the end check
+passed, `pr.sh feature --ready` checks that the scan and mutation testing were recorded for the whole
+feature diff (their results go in `## Evidence`) and marks the PR ready (`PR=<url> READY=yes`). You review, approve and merge that one PR.
 
 `security-scan.sh` prints one line per scanner, `<tool> ok|findings|missing|skipped|failed <detail>`,
-and keeps them with `--changed` as the diff's record. A finding the tool rates high or critical
-prints `<tool> findings high <report>`: gitleaks for every finding, osv-scanner for a group
-`max_severity` of 7.0 or more or an advisory `severity` of `HIGH` or `CRITICAL`, semgrep for a result
-`severity` of `ERROR`, `HIGH` or `CRITICAL`, zizmor for a `High` severity, trivy for `HIGH` or
-`CRITICAL`. `pr.sh feature --ready` refuses on a `findings high` line and lists the others.
+and keeps them with `--changed` as the diff's record (on the feature branch, the diff from
+`origin/<base>`). A finding the tool rates high or critical prints `<tool> findings high <report>`:
+gitleaks for every finding, osv-scanner for a group `max_severity` of 7.0 or more or an advisory
+`severity` of `HIGH` or `CRITICAL`, semgrep for a result `severity` of `ERROR`, `HIGH` or `CRITICAL`,
+zizmor for a `High` severity, trivy for `HIGH` or `CRITICAL`. `pr.sh feature --ready` refuses on a
+`findings high` line and lists the others.
 
-`/landspec:implement [feature]` runs a feature's tasks in parallel instead of one per `/landspec:next`.
-Each pass it runs `implement.sh restack`, then `implement.sh status --running <in flight>`, and takes
-one step per listed task: `START` launches an implementer (`landspec:implementer`, in the background,
-in its own copy), `REVIEW` the independent review against `base_ref <branch>`, `FIX` a fix round with
-the review's report, and `OPEN` `pr.sh task` in the task's copy, parents first. The implementer works
-to the reviewer's checklist (`pr.md` step 2's test rules and `review.md`'s Method step 2), and runs
-`security-scan.sh --changed` and `mutants.sh` on its branch before it returns; `OPEN` runs them only
-for a diff that has no record of them (after a restack, say). A fix round's review is a delta
-(`review.sh record --delta --branch <branch>`), of any size, and a full review when the delta
-refuses (a restack rebased the branch). `review.sh check` passes a task review with no High or
-Medium finding on its `Findings:` line, and a plan review with no High. An implementer that returns nothing is marked
-`red` and started again once, then `failed`. A task
-that depends on an unmerged one starts stacked on its branch (`branch.sh --from`), and its PR is a draft
-into the parent's. It asks nothing while it runs, never merges, and ends with the PRs to merge in
-`ORDER`; run it again after merging, and it moves the stacked branches onto the base. Each pass reads
-every task in `pr` with `pr.sh state`: Copilot's unanswered comments (`COPILOT=comments <n>`) mark it
-`changes` with Copilot's report (`implement.sh status` lists a `changes` mark on the current head as
-`fix` even over a `ready` record), so they get a fix round that counts against the task's rounds, a
-full review (never a delta), and, once pushed, a reply to each thread with the implementer's answer
-(`fixed in <sha>` or `not a defect: <reason>`) before it is resolved. The **hand-over rule**: a PR is
-listed among the PRs to merge only on `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`
-(Copilot could not review, quota say: its reason is shown and nothing waits for it); any other is
-listed apart with its reason (conflict with the base, GitHub still computing it, waiting for Copilot's
-review, Copilot comments being answered). CI never holds a PR back: "CI passed", "CI still running"
-or "CI failed: <jobs>" is shown beside each, and every PR is written `[#N](<url>)`. landspec never
-requests a Copilot review: a repository's ruleset, or a person, does.
+**The release.** Once the feature PR is merged, `/landspec:implement` makes the release, one step per
+run, read each time from git and GitHub (`implement.sh release-plan`, which finds the feature's PR by
+its branch): a release PR `chore(release): X.Y.Z` with the bump (`release-bump`) and the notes,
+through `pr.sh fix` and its review; once you merge it, the tag `vX.Y.Z` on its merge commit; then
+the published release with those notes. It never merges. Before the bump it runs the `full` security
+audit unattended on `origin/<base>`, once per commit (`implement.sh audit-plan`, `audit-record`; the
+report is kept in `.git/landspec-security/`). A confirmed critical or high finding holds the release:
+no bump, nothing filed or posted, and the last line is `run /landspec:security <report>`, which
+tracks and fixes it. The main session runs `/code-review high` and `/security-review` for it and
+hands their output to the audit. With nothing held, the release notes get a "Known issues" section:
+on a public repository only a count per severity and a neutral category, on a private one each
+remaining finding's title and category; never an exploit detail. The run's last report names the
+scanners that were missing.
 
-On the feature's own branch (`<branch_prefix>/<NNN>-<name>`, made by `branch.sh <feature>`),
-`implement.sh status [--running <task>]…` starts every startable task at once instead: it refuses without a current `ready` plan
-review, a legacy feature (`LEGACY=`) or, on `full`, the analyzed marker; prints one `TASK=<id>
-STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=n]` line per task, then one
-`START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]` line per task whose
-dependencies are done, in `ORDER`, while fewer than `parallel_tasks` are in flight (the `--running`
-ones count), one `REVIEW=<id>`, `FIX=<id> [REASON=conflict]` or `LAND=<id>` line per task in that
-state, then `CHECK=yes|no`, `PR=<url|->`, `ORDER=` and `DONE=x/y`. A task is `done` when the
-branch's history holds its landing commit (a message line `Landspec-Task: <NNN>/<id>`, such as
-`Landspec-Task: 008/T001`). The feature's number is in it because task ids restart at `T001` in every
-feature: however the branch was joined (a PR merge, a pull merge, a squash), its own landings are found
-and never another feature's. `implement.sh land <task>`
-lands a `ready` task whose review matches its ref: it merges the ref `--no-ff` and ticks `tasks.md` on
-the feature branch's side in the same merge commit (so a plan edit on the branch never conflicts with
-a ref that did not touch it), titled `<id>: <summary>`, with one `Low: <file>:<line> <title>` line per
-low finding of the task's review (a delta's and its first round's) and the trailers
-`Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready <patch id>`, pushes the branch and deletes the
-ref (`LANDED=<id> COMMIT=<sha>`); it refuses uncommitted changes in the feature folder. A conflict
-aborts the merge, prints `CONFLICT=<id> FILES=<files>` and exits 1: the task gets one conflict round
-(`FIX=<id> REASON=conflict`, outside `task_rounds`: merge the feature branch into the ref, test,
-review); a second conflict marks it failed (`FAILED=<id>`). `retry` also deletes the task ref and
-gives back the conflict round. The plan review ignores task ticks and the `**Issue**: #N` line. On upgrade, a plan
-review recorded on a `tasks.md` that already had `- [X]` ticks or that line goes stale once: review the plan again.
-
-When every task is done, `/landspec:implement` runs the **end check** on the feature branch itself:
-`implement.sh check` merges `origin/<base>` into the branch first (a conflict stops it, naming the
-files), points `refs/landspec/check/<feature>` at the head and prints `CHECK=<head> ROUND=<n>`. The
-test command runs on that head (through `run_tests`, in a detached worktree; a tree already green is not
-run again) and `check-result red|green` records it; then an Opus reviewer in **feature review** mode
-reads the spec against the diff from `origin/<base>` and reports each FR, scenario and SC as `met`,
-`not met` or `not verifiable` (`review.sh record --feature`). All three write one end-check record per
-feature (`head:`, `heads:`, `tests:`, `verdict:`, `reviewed:` and the lines), never deleted. Each `not
-met` item, and red tests as one, becomes a new task appended to `tasks.md` on the branch, given one
-plan review pass, committed, pushed and built in the same run. `check` counts the heads it checked
-(`feature_rounds:`) and refuses a head whose own tests or review already failed (`UNCHANGED=`); past
-the limit (`ROUNDS_EXHAUSTED=`) the PR stays a draft with what is not met in its body.
-
-When every task of the feature is merged, `/landspec:implement` makes the **release**, one step per
-run, read each time from git and GitHub (`implement.sh release-plan`): a release PR `chore(release):
-X.Y.Z` with the bump (`release-bump`) and the notes, through `pr.sh fix` and its review; once you merge
-it, the tag `vX.Y.Z` on its merge commit; then the published release with those notes. It never merges.
-Before the bump it runs the `full` security audit unattended on `origin/<base>`, once per commit
-(`implement.sh audit-plan`, `audit-record`; the report is kept in `.git/landspec-security/`). A
-confirmed critical or high finding holds the release: no bump, nothing filed or posted, and the last
-line is `run /landspec:security <report>`, which tracks and fixes it. The main session runs
-`/code-review high` and `/security-review` for it and hands their output to the audit. With nothing
-held, the release notes get a "Known issues" section: on a public repository only a count per severity
-and a neutral category, on a private one each remaining finding's title and category; never an
-exploit detail. The run's last report names the scanners that were missing.
-
-`/landspec:implement` is the default after `/speckit-tasks`: the spec PR's last line names it, and
+`/landspec:implement` is the default after the plan review: its last line names it, and
 `/landspec:next` offers it after the progress.
-
-Merge stacked PRs **parents first**. Once a parent's PR is merged, `implement.sh [feature] restack` moves
-each stacked branch, in `ORDER`, onto the base (or onto its next unmerged ancestor), and a child whose
-parent got new commits onto the parent's new head. It works in its own worktree `<repo>-<feature>-run`,
-pushes with a lease, retargets the PR, and marks it ready only when it now targets the base and its
-review still holds (`REVIEW=kept`: the diff is unchanged); a move that changes the diff needs a new
-review (`REVIEW=needed`) and the PR stays a draft until then. It leaves alone a branch checked out in
-any worktree, a running task, one moved on GitHub, and one with unpushed commits
-(`RESTACK_SKIPPED=<task> (<why>)`); a conflict is aborted and reported (`RESTACK_CONFLICT=<task>`).
-`implement.sh [feature] stack <task> <onto-task>` stacks a started task onto another's branch the same
-way.
-
-A task is **claimed** the moment it starts: its branch is pushed to origin, empty. From then on
-`next` in every clone and worktree shows it as in progress and never picks it; the clone that
-started it sees it as `resume` and picks it first. When origin refuses that push (no network, no
-write access, a server hook), the task still starts and `branch.sh` warns `could not claim <branch>
-on origin: <git's error>`: other clones may start the same task until the branch is pushed. The
-claim is exclusive: it is pushed only if the branch is still absent on origin, so when two clones
-start the same task at once, the second one exits 3 with `<task> was claimed elsewhere (<branch> is
-on origin)`, back where it started and without the branch. A branch that already exists, locally or
-on origin, is simply switched to: that is how you continue your own task in another clone. Teammates need nothing but `/landspec:init`
-once in their clone: the shared state is `tasks.md` on the base branch, the issues, and the
-branches on origin.
 
 ## What happens automatically
 
@@ -240,25 +238,26 @@ branches on origin.
 | after `/speckit-tasks` | `/speckit-landspec-plan-review`: the plan is **grounded in the real code** (every symbol a task removes or changes the behaviour of is searched for, with its callers, every quickstart command is read, every data write names its target), then reviewed once by a fresh agent (`review.sh record --plan`): only a high finding sends the plan back for a fix and one more pass, read cold; medium and low findings are shown to you; then the spec folder is committed on the feature branch (`docs(specs): <feature> plan and tasks`) and pushed. No GitHub issue is created: progress is `/landspec:next` and the PR's task table |
 | after `/speckit-analyze` | records the analysis from its report: `analyzed.sh <report-file>` refuses a file without the report's "Specification Analysis Report" and "Coverage Summary Table", and keeps the report next to the record (level `full` needs it, for the current `tasks.md`, before tasks start) |
 | after `/speckit-converge` | the same plan review for the tasks it added, then the spec folder committed on the feature branch |
-| before `/speckit-implement` | refuses without exactly one task, an issue, the merged spec and a clean tree; otherwise switches to `feat/<feature>-t00x-<slug>` and pushes it to origin at once (the claim). spec-kit's implement command is told to build only that task and not tick it (the issue closing is "done"). Before writing code, the implementer (this path or a `/landspec:implement` implementer) weighs each installed skill and MCP server that could bear on the task, `<name> - YES/NO - <reason>`, and invokes every YES (never `landspec:*` or `speckit-*`); its `Skills:` line, `Skills: <name> (<what it was used for>), …` or `Skills: none matched` (`not reported` when an implementer gave none), goes in the PR's *Evidence*. No setting chooses the skills: what is installed is what is weighed, and a very large set can push descriptions out of Claude Code's skill listing budget, hiding the right one |
-| after `/speckit-implement` | checks, commit, the security scan on the change, the independent review (it tries to break each thing the change claims with a concrete counterexample and to disprove each finding before reporting it, ends with a `Findings: <n> high, <n> medium, <n> low` count, is recorded for the exact diff, and is fixed until `ready`; `review.sh record` refuses an empty report file, one the reviewer named but never wrote) with `/security-review` and then mutation testing (see "Mutation testing") while it runs, both run again after any later commit, push, PR with `Closes #N` and `## Review`. The PR is refused without a recorded `ready` review for the diff, at every level, and when the constitution's test command fails (it runs before the push; with no test command, a warning says the tests were not run). Tests run once per tree: a green run on a clean, committed tree is recorded in `.git/landspec-test/` for that tree and that command (not the copy's path) and is not run again for the same two in any copy of the repository (the builder's worktree, the main checkout, a detached worktree): any edit, commit or change of the command runs it again, and a red run records nothing. Ignored files (dependencies, `.env`, generated code) and the environment are not part of the record: changing only those does not run it again. `implement.sh mark <task> implemented` refuses a task ref whose head tree has no such green run (`no green test run for <ref> at <sha>`; with no test command it is accepted), so the implementer runs the tests through `run_tests` after its last commit and `pr.sh` reuses that run. With a `mutate` command in the constitution, it is also refused without a `mutants.sh` result for the diff, on surviving mutants that `## Evidence` does not explain, or when the command could not run (exit 126 or 127, recorded as `unavailable`; a wrapper such as `uv run` exits otherwise, so a tool missing behind one shows as survivors); without one, the body says mutation testing was not run. It is refused without a `security-scan.sh --changed` result for the diff (missing or failed scanners and findings do not refuse; the body names each scanner that did not run, as "Scanners not run: semgrep (failed)"). Each `mutants.sh` and `security-scan.sh` run gets its own report folder (a timestamp and a random suffix), so copies running them in the same second never share one. A task review (full or delta) weighs the installed skills the same way before reading the diff and adds its own `Skills:` line after `Model:`; a skill never widens what the reviewer does or changes the report's shape; a plan review and a feature review do not weigh skills. It ends with the PR URL and the hand-over rule (`pr.sh state`: ready to merge only on `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`, else the reason; the CI state shown, never waited for); on Copilot's review pending or its comments, run `/speckit-implement <task>` again: a run again on a task with an open PR verifies and fixes or answers each Copilot comment, runs the PR step from its checks (a full review), then replies to and resolves each thread |
-| a PR that is not a task | a small fix, a dependency bump, landspec's own setup or level change: the same gate as a task PR at every level (recorded `ready` review, `## Review`, tests, mutants and scan for the diff), opened with `pr.sh fix "<title>" <body-file>` from its own branch, with no issue and no `Closes`. The guard blocks a raw `gh pr create`, except a promotion whose head is a long-lived branch (`develop` into `main`) |
-| the feature PR | `pr.sh feature "<title>" <body-file>`, on the feature's branch only (elsewhere it refuses, naming `branch.sh <feature>`): the gates of `pr.sh fix` on the whole diff from `origin/<base>` (clean tree, `## Evidence` on `full`, `## Test changes`, the Terraform plan, the test command), but no recorded branch review and no `## Review`, since every landing commit carries its task's `ready` review, and no scan or mutants record: the draft opens after the first landing, and both run once on the whole feature diff. It refuses a task ticked `[X]` with no landing commit (`untick it or run /landspec:implement`), and adds to the body a `## Tasks` table (task, summary, `done`, `failed` or `pending`, landing commit, review assessment), `## End check` from the feature's end-check record (`.git/landspec-review/feature-<feature>`) when it has a `head:` (head, round, tests, assessment, its `met` / `not met` / `not verifiable` lines, and `checked at <reviewed>; the branch is now at <sha>` once the branch moved); it closes no issue. It opens a draft PR, or replaces the open one's body; where drafts are not available it warns `do not merge this PR before pr.sh feature --ready` and opens a normal PR. Prints `PR=<url> READY=no` |
+| before `/speckit-implement` | `branch.sh <feature>` switches to the feature's branch; it refuses a task id (`branch.sh takes a feature, not a task: tasks are built on the feature branch`). Tasks are built by `/landspec:implement` (see "Building a feature"). Before writing code, each implementer weighs each installed skill and MCP server that could bear on the task, `<name> - YES/NO - <reason>`, and invokes every YES (never `landspec:*` or `speckit-*`); its `Skills:` line, `Skills: <name> (<what it was used for>), …` or `Skills: none matched` (`not reported` when an implementer gave none), is kept with the task. No setting chooses the skills: what is installed is what is weighed, and a very large set can push descriptions out of Claude Code's skill listing budget, hiding the right one. A task review (full or delta) weighs the installed skills the same way before reading the diff and adds its own `Skills:` line after `Model:`; a skill never widens what the reviewer does or changes the report's shape; a plan review and a feature review do not weigh skills |
+| tests, once per tree | a green run on a clean, committed tree is recorded in `.git/landspec-test/` for that tree and that command (not the copy's path) and is not run again for the same two in any copy of the repository (the builder's worktree, the main checkout, a detached worktree): any edit, commit or change of the command runs it again, and a red run records nothing. Ignored files (dependencies, `.env`, generated code) and the environment are not part of the record: changing only those does not run it again. `implement.sh mark implemented`, `pr.sh feature` and the end check reuse that run; with no test command, a warning says the tests were not run. Each `mutants.sh` and `security-scan.sh` run gets its own report folder (a timestamp and a random suffix), so copies running them in the same second never share one |
+| after `/speckit-implement`, the feature PR | `/speckit-landspec-pr` runs `pr.sh feature "<title>" <body-file>`, on the feature's branch only (elsewhere it refuses, naming `branch.sh <feature>`): the gates of `pr.sh fix` on the whole diff from `origin/<base>` (clean tree, `## Evidence` on `full`, `## Test changes`, the Terraform plan, the test command through `run_tests`), but no recorded branch review and no `## Review`, since every landing commit carries its task's `ready` review. It refuses a task ticked `[X]` with no landing commit (`untick it or run /landspec:implement`), and adds to the body a `## Tasks` table (task, summary, `done`, `failed` or `pending`, landing commit, review assessment), `## Low findings` (the `Low:` lines of the landing commits) and `## End check` from the feature's end-check record (`.git/landspec-review/feature-<feature>`) when it has a `head:` (head, round, tests, assessment, its `met` / `not met` / `not verifiable` lines, and `checked at <reviewed>; the branch is now at <sha>` once the branch moved). No `Closes #N`. It opens a draft PR once the first task has landed, or replaces the open one's body; where drafts are not available it warns `do not merge this PR before pr.sh feature --ready` and opens a normal PR. The draft needs no scan or mutation record. Prints `PR=<url> READY=no`. **`pr.sh feature … --ready`** also refuses unless every task is done, `review.sh check --feature` passes (a `ready` feature review for the current head, with green tests) and `security-scan.sh --changed` and, with a `mutate` command, `mutants.sh` are recorded for this diff: it refuses on a `findings high` line, lists the other findings and each scanner that did not run ("Scanners not run: semgrep (failed)"), and needs a line in `## Evidence` for each surviving mutant (an unavailable mutation tool, exit 126 or 127, is listed; without a `mutate` command, the body says mutation testing was not run). Then it marks the PR ready and prints `PR=<url> READY=yes` |
+| a PR that is not a feature | a small fix, a dependency bump, landspec's own setup or level change, a release: a recorded `ready` review, `## Review`, tests, mutants and scan for the diff, at every level, opened with `pr.sh fix "<title>" <body-file>` from its own branch, with no `Closes`. The guard blocks a raw `gh pr create`, except a promotion whose head is a long-lived branch (`develop` into `main`) |
 | an open PR, before it is handed over | `pr.sh state <pr>` (a number or the PR's URL) reads it in one GraphQL query and prints `CONFLICT=no\|yes\|unknown` (`unknown` while GitHub has not computed it), `CI=pending` (a check not completed), `fail <name> (<conclusion>),…` (failed, cancelled, timed out, action required or startup failure; a failed or errored status), `pass`, or `none` (no check: CI is shown, never waited for), and `COPILOT=`, in this order: `pending` (a Copilot review request is open), `comments <n> REPORT=<file> [RESOLVE=<id>,…]` (`n` unresolved threads Copilot opened with no comment after Copilot's own, written to `.git/landspec-review/copilot-<pr>` as `## Findings` with `- <path>:<line> thread=<id> [(outdated)] <first line>` and the comment below; `RESOLVE=` the unresolved ones already replied to), `unavailable <first sentence>` (Copilot's newest review or comment says it was unable to review), `clean` (Copilot reviewed, nothing left) or `none`. Copilot is any login matching `copilot`. It only reads: it never requests a review, and reads no clock, so in the seconds after a push, before a ruleset's request appears, a PR can read ready. `pr.sh state <pr> --reply <thread id> [<file>]` posts the file as the reply to that thread's first comment and resolves it (`REPLIED=<id>`), or only resolves a thread already replied to (`RESOLVED=<id>`); it refuses, posting nothing, a thread not on that PR, not Copilot's, already resolved, or unreplied with no or an empty file; a failed post resolves nothing, and a failed resolve exits 1 after `REPLIED=`. Limits: 100 checks, threads and reviews, 30 comments per query |
 | every PR | assigned to you (a failure only warns; no milestone or project, no issue); no AI attribution lines; long output folded into `<details>` |
-| a task PR that changes existing tests | refused unless the body has a `## Test changes` section saying why: adding tests to an existing file needs no explanation; a deletion, an edit or an added skip does. An added line can still weaken a test in ways this rule cannot see: the review reads it, and `review.sh risk` still flags gate lines. Tests are files under `tests/`, `test/`, `Tests/`, `__tests__/`, `spec/`, `e2e/`, `cypress/` or a `*.Tests/` folder, and files named `*.test.*`, `*.spec.*` (or with `_`, `-`), `*.cy.*`, `tests.py`, `test_*.py` or `FooTests.swift` (case-sensitive). For any other layout, add a line `tests: <regex>` (`grep -E`) to the constitution; an invalid one makes `pr.sh`, `mutants.sh` and `review.sh record` refuse. The same files are what a review's `- proven:` line may name |
+| a PR that changes existing tests | refused unless the body has a `## Test changes` section saying why: adding tests to an existing file needs no explanation; a deletion, an edit or an added skip does. An added line can still weaken a test in ways this rule cannot see: the review reads it, and `review.sh risk` still flags gate lines. Tests are files under `tests/`, `test/`, `Tests/`, `__tests__/`, `spec/`, `e2e/`, `cypress/` or a `*.Tests/` folder, and files named `*.test.*`, `*.spec.*` (or with `_`, `-`), `*.cy.*`, `tests.py`, `test_*.py` or `FooTests.swift` (case-sensitive). For any other layout, add a line `tests: <regex>` (`grep -E`) to the constitution; an invalid one makes `pr.sh`, `mutants.sh` and `review.sh record` refuse. The same files are what a review's `- proven:` line may name |
 
 These are spec-kit hooks, so you never type them. If you skip one, run it yourself:
-`/speckit-landspec-plan-review`, `/speckit-landspec-pr`.
+`/speckit-landspec-plan-review`, `/speckit-landspec-pr`, `/landspec:implement`.
 
 ## Mutation testing
 
-`mutants.sh` runs the constitution's `mutate` command on the branch's diff while the review runs
-(after the scan and `/security-review`), and keeps the result for that exact diff; the review is
-recorded and its findings fixed only after it ends, since a mutant may be in the tree until then.
-Each run writes its log to its own folder, so implementers running at once never share one; `pr.sh task` and
-`pr.sh fix` refuse a PR without it. A later commit means one more run; one that only adds the tests
-killing survivors after a `ready` review is checked with a delta. The command is told what changed:
+`mutants.sh` runs the constitution's `mutate` command once per feature, on the whole feature diff
+from `origin/<base>`, after every task has landed and the end check passed, and keeps the result for
+that exact diff: `pr.sh feature --ready` and `pr.sh fix` refuse without it (the draft feature PR
+needs none). A mutant may be in the tree until the run ends, so nothing else edits or tests that
+tree meanwhile. Each run writes its log to its own folder, so two runs at once never share one. A
+later commit makes a new diff, which needs one more run (and, on the feature branch, an end check
+of the new head). The command is told what changed:
 
 | Variable | Holds | For |
 |---|---|---|
@@ -285,7 +284,7 @@ the source. landspec's reviewer runs in its own copy of the reviewed commit (`is
 ## Terraform plan
 
 Only with `aws: on`, at `standard` and `full`, and only for a diff that touches a `*.tf` file,
-`pr.sh task` and `pr.sh fix` need the plan recorded for this exact diff. In the root you changed:
+`pr.sh feature` and `pr.sh fix` need the plan recorded for this exact diff. In the root you changed:
 
 ```bash
 terraform plan -out=tfplan   # git-ignore tfplan
@@ -319,24 +318,24 @@ of the same commit is not caught.
 The scripts append one line per step to `.git/landspec-events`, shared by every worktree of the
 clone: `<epoch> <UTC time> <branch> <event> key=value...`. The events are `start` (`branch.sh`
 made the branch), `review` (`review.sh record`, `round=full|delta|plan|feature` and the verdict;
-a plan round also names its `feature=` and its `h=`, `m=` and `l=` counts), `issues` (older logs only: `issues.sh`, now removed, a run
+a plan round also names its `feature=` and its `h=`, `m=` and `l=` counts), `issues` (older logs only: a run of the removed issue step
 that created or linked issues, `created=<n>`), `outside` (`review.sh outside --plan <n>`, the real
-findings of the spec PR's outside reviewers),
+findings of outside reviewers of the plan),
 `mark` and `fail` (`implement.sh`, with `branch=` named, since the run's copy is detached),
 `tests` (`pr.sh`, the seconds the test command took, `ok=1` or `ok=0`; a reused green run logs
 `secs=0`) and `pr` (the PR it opened or found). A write that fails is silent and never stops a
-script. The file stays in `.git`: it is never pushed, and nothing from it reaches an issue or a PR.
+script. The file stays in `.git`: it is never pushed, and nothing from it reaches a PR.
 Nothing rotates it (about 10 lines per PR).
 
 `bash .specify/extensions/landspec/scripts/stats.sh` prints one row per feature PR and per fix PR
-(and per task PR of the per-task flow); a feature PR's row also counts its tasks' refs
+(and per PR of a per-task feature); a feature PR's row also counts its tasks' refs
 (`landspec/<NNN>-t<nnn>-task`), so the review rounds of every task add up on it (minutes from start to its first `pr` event, `?` with no `start` event, so a later `pr.sh` run that finds the open
 PR, or marks the draft ready, does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
 then one `PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> … | outside <n>`
 line per feature with plan events (the counts of each plan round, `?` when its report had none; plan events
 written by 2.7.0 name no feature and are grouped under `?`),
 then `PRS=`, the median start-to-PR minutes, the mean rounds and how many were `ready` on
-the first review. Spec PRs are left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used
+the first review. A per-task feature's own PR for its spec folder is left out of the rows and the totals. It reads only this clone's log, and groups by branch name, so a branch name used
 twice adds both PRs into one row.
 
 ## Using Claude Code well
@@ -344,9 +343,9 @@ twice adds both PRs into one row.
 | Tool | Where it fits |
 |---|---|
 | **Plan mode** (`Shift+Tab`) | thinking out loud before `/speckit-specify` or during `/speckit-clarify`. Not for `/speckit-plan`, which writes files that plan mode blocks. |
-| **`/code-review ultra`** | yourself, before merging a large or risky change (cloud, billed). The review before each PR is landspec's own `/speckit-landspec-review`: a fresh agent grounded in the whole repository, so it is not anchored on the session that wrote the code. |
-| **`/security-review`** | before each PR, automatically, and inside `/landspec:security` |
-| **Worktrees** | `branch.sh <feature> <task>` run in a worktree beside the repo (`<repo>-<feature>-<task>`) claims the task's branch on origin. Open a Claude Code session in it and run `/speckit-implement <feature> <task>`. Each task keeps its own branch and PR. Blocked tasks and tasks without `[P]` right after their ID are never offered. A claim that cannot be pushed only warns, so another clone may still start the same task. When you're done, remove each worktree with `git worktree remove <path>`. The active feature, the `/speckit-analyze` record and the security reports are shared by every worktree, so `full` works there too. |
+| **`/code-review ultra`** | yourself, before merging a large or risky change (cloud, billed). landspec's own reviews (`/speckit-landspec-review`: one Opus review per task, the plan review and the end check's feature review) run in a fresh agent grounded in the whole repository, so they are not anchored on the session that wrote the code. |
+| **`/security-review`** | before a fix PR, automatically, for the release audit, and inside `/landspec:security` |
+| **Worktrees** | `/landspec:implement` gives each implementer its own copy (Claude Code's `isolation: "worktree"`) on its task ref, and each review its own copy of the reviewed commit; nothing is pushed from them but the landed feature branch. A `worktree_setup` command prepares a fresh copy. The active feature, the `/speckit-analyze` record, the test records and the security reports live in the shared git directory, so `full` works in every copy. A copy left behind is removed with `git worktree remove <path>`; `implement.sh status` runs `git worktree prune` first. |
 
 ## Configuration
 
@@ -355,21 +354,30 @@ twice adds both PRs into one row.
 | Key | Default | Meaning |
 |---|---|---|
 | `level` | `standard` | `lite`, `standard` or `full`; set it with `/landspec:level` |
-| `base_branch` | `auto` | the branch task PRs target: `main` on lite, `develop` otherwise |
-| `branch_prefix` | `feat` | task branches are named `<prefix>/<feature>-<task>-<slug>` |
-| `review_model` | *(no longer read)* | every review (task, plan, feature) runs on `opus` in the plugin's `landspec:reviewer` agent, whatever this key says; when Opus is not available the review stops, with no fallback. `opus` is passed on every launch, so on a cheap session the review costs more than the session. `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides it (the launch may then leave `model` empty only when it names an Opus model; the record warns). The plugin's hook that blocks a review launch on any model but `opus`, in a fork, or without `isolation: "worktree"`, exists only where the plugin is installed. A project whose landspec copy predates that rule is refused until `/landspec:init` updates it |
+| `base_branch` | `auto` | the branch feature PRs target: `main` on lite, `develop` otherwise |
+| `branch_prefix` | `feat` | the feature branch is named `<prefix>/<NNN>-<short-name>`, the spec folder's name (`feat/008-one-pr-per-feature`) |
 | `worktree_setup` | *(empty)* | one command each `/landspec:implement` implementer runs first in its own copy (a new worktree has no git-ignored files: `pnpm install`, say); when it fails, that task is `failed` with its output. Empty: each implementer prepares its own copy as the README says, and a task it cannot prepare is `failed` (`setup: <what is missing>`) |
 | `implement_model` | *(empty: the session's)* | the model of `/landspec:implement`'s implementers: `sonnet`, `opus` or `fable`; any other value is refused |
 | `task_rounds` | `2` | how many `changes needed` reviews a task gets (the first review and one delta; a landing conflict's round is not counted) before `implement.sh mark … changes` marks it `failed` (`FAILED=<id>`; `retry` lifts it): a number from `1` to `9` |
-| `feature_rounds` | `3` | how many heads of the feature branch the end check checks (a red run or a `changes needed` feature review count once per head) before it stops and asks: a number from `1` to `9` |
+| `feature_rounds` | `3` | how many heads of the feature branch the end check checks (a red run or a `changes needed` feature review count once per head; red tests or a `not met` line give new tasks, and the next head is checked again) before it stops and asks: a number from `1` to `9` |
 | `version_files` | *(empty)* | the files that carry the version (`version: "X.Y.Z"` or `"version": "X.Y.Z"`), comma separated, the first one read as the current version; `/landspec:implement` bumps them for the release (minor; patch when every task is a `Fix`). Empty: no release step, only notes |
 | `release_notes` | *(empty)* | the folder for each release's notes, `<folder>/X.Y.Z.md`; they are also the published release's body; without it, the notes are the release PR's body, up to its `## Evidence` or `## Review` |
-| `parallel_tasks` | `4` | how many builders `/landspec:implement` runs at once on the feature branch, each on its own task ref (not stacked PRs): `implement.sh status` prints at most this many `START=` lines, minus the running ones; reviewers take no slot: a number from `1` to `16`, any other value is refused |
+| `parallel_tasks` | `4` | how many builders `/landspec:implement` runs at once on the feature branch, each on its own task ref: `implement.sh status` prints at most this many `START=` lines, minus the running ones; reviewers take no slot: a number from `1` to `16`, any other value is refused |
 | `aws` | `off` | `on` turns on the AWS access layer. `/landspec:level` then writes `.mcp.json` when it does not exist (the `aws-mcp` server: `uvx mcp-proxy-for-aws==<MCP_PROXY_VERSION>`, run as the `landspec-agent-dev` profile; an existing one is kept as it is, and `remove.sh` deletes it only while unchanged) and adds a "Cloud access" section per level to the constitution. `MCP_PROXY_VERSION` in `extension/scripts/pins.sh` is a PyPI release: `bin/check-tools.sh` reads GitHub releases only, so it is bumped by hand, to a release a few weeks old. `off`: nothing of this is written |
 | `aws_prod_profiles` | *(empty)* | comma-separated AWS CLI profiles that reach a prod account, matched exactly; set by `/landspec:aws` (empty: one account only) |
 | `aws_prod_paths` | *(empty)* | comma-separated folders whose Terraform targets prod (e.g. `infra/envs/prod`); set by `/landspec:aws` |
 | `aws_agent_role` | `landspec-agent` | the agent role's name; `/landspec:aws` sets it when unset |
 | `infra_dir` | `infra` | the folder holding the Terraform code, named in the plan gate's refusal; `/landspec:aws` sets it when unset, to the folder with the most `*.tf` files |
+
+### The reviewer's model
+
+There is no setting for the review model: every review (task, plan, feature) runs on `opus` in the
+plugin's `landspec:reviewer` agent; when Opus is not available the review stops, with no fallback.
+`opus` is passed on every launch, so on a cheap session the review costs more than the session.
+`CLAUDE_CODE_SUBAGENT_MODEL_FORCE` overrides it (the launch may then leave `model` empty only when it
+names an Opus model; the record warns). The plugin's hook that blocks a review launch on any model but `opus`,
+in a fork, or without `isolation: "worktree"`, exists only where the plugin is installed. A project whose landspec copy predates that rule is refused until `/landspec:init`
+updates it. A key for the review model left in an older config is ignored.
 
 ### `/landspec:aws`
 

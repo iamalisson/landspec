@@ -520,7 +520,7 @@ only one PR per feature, with no issues.
     generated lite constitution and no "One task = one issue"; this repository's generated block
     says one PR per feature; `tests/run.sh` passes.
 
-- [ ] T015 [P] [US6] Rewrite the design, reference and security docs for one PR per feature, in docs/design.md, docs/reference.md and docs/security.md (depends on T013, T019)
+- [X] T015 [P] [US6] Rewrite the design, reference and security docs for one PR per feature, in docs/design.md, docs/reference.md and docs/security.md (depends on T013, T019)
   - Comes from: FR-016, US6 scenario 3; constitution "Docs are the source of truth"
   - What: `docs/design.md`: replace the sections "One task = one issue = one branch = one PR", "The
     spec is its own PR" and "Parallel tasks, stacked PRs" with one section on one PR per feature
