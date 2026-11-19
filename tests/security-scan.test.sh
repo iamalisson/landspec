@@ -143,7 +143,7 @@ check "when --changed on a stacked branch, then semgrep scans only its own files
 git switch --quiet feat/x
 
 out="$(PATH="$TMP/none" bash "$scan" --changed)"
-check "when --changed, then its summary lines are recorded for this diff (what pr.sh task requires)" \
+check "when --changed, then its summary lines are recorded for this diff (what pr.sh feature --ready requires)" \
   'rec="$(source "$SCRIPTS/lib.sh" && diff_record landspec-security)"; [[ "$(cat "$rec")" == "$(grep -v "^REPORT_DIR=" <<<"$out")" ]] && grep -q "^gitleaks *missing" "$rec"'
 FAKE_FIND=semgrep FAKE_OUT='{"results":[{"extra":{"severity":"ERROR"}}]}' PATH="$TMP/tools:$PATH" bash "$scan" --changed >/dev/null
 check "when --changed and semgrep has a high finding, then the record keeps the findings high line (what pr.sh feature --ready reads)" \

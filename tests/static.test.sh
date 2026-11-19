@@ -183,8 +183,8 @@ check "when the docs say what the scan proves, then it ran, never that it passed
 # FR-013/#258: the plan gate is a layer of the security model, with what it checks and how far it holds.
 check "when the security layers table is read, then a Before a PR opens, with row names tfplan.sh gate and its Skipped line" \
   'grep -E "^\| Before a PR opens, with " docs/security.md | grep -F "tfplan.sh gate" | grep -qF "Skipped"'
-check "when the example describes a [P] task, then it uses the parallel offer of next" \
-  'grep -qF "\`next\` prints a \`parallel\` line" examples/README.md && ! grep -qF "claude --worktree" examples/README.md'
+check "when the example describes the build, then /landspec:implement starts the startable tasks at once, a dependent one waits, and next makes no parallel offer" \
+  'grep -qF "starts T001 and T003 at once" examples/README.md && grep -qF "so it waits" examples/README.md && ! grep -qE "parallel. line|claude --worktree" examples/README.md'
 check "when the docs are read, then the README Start and the reference Update say the setup goes to the base branch" \
   'grep -q "base branch" <<<"$(sed -n "/^## Start/,/^## The loop/p" README.md)" && grep -q "base branch" <<<"$(sed -n "/^## Update/,/^## What/p" docs/reference.md)"'
 
@@ -503,6 +503,11 @@ check "then without worktree_setup it prepares its own copy from the README, and
    && grep -qF "return \`Failed: setup: <what is missing>\` and stop" <<<"$ag"'
 check "then README, help and the reference list /landspec:implement, worktree_setup and implement_model" \
   'grep -qF "/landspec:implement" README.md && grep -qF "\`implement\`" skills/help/SKILL.md && grep -q "^| \`worktree_setup\` |" docs/reference.md && grep -q "^| \`implement_model\` |" docs/reference.md'
+# Spec 008 T016 (FR-016): README and help describe one PR per feature, its tasks in parallel, each reviewed by Opus.
+for f in README.md skills/help/SKILL.md; do
+  check "when $f describes the loop, then it names pr.sh feature, tasks in parallel and Opus reviews" \
+    "grep -qF '\`pr.sh feature\`' $f && grep -qiE 'in parallel' $f && grep -qF Opus $f"
+done
 
 # Only the repository's own PRs count: a fork's PR may reuse any branch name or title.
 check "when a script lists PRs, then every gh pr list keeps only PRs from this repository" \
@@ -704,5 +709,24 @@ check "when the self-edit deny is on another resource, then the check names it" 
 pad() { echo "1; END {for (i = 0; i < $(($1 - $(wc -c < "$scp"))); i++) printf \" \"}"; } # pad <size>: the SCP grown to exactly <size> characters
 check "when the policy holds 5121 characters, then the check names it, and at exactly 5120 it does not" \
   'scp_broken "longer than the 5120 characters" "$(pad 5121)" && ! scp_broken "longer than the 5120 characters" "$(pad 5120)" && [[ "$(wc -c < "$TMP/scp/p.json")" -eq 5120 ]]'
+
+# Spec 008 T016 (FR-016): no shipped file names a per-task mode or the issue step. One allow-list.
+per_task='pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|speckit-implement T(nnn|[0-9])|restack|check-copy|review_model|issues\.sh|landspec[.-]issues|issue_labels|SIMPLIFY|Simplify|answer --plan|task PR|spec PR|one task = one issue|task = issue|one issue per (task|feature)|one issue and one PR|feature issue|one task per run|(before|after) (the )?issues|gets an issue'
+per_task_ok=(
+  '^docs/releases/'                                              # release notes: what earlier versions did
+  "^docs/GUARDRAILS\.md:[0-9]+:.*landspec's own"                 # evidence rows: incidents from landspec's own past use
+  'finish its open task PRs as ordinary PRs'                     # the R11 legacy message (lib.sh, skills/next)
+  'scripts/implement\.sh:[0-9]+:.*(legacy|no task PR of)'        # release-plan's path for a legacy feature (R11)
+)
+per_task_leftovers() { # per_task_leftovers <path>...: "file:line" of each match outside the allow-list
+  grep -rnIE "$per_task" "$@" | grep -vE "$(IFS='|'; echo "${per_task_ok[*]}")" | cut -d: -f1,2 | tr "\n" " " || true
+}
+left="$(per_task_leftovers README.md docs skills agents extension preset hooks examples bin .claude-plugin .specify/extensions/landspec)"
+check "no shipped file names a per-task mode or the issue step${left:+ — found: $left}" '[[ -z "$left" ]]'
+mkdir -p "$TMP/neg/docs" "$TMP/neg/scripts"
+echo "Merge the spec PR, then run /speckit-implement T001." > "$TMP/neg/docs/old.md"
+printf '#!/usr/bin/env bash\n# after implement.sh restack, the task PR moves\n' > "$TMP/neg/scripts/old.sh"
+check "when an old line is put back in a doc, then the check names it" '[[ "$(per_task_leftovers "$TMP/neg/docs")" == *old.md:1* ]]'
+check "when an old line is put back in a script comment, then the check names it" '[[ "$(per_task_leftovers "$TMP/neg/scripts")" == *old.sh:2* ]]'
 
 exit "$FAIL"

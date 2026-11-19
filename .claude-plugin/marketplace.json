@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "landspec",
-  "description": "Spec Kit, with the boring parts done: one task = one issue = one branch = one PR.",
+  "description": "Spec Kit, with the boring parts done: one feature = one branch = one PR, its tasks built in parallel.",
   "owner": { "name": "iamalisson", "url": "https://github.com/iamalisson" },
   "plugins": [
     {
       "name": "landspec",
-      "description": "Every task gets an issue, a branch and a PR; every project gets defaults sized to its complexity.",
+      "description": "Every feature gets one branch and one PR, its tasks built in parallel and each reviewed by Opus; every project gets defaults sized to its complexity.",
       "source": "./",
       "category": "productivity"
     }

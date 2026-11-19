@@ -685,7 +685,7 @@ printf 'Delta from: %s\nReviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment
 check "from another branch, then record --delta --branch <b> records the fix round of <b>, and check --branch <b> passes" \
   'out="$("$r" record --delta --branch "$C" "$TMP/report.md")" && [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$hf")" ]] && "$r" check --branch "$C" >/dev/null'
 git switch --quiet -c spec/001-demo origin/develop
-check "on a spec branch (pr.sh spec mode), then base_ref is the base: it never has a parent" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
+check "on a branch with no parent, then base_ref is the base: it never has a parent" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 git switch --quiet "$P"
 check "on the parent (no parent of its own), then base_ref is still the base" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 

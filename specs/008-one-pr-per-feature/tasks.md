@@ -539,7 +539,7 @@ only one PR per feature, with no issues.
     `task_rounds` row and no `issue_labels` row, each seen failing on the old text; `tests/run.sh`
     passes.
 
-- [ ] T016 [US6] Rewrite the README, help and examples for one PR per feature, in README.md, skills/help/SKILL.md and examples/ (depends on T014, T015)
+- [X] T016 [US6] Rewrite the README, help and examples for one PR per feature, in README.md, skills/help/SKILL.md and examples/ (depends on T014, T015)
   - Comes from: FR-016, US6 scenario 3
   - What: `README.md` (the tagline, the loop, the review model, the per-task PR and issue lines);
     `skills/help/SKILL.md`; and the one negative check: a `tests/static.test.sh` case that runs
