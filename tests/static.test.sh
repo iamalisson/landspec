@@ -506,7 +506,7 @@ check "then README, help and the reference list /landspec:implement, worktree_se
 
 # Only the repository's own PRs count: a fork's PR may reuse any branch name or title.
 check "when a script lists PRs, then every gh pr list keeps only PRs from this repository" \
-  'c="$(cat extension/scripts/*.sh)"; n="$(grep -o "gh pr list" <<<"$c" | wc -l)"; k="$(grep -oF "select(.isCrossRepository | not)" <<<"$c" | wc -l)"; [[ $n -ge 8 && $n -eq $k ]]'
+  'c="$(cat extension/scripts/*.sh)"; n="$(grep -o "gh pr list" <<<"$c" | wc -l)"; k="$(grep -oF "select(.isCrossRepository | not)" <<<"$c" | wc -l)"; [[ $n -ge 4 && $n -eq $k ]]'
 
 # /landspec:implement's release (spec 004 T009): one step per RELEASE= line, and it never merges.
 rl="$(sed -n "/^## The release/,/^## When an implementer returns/p" skills/implement/SKILL.md)"

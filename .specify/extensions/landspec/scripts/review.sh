@@ -280,9 +280,8 @@ remove_copy() {
 }
 
 # The feature review: one record per feature, for the commit at refs/landspec/check/<feature> (the feature
-# branch's head after implement.sh check; no check copy needed). Its verdict comes from its lines: any "not
-# met" is "changes needed". After implement.sh check it adds verdict:, reviewed: and the lines to the end-check
-# record and deletes nothing; after check-copy, only a "ready" after a green run resets that check's round counter.
+# branch's head after implement.sh check). Its verdict comes from its lines: any "not met" is "changes needed".
+# It adds verdict:, reviewed: and the lines to the end-check record implement.sh check wrote, and deletes nothing.
 if $feat && [[ "$action" != record ]]; then
   # check|report --feature: the end-check record counts only for the feature branch's head, and only
   # when that head's tests ran green and its review said ready (data-model "End check").
@@ -315,13 +314,9 @@ if $feat; then
     || die "the report must state Reviewed: <base>..$c (the commit at refs/landspec/check/$fname): run the feature review again"
   model="$(field model)"; [[ -n "$model" ]] || die "the report must state Model: <id>: run the feature review again"
   fr="$dir/feature-$fname"
-  if [[ -f "$fr" ]] && grep -q '^head: ' "$fr"; then # the end-check record (implement.sh check): its fields stay
-    { grep -E '^(head|heads|tests): ' "$fr"; echo "verdict: $verdict"; echo "reviewed: $c"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
-  else
-    { echo "state: $c"; echo "assessment: $verdict"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
-    rf="$fr-round"
-    if [[ "$verdict" == ready && -f "$rf" ]] && grep -qx 'outcome=green' "$rf"; then rm -f "$rf"; fi
-  fi
+  [[ -f "$fr" ]] && grep -q '^head: ' "$fr" || die "no end check recorded for $fname: run implement.sh check, then the feature review"
+  # the end-check record's fields stay
+  { grep -E '^(head|heads|tests): ' "$fr"; echo "verdict: $verdict"; echo "reviewed: $c"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
   mv "$fr.tmp" "$fr"
   remove_copy "$report" "$c"
   event review round=feature verdict="${verdict// /-}"

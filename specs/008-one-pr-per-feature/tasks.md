@@ -485,7 +485,7 @@ only one PR per feature, with no issues.
     changes nothing, and `branch.sh 001 --from x` is refused (`tests/branch.test.sh`);
     `tests/run.sh` passes.
 
-- [ ] T013 [US6] Remove implement.sh's per-task actions, in extension/scripts/implement.sh (depends on T008, T012, T017)
+- [X] T013 [US6] Remove implement.sh's per-task actions, in extension/scripts/implement.sh (depends on T008, T012, T017)
   - Comes from: FR-004, FR-016; research R7, R8
   - What: delete `restack`, `stack`, `move`, `check-copy` and their helpers, and the task-branch
     `status` with its slot arithmetic (the feature-branch `status` of T017 keeps `parallel_tasks`);
