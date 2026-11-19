@@ -326,61 +326,18 @@ check "when the feature folder has no spec.md, then a ready is refused the same 
   'refused "spec.md has no functional requirement: the requirements pass cannot pass"'
 cp "$TMP/spec0" $fd/spec.md; rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
-# FR-005 (#222): each finding's area is logged; 3 in one area ask for a Simplify section, then the developer's answer.
+# FR-019 (R6): no Simplify sections or answers: an area found round after round asks nothing more.
 fd=specs/003-areas; cp -R "$ROOT/tests/fixtures/plan-review" $fd; echo '{ "feature_directory": "specs/003-areas" }' > .specify/feature.json
 L="$(git rev-parse --git-common-dir)/landspec-review/plan-003-areas.areas"
-# af <assessment> <area...>: a report on $fd with one Low finding per area and a resolved Earlier findings row;
-# $af_head (Simplify sections) goes before them, $af_sed edits its tables.
+# af <assessment> <area...>: a report on $fd with one Low finding per area and a resolved Earlier findings row.
 af() { local v="$1" a f=""; shift; for a in "$@"; do f+=$'\n'"- Low: plan.md:1 [area: $a] a finding"; done
-  fx_extra="${af_head:-}$(earlier x resolved)$f"$'\n' fx_findings="Findings: 0 high, 0 medium, $# low" fx "$v" "${af_sed:-}"; }
-simp() { local a s=""; for a in "$@"; do s+=$'\n'"## Simplify: $a"$'\n\nMerge the rules into one.\n'; done; printf '%s' "$s"; }
+  fx_extra="$(earlier x resolved)$f"$'\n' fx_findings="Findings: 0 high, 0 medium, $# low" fx "$v"; }
 rec() { "$r" record --plan "$TMP/fx.md" 2>/dev/null; }
-af "changes needed" discards discards
-check "when a round has two findings in [area: discards], then record prints no SIMPLIFY= and logs them" \
-  '[[ "$(rec)" == "REVIEW=changes needed" && "$(grep -c "^1 discards$" "$L")" -eq 2 ]]'
-af ready discards
-check "when the next round is a ready with a third, Low, [area: discards] finding, then record prints SIMPLIFY=discards and writes due discards" \
-  '[[ "$(rec)" == $'"'"'REVIEW=ready\nSIMPLIFY=discards'"'"' && "$(tail -1 "$L")" == "due discards" ]]'
-check "then check --plan and report --plan refuse naming discards, so no issue or spec PR goes out" \
-  'fails_with "a Simplify question is open for discards: run the next plan review with simplify: discards" "$r" check --plan && fails_with "a Simplify question is open for discards" "$r" report --plan'
-check "when answer --plan discards runs while discards is only due, then it is refused and check --plan still refuses" \
-  'cp "$L" "$TMP/L0" && fails_with "nothing is asked for discards" "$r" answer --plan discards x && cmp -s "$L" "$TMP/L0" && fails_with "a Simplify question is open for discards" "$r" check --plan'
-check "when answer --plan other x runs, then it is refused: nothing is asked for other" \
-  'fails_with "nothing is asked for other" "$r" answer --plan other x'
-check "when answer runs without --plan, or with no text, then it fails with its usage" \
-  'fails_with "usage: review.sh answer --plan <area> <text>" "$r" answer discards x && fails_with "usage: review.sh answer --plan <area> <text>" "$r" answer --plan discards " "'
-af "changes needed"
-check "when the next report has no ## Simplify: discards section, then it is refused whatever its verdict and the log is unchanged" \
-  'fails_with "the report has no ## Simplify: discards section" "$r" record --plan "$TMP/fx.md" && af ready && fails_with "the report has no ## Simplify: discards section" "$r" record --plan "$TMP/fx.md" && cmp -s "$L" "$TMP/L0"'
-af_head="$(simp discards)" af "changes needed" discards discards
-check "when it opens with ## Simplify: discards and has two more discards findings, then it is recorded with asked discards and no second due line" \
-  '[[ "$(rec)" == "REVIEW=changes needed" ]] && grep -qx "asked discards" "$L" && [[ "$(grep -c "^due discards$" "$L")" -eq 1 ]]'
-af ready
-check "then the round after is refused until the answer is recorded" \
-  'fails_with "a Simplify question is open for discards: record the developer'"'"'s answer first: review.sh answer --plan discards" "$r" record --plan "$TMP/fx.md"'
-check "when answer --plan discards kept: … runs (the answer unquoted), then it prints ANSWERED=discards and writes reset discards with the whole answer" \
-  '[[ "$("$r" answer --plan discards kept: the discard rule stays)" == ANSWERED=discards && "$(tail -1 "$L")" == "reset discards kept: the discard rule stays" ]]'
-check "then answering discards again is refused: nothing is asked for discards" 'fails_with "nothing is asked for discards" "$r" answer --plan discards x'
-af ready discards
-check "after the answer, when one more discards finding is recorded in a ready, then it prints nothing more and check --plan passes" \
-  '[[ "$(rec)" == REVIEW=ready ]] && "$r" check --plan'
-af "changes needed" p p q q
-check "when a round has two findings in each of two areas, then record prints no SIMPLIFY=" '[[ "$(rec)" == "REVIEW=changes needed" ]]'
-cp "$L" "$TMP/L1"; af_sed='/^### Pass: rollout$/,/^\| a write /d' af ready p
-check "when a report with a third [area: p] finding is refused by a later check, then the log is unchanged" \
-  'fails_with "the report has no ### Pass: rollout table" "$r" record --plan "$TMP/fx.md" && cmp -s "$L" "$TMP/L1"'
-af ready p
-check "then the corrected report is the one that prints SIMPLIFY=p" '[[ "$(rec)" == $'"'"'REVIEW=ready\nSIMPLIFY=p'"'"' ]]'
-rm -f "$L"; af "changes needed" a a a b b b
-check "when a round has three findings in each of a and b, then record prints SIMPLIFY=a and SIMPLIFY=b" \
-  '[[ "$(rec)" == $'"'"'REVIEW=changes needed\nSIMPLIFY=a\nSIMPLIFY=b'"'"' ]]'
-af_head="$(simp a)" af ready
-check "when the next report has only ## Simplify: a, then it is refused naming b" \
-  'fails_with "the report has no ## Simplify: b section: the round is given simplify: a, b" "$r" record --plan "$TMP/fx.md"'
-af_head="$(simp a b)" af ready
-check "when it has both sections, then it is recorded and check --plan refuses until both are answered" \
-  '[[ "$(rec)" == REVIEW=ready ]] && fails_with "a Simplify question is open for a" "$r" check --plan && "$r" answer --plan a x >/dev/null \
-   && fails_with "a Simplify question is open for b: record the developer'"'"'s answer" "$r" check --plan && "$r" answer --plan b y >/dev/null && "$r" check --plan'
+check "when [area: discards] is found in three rounds, then record --plan prints no SIMPLIFY=, writes no area log and check --plan passes on the record without a high" \
+  'af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] && af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] \
+   && af ready discards && [[ "$(rec)" == REVIEW=ready && ! -e "$L" ]] && "$r" check --plan'
+check "when review.sh answer --plan x y runs, then it exits non-zero with the usage error, which names no answer action" \
+  'fails_with "usage: review.sh record [--plan|--delta|--feature]" "$r" answer --plan x y && ! "$r" answer --plan x y 2>&1 | grep -qF "review.sh answer"'
 rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
