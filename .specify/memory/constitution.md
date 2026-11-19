@@ -3,8 +3,8 @@
 ## Project
 
 landspec is a Claude Code plugin and a GitHub Spec Kit extension and preset. Developers who
-plan features with spec-kit install it so that every feature gets one GitHub issue, one branch and
-one pull request, each task is reviewed as it is built and the whole feature is checked against
+plan features with spec-kit install it so that every feature gets one branch and one
+pull request, its tasks are built in parallel and each is reviewed as it is built and the whole feature is checked against
 its spec before the PR is ready, every commit and push is checked for secrets, and every project
 starts from constitution defaults sized to its level. It is prompts
 (`skills/`, `extension/commands/`), bash scripts (`extension/scripts/`, `bin/`) and scaffold
