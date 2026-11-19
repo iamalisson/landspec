@@ -39,13 +39,17 @@ current plan.
 2. **One independent review of the plan.** Launch the reviewer exactly as `commands/review.md`
    (`/speckit-landspec-review`) says, as a plan review: one `landspec:reviewer` subagent, with
    `model` and `isolation: "worktree"` as review.md says, given that file and the feature folder,
-   nothing of your own conclusions. Save its report to a file outside the repository (`mktemp`) and
-   record it: `bash .specify/extensions/landspec/scripts/review.sh record --plan <file>`.
+   nothing of your own conclusions. The reviewer writes its report to a file itself: record the file
+   its first line names (`Report file: <path>`) as it is, never a copy you typed or edited:
+   `bash .specify/extensions/landspec/scripts/review.sh record --plan <file>`.
    - Only a **high** finding sends the plan back: fix it in `tasks.md` and `plan.md` under the
      rules of step 1, then run one more pass and record it the same way. Every round is read cold:
      pass it only the facts review.md lists for a plan review (the feature folder, the last
      round's report and the output of `review.sh diff --plan`), never your replies to its
      findings; it checks each earlier finding in its own table.
+   - If that extra pass still has a **high** finding, the plan is blocked: show its high findings
+     and stop, with no commit and no `/landspec:implement` line. The developer fixes the plan and
+     runs this command again.
    - **Medium** and **low** findings are shown to the developer, one line each; they never force
      another pass.
 3. **Commit the spec folder on the feature branch.** Be on the feature's branch (the

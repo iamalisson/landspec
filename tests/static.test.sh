@@ -433,6 +433,9 @@ check "when the issues are removed, then issues.sh, its test and the issues comm
 check "when plan-review.md is read, then it records one plan review pass with review.sh record --plan, commits the spec folder on the feature branch, and runs no gh issue" \
   'f=extension/commands/plan-review.md; grep -qF "review.sh record --plan" $f && ! grep -qF "gh issue" $f && ! grep -qF "issues.sh" $f \
    && grep -qF "docs(specs): <feature> plan and tasks" $f && ! grep -qiE "simplify|— #N" $f'
+check "when plan-review.md records a pass, then it records the reviewer's own Report file as is, and a High left after the extra pass blocks the plan with no commit" \
+  'f="$(tr "\n" " " < extension/commands/plan-review.md | tr -s " ")"; ! grep -qF "Save its report" extension/commands/plan-review.md \
+   && [[ "$f" == *"record the file its first line names (\`Report file: <path>\`) as it is, never a copy"* && "$f" == *"the plan is blocked"* && "$f" == *"no commit and no \`/landspec:implement\` line"* ]]'
 check "when extension.yml is read, then after_tasks and after_converge run speckit.landspec.plan-review and no command is the issues one" \
   'for h in after_tasks after_converge; do [[ "$(sed -n "/^  $h:/,/^  [a-z_]*:\$/p" extension/extension.yml | grep -m1 "command:")" == *"command: speckit.landspec.plan-review" ]] || exit 1; done \
    && grep -qF "file: commands/plan-review.md" extension/extension.yml && ! grep -qF "landspec.issues" extension/extension.yml'
