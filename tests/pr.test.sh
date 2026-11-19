@@ -700,7 +700,7 @@ landed() {
   git switch --quiet -c "landspec/001-$1-task"; echo "$1" > "$2"
   sed -i.bak "s/^- \[ \] $1 /- [X] $1 /" specs/001-demo/tasks.md; rm -f specs/001-demo/tasks.md.bak
   git add -A; git commit --quiet -m "feat: $1"; git switch --quiet "$FB"
-  git merge --quiet --no-ff -m "$1: x" -m "Landspec-Task: $1"$'\n'"Landspec-Review: ready $PID" "landspec/001-$1-task"
+  git merge --quiet --no-ff -m "$1: x" -m "Landspec-Task: 001/$1"$'\n'"Landspec-Review: ready $PID" "landspec/001-$1-task"
   git branch --quiet -D "landspec/001-$1-task"
 }
 landed T001 search.ts; landed T002 rank.ts
@@ -726,8 +726,8 @@ check "when two tasks are landed, with no review record of the branch, then one 
   '[[ "$out" == *"PR=https://github.com/acme/app/pull/99 READY=no" ]] && grep -q "^pr create --draft --base develop --head $FB" "$GH_LOG" && [[ "$(grep -c "^pr create" "$GH_LOG")" == 1 ]]'
 check "then the body has the Tasks table: each task's state, landing commit and review, and no Independent review block" \
   'grep -qxF "## Tasks" "$GH_LOG" && grep -qxF "| Task | Summary | State | Landing commit | Review |" "$GH_LOG" \
-   && grep -qxF "| T001 | Add search | done | $(git log -1 --format=%h --grep="^Landspec-Task: T001$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
-   && grep -qxF "| T002 | Add ranking | done | $(git log -1 --format=%h --grep="^Landspec-Task: T002$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
+   && grep -qxF "| T001 | Add search | done | $(git log -1 --format=%h --grep="^Landspec-Task: 001/T001$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
+   && grep -qxF "| T002 | Add ranking | done | $(git log -1 --format=%h --grep="^Landspec-Task: 001/T002$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
    && grep -qxF "| T003 | Add export | pending | - | - |" "$GH_LOG" && ! grep -q "Independent review" "$GH_LOG"'
 check "then the body closes the feature issue and has no End check yet" 'grep -qxF "Closes #42" "$GH_LOG" && ! grep -q "## End check" "$GH_LOG"'
 : > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>/dev/null)" || true

@@ -76,7 +76,7 @@ feature_sections() {
   extra=$'\n\n## Tasks\n\n| Task | Summary | State | Landing commit | Review |\n|---|---|---|---|---|'
   while IFS= read -r line; do
     t="$(sed -E 's/^- \[.\] (T[0-9]{3,}) .*/\1/' <<<"$line")"
-    c="$(git log -1 --format=%h --grep="^Landspec-Task: $t\$" HEAD --)"
+    c="$(git log -1 --format=%h --grep="^Landspec-Task: $(feature_key "$fdir")/$t\$" HEAD --)" # as task_done reads it, with the commit
     rv=""; st=pending
     if [[ -n "$c" ]]; then
       st=done; rv="$(git log -1 --format=%B "$c" | sed -nE 's/^Landspec-Review: ([a-z ]*[a-z]) ([0-9a-f]{12}).*/\1 (patch id \2)/p')"
