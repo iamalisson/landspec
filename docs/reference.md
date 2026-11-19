@@ -123,6 +123,13 @@ the parent first. A workflow whose `pull_request` branches leave out the parent 
 PR, and `pr.sh` warns about each one (landspec's generated CI has no such filter). `security-scan.sh
 --changed` scans only the stacked branch's own files.
 
+`security-scan.sh` prints one line per scanner, `<tool> ok|findings|missing|skipped|failed <detail>`,
+and keeps them with `--changed` as the diff's record. A finding the tool rates high or critical
+prints `<tool> findings high <report>`: gitleaks for every finding, osv-scanner for a group
+`max_severity` of 7.0 or more or an advisory `severity` of `HIGH` or `CRITICAL`, semgrep for a result
+`severity` of `ERROR`, `HIGH` or `CRITICAL`, zizmor for a `High` severity, trivy for `HIGH` or
+`CRITICAL`. `pr.sh feature --ready` refuses on a `findings high` line and lists the others.
+
 `/landspec:implement [feature]` runs a feature's tasks in parallel instead of one per `/landspec:next`.
 Each pass it runs `implement.sh restack`, then `implement.sh status --running <in flight>`, and takes
 one step per listed task: `START` launches an implementer (`landspec:implementer`, in the background,

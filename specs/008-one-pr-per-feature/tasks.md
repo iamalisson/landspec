@@ -413,7 +413,7 @@ diff.
     ref's tree and accepted after `run_tests` on it; with no test command it is accepted;
     `tests/run.sh` passes.
 
-- [ ] T021 [P] [US5] Record a high scanner finding as such, in extension/scripts/security-scan.sh
+- [X] T021 [P] [US5] Record a high scanner finding as such, in extension/scripts/security-scan.sh
   - Comes from: FR-022, US5 scenario 3; research R15; contracts/scripts.md "security-scan.sh"
   - What: a scanner whose report has a high or critical finding prints `<tool> findings high
     <detail>` (gitleaks: every finding; osv-scanner, semgrep, zizmor, trivy: their own severity
