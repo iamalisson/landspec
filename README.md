@@ -128,7 +128,7 @@ Why one branch and one PR per feature, with tasks reviewed one by one, with the 
 | **every push** | re-checks every outgoing commit, including ones made with `--no-verify` |
 | **before each task lands, and before each PR** | an **independent review** by a fresh agent (`landspec:reviewer`, on Opus only), in its own copy of the reviewed commit, that reads the diff and the code around it in one fast pass (following personal data and secrets into the helpers that log them), like Copilot code review, with no subscription needed, scanners on the changed files (the PR is refused until they ran on its exact diff), `/security-review` |
 | **every PR, and weekly** | CI gate (standard and full): Gitleaks, OSV-Scanner and zizmor (Semgrep with the OWASP rules on `full`, from its image pinned by digest, its rules fetched from the Semgrep registry at run time; trivy on Dockerfiles and Terraform when the project has them), all pinned and checksum-verified |
-| **before a release** | `/landspec:security`, the full audit, run unattended by `/landspec:implement` before the bump; a confirmed critical or high holds the release |
+| **before a release** | `/landspec:security`, the full audit, run unattended by `/landspec:implement` before the bump; a confirmed critical or high holds the release; `release_audit: off` turns it off, and the release notes then say so |
 
 Why each layer exists, and what it can't do: **[docs/security.md](docs/security.md)**.
 

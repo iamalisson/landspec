@@ -35,6 +35,7 @@
 #   implement.sh [feature] audit-plan
 #       The security audit before the bump, once per origin/<base> commit: AUDIT=needed COMMIT=<sha>, or, for
 #       an audit recorded for that commit, AUDIT=done|hold COMMIT=<sha> REPORT=<path> HOLD=<n> (hold: n > 0).
+#       With release_audit: off (default on), only AUDIT=skipped (release_audit: off): nothing is fetched or read.
 #   implement.sh [feature] audit-record <commit> <report> <hold>
 #       Keeps a copy of the report and records it: <git common dir>/landspec-security/audit (commit=,
 #       report=, hold=, the number of confirmed critical or high findings).
@@ -384,6 +385,8 @@ case "$action" in
     done <<<"$vf"
     echo "BUMPED=$nv" ;;
   audit-plan)
+    ra="$(cfg release_audit on)"; [[ "$ra" == on || "$ra" == off ]] || die "release_audit must be on or off"
+    [[ "$ra" == on ]] || { echo "AUDIT=skipped (release_audit: off)"; exit 0; } # no fetch, no record read
     base="$(base_branch)"
     git fetch --quiet origin "+refs/heads/$base:refs/remotes/origin/$base" || die "cannot fetch origin; fix the error above"
     c="$(git rev-parse "origin/$base")"; af="$(git rev-parse --git-common-dir)/landspec-security/audit"

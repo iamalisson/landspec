@@ -132,11 +132,11 @@ When `status` prints `MERGED=<n>` (or `branch.sh` refused naming the merged feat
 then, run `I release-plan` and act on the **one** `RELEASE=` line it prints, never on anything else; each step happens once, and the
 next run reads where it stands from git and GitHub:
 
-- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done`, in the run's worktree `<repo>-<feature>-run`
+- `RELEASE=bump X.Y.Z FILES=… NOTES=<path> PRS=…`: first the audit (below); only on `AUDIT=done` or `AUDIT=skipped`, in the run's worktree `<repo>-<feature>-run`
   (`git fetch origin`, then `git switch -c chore/release-X.Y.Z origin/<base>` as its own command): `I release-bump X.Y.Z`
   there, then write the notes to `<path>`: grouped by user story, one line per PR in `PRS=` (its
   title and number), an "Upgrading" section when a task changed a config key or a command, and the
-  "Known issues" of the audit (below). Commit
+  "Known issues" of the audit (below), or "Not audited" when it is turned off. Commit
   them by name (`chore(release): X.Y.Z`), push, then the review and `pr.sh fix "chore(release): X.Y.Z"
   <body>` as `pr.md` says for a PR that is not a task, then `git switch --detach origin/<base>` there.
   `NOTES=-` (no `release_notes:`): put the notes first in the release PR's body, before its
@@ -150,7 +150,7 @@ next run reads where it stands from git and GitHub:
   `mktemp` file, then `gh release create vV --title "<project> V" --notes-file <that file>`.
 - `RELEASE=pending X.Y.Z PR=<n>`: the release PR waits for its merge; say so.
 - `RELEASE=done V`: the feature is released; say so.
-- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done`, write the notes to a `mktemp` file and say the project has no
+- `RELEASE=none (no version_files:)`: first the audit (below); only on `AUDIT=done` or `AUDIT=skipped`, write the notes to a `mktemp` file and say the project has no
   release convention (`version_files:` and `release_notes:` in `landspec-config.yml` set one).
 
 ## The audit before the bump
@@ -175,6 +175,11 @@ prints. The base is audited once per commit: a later run reuses the recorded res
   confirmed medium or low and each plausible finding, with its title and category, the title
   rewritten if it carries more than what is affected. Never an exploit detail, a `file:line` or a
   request, on either. No findings: no section.
+- `AUDIT=skipped (release_audit: off)`: the project turned the release audit off. Go on with the bump
+  (or, on `RELEASE=none`, the notes); run no `/code-review`, no `/security-review` and no audit
+  subagent. The notes get a section "## Not audited" with one line: the release audit is turned off
+  for this project (`release_audit: off`). Never write "Known issues" from an audit that did not
+  run, and never call `audit-record`.
 - `AUDIT=hold COMMIT=… REPORT=<path> HOLD=<n>`: the release **holds**: no bump, no release PR, and
   nothing filed or posted about the findings (no issue, advisory, PR or comment: the run report gives
   only their count and the report's path, never what they are). `/landspec:security <path>` tracks

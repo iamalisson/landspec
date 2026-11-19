@@ -225,7 +225,9 @@ tracks and fixes it. The main session runs `/code-review high` and `/security-re
 hands their output to the audit. With nothing held, the release notes get a "Known issues" section:
 on a public repository only a count per severity and a neutral category, on a private one each
 remaining finding's title and category; never an exploit detail. The run's last report names the
-scanners that were missing.
+scanners that were missing. With `release_audit: off` in `landspec-config.yml` the audit does not
+run (`audit-plan` prints `AUDIT=skipped (release_audit: off)`): the release goes on, and its notes
+get a "Not audited" section saying so instead of "Known issues".
 
 `/landspec:implement` is the default after the plan review: its last line names it, and
 `/landspec:next` offers it after the progress.
@@ -362,6 +364,7 @@ twice adds both PRs into one row.
 | `feature_rounds` | `3` | how many heads of the feature branch the end check checks (a red run or a `changes needed` feature review count once per head; red tests or a `not met` line give new tasks, and the next head is checked again) before it stops and asks: a number from `1` to `9` |
 | `version_files` | *(empty)* | the files that carry the version (`version: "X.Y.Z"` or `"version": "X.Y.Z"`), comma separated, the first one read as the current version; `/landspec:implement` bumps them for the release (minor; patch when every task is a `Fix`). Empty: no release step, only notes |
 | `release_notes` | *(empty)* | the folder for each release's notes, `<folder>/X.Y.Z.md`; they are also the published release's body; without it, the notes are the release PR's body, up to its `## Evidence` or `## Review` |
+| `release_audit` | `on` | `on` or `off`; any other value is refused. `on`: `/landspec:implement` runs the `full` security audit on the merged base before the bump, and a confirmed critical or high holds the release. `off`: no audit runs before a release (it takes 10 to 30 minutes and re-reads a diff already reviewed per task and as a whole feature), and the release notes get a "Not audited" section saying so |
 | `parallel_tasks` | `4` | how many builders `/landspec:implement` runs at once on the feature branch, each on its own task ref: `implement.sh status` prints at most this many `START=` lines, minus the running ones; reviewers take no slot: a number from `1` to `16`, any other value is refused |
 | `aws` | `off` | `on` turns on the AWS access layer. `/landspec:level` then writes `.mcp.json` when it does not exist (the `aws-mcp` server: `uvx mcp-proxy-for-aws==<MCP_PROXY_VERSION>`, run as the `landspec-agent-dev` profile; an existing one is kept as it is, and `remove.sh` deletes it only while unchanged) and adds a "Cloud access" section per level to the constitution. `MCP_PROXY_VERSION` in `extension/scripts/pins.sh` is a PyPI release: `bin/check-tools.sh` reads GitHub releases only, so it is bumped by hand, to a release a few weeks old. `off`: nothing of this is written |
 | `aws_prod_profiles` | *(empty)* | comma-separated AWS CLI profiles that reach a prod account, matched exactly; set by `/landspec:aws` (empty: one account only) |
