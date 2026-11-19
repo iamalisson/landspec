@@ -259,7 +259,8 @@ echo '- [ ] T004 Draft' >> specs/001-demo/tasks.md
 check "when tasks.md has uncommitted changes, then land refuses them" 'one_refusal "uncommitted changes in specs/001-demo" "$I" land T001'
 git checkout -- specs/001-demo/tasks.md
 build "$R1"; "$I" mark T001 ready >/dev/null
-check "when T001's ref moved after its review, then land refuses it" 'one_refusal "changed since its ready review" "$I" land T001'
+check "when T001's ref moved after its review, then land refuses it with review.sh's own message and the hint to review again" \
+  'one_refusal "$R1: the diff of $R1 changed since the last review" "$I" land T001 && one_refusal "(review.sh record --branch $R1 <report>)" "$I" land T001'
 ready "$R1"; "$I" mark T001 ready >/dev/null
 echo dev > dev.txt; git add dev.txt; git commit --quiet -m "chore: a developer commit"; dev="$(git rev-parse HEAD)"
 pid="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review/task-${R1//\//__}")"
@@ -354,6 +355,37 @@ check "when T001 is running, then only START=T003" '[[ "$(starts)" == "START=T00
 fs --running T001 --running T003
 check "when --running is given twice, then both tasks are building and nothing starts" \
   '[[ -z "$(starts)" && "$(state_of T001)" == building && "$(state_of T003)" == building ]]'
+# Two startable tasks whose lines name the same backticked file would conflict at landing: the later one waits.
+T3="$TASKS3"; R4=landspec/001-t004-task
+TASKS3='# Tasks
+
+- [ ] T001 Add a in `shared.txt`
+- [ ] T002 Add b in `shared.txt` and `other.txt`
+- [ ] T003 Add c in `own.txt`
+  - not in `shared.txt`: a sub-bullet names no file of the task
+- [ ] T004 Add d in `other.txt`
+- [ ] T005 Add e in `shared.txt` (depends on T001)'
+fsetup; TASKS3="$T3"; plan_review >/dev/null 2>&1; fs
+check "when T001 and T002 name the same file, then only T001 starts and T002 waits with REASON=shares shared.txt with T001" \
+  '[[ "$(starts)" == "START=T001 REF=$R1 FROM=$(head_fb) START=T003 REF=$R3 FROM=$(head_fb) " ]] && line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
+check "then T003, whose line names another file (the shared one only in a sub-bullet), starts beside T001" '[[ "$(state_of T003)" == pending ]]'
+check "then T004 waits for the waiting T002 it shares a file with, and T005 reports its dependency first" \
+  'line_of T004 | grep -qx "TASK=T004 STATE=waiting REASON=shares other.txt with T002" && line_of T005 | grep -qx "TASK=T005 STATE=waiting REASON=waits for T001"'
+"$I" fail T001 "no idea" >/dev/null; fs
+check "when the earlier T001 failed, then it does not hold T002, which starts" 'grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && [[ "$(state_of T001)" == failed ]]'
+"$I" retry T001 >/dev/null; build "$R1"; "$I" mark T001 implemented >/dev/null; fs
+check "when T001 is built but not landed, then T002 still waits for it" '[[ "$(state_of T001)" == built ]] && line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
+ready "$R1"; "$I" mark T001 ready >/dev/null; "$I" land T001 >/dev/null 2>&1; fs
+check "when T001 has landed, then T002 starts, and T005 (its dependency done) waits for T002's shared.txt" \
+  'grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && line_of T005 | grep -qx "TASK=T005 STATE=waiting REASON=shares shared.txt with T002"'
+# A ready mark whose review check fails (here a reviewer that could not verify: Copy: none) keeps the code: review again, no rebuild.
+fsetup; plan_review >/dev/null 2>&1; build "$R1"
+printf 'Copy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\n\nAssessment: ready\n' "$(head_fb)" "$(git rev-parse "refs/heads/$R1")" > "$TMP/r.md"
+"$SCRIPTS/review.sh" record --branch "$R1" "$TMP/r.md" >/dev/null 2>&1; "$I" mark T001 ready >/dev/null; fs
+check "when T001 is marked ready but its review check fails, then it is built with REVIEW=T001, and it does not start again" \
+  '[[ "$(state_of T001)" == built ]] && grep -qx "REVIEW=T001" <<<"$out" && ! grep -q "^START=T001 " <<<"$out" && ! grep -q "^LAND=" <<<"$out"'
+check "then land refuses it with review.sh's own message, not a changed diff" \
+  'one_refusal "$R1: the last review could not verify the diff (Copy: none)" "$I" land T001 && ! "$I" land T001 2>&1 | grep -q "changed since"'
 # The lows in the shapes recorded reviews write them, beside list items that are not lows.
 lows='
 - deep: src/search.ts — gate
