@@ -63,9 +63,12 @@ if command -v osv-scanner >/dev/null; then
   esac
 else missing osv-scanner "https://google.github.io/osv-scanner/installation/ (brew install osv-scanner)"; fi
 
-# semgrep: --error makes findings exit 1
-if command -v semgrep >/dev/null; then
-  targets=("."); $changed && targets=("${files[@]}")
+# semgrep: --error makes findings exit 1. A symbolic link is refused as a scanning root ("Invalid
+# scanning root"), so links leave its targets only; the file a link points to is scanned when it changed.
+targets=("."); if $changed; then targets=(); for f in "${files[@]}"; do [[ -L "$f" ]] || targets+=("$f"); done; fi
+if ! command -v semgrep >/dev/null; then missing semgrep "uv tool install semgrep (or pipx install semgrep)"
+elif ((${#targets[@]} == 0)); then report semgrep skipped "no regular changed files"
+else
   rc=0; semgrep scan --config p/default --config p/owasp-top-ten --error --quiet --metrics off \
        --json --output "$dir/semgrep.json" "${targets[@]}" >/dev/null 2>"$dir/semgrep.log" || rc=$?
   if [[ $rc == 0 ]]; then report semgrep ok "no code findings"
@@ -83,7 +86,7 @@ if command -v semgrep >/dev/null; then
     if [[ -n "$msg" ]]; then report semgrep failed "exit $rc: ${msg:0:200}; see $dir/semgrep.json"
     else report semgrep failed "exit $rc: semgrep wrote no error ($dir/semgrep.log and $dir/semgrep.json are empty)"; fi
   fi
-else missing semgrep "uv tool install semgrep (or pipx install semgrep)"; fi
+fi
 
 # zizmor: only when there are workflows
 if compgen -G ".github/workflows/*.y*ml" >/dev/null; then
