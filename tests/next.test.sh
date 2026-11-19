@@ -66,6 +66,10 @@ check "when a legacy feature is named, then next prints LEGACY= and the R11 mess
 echo '{ "feature_directory": "specs/002-old" }' > .specify/feature.json
 check "when two legacy features and one new feature exist and none is named, then the new one is served, with no CHOOSE= or LEGACY=" \
   'out="$("$n")"; grep -q "^FEATURE=001 " <<<"$out" && ! grep -qE "^(CHOOSE|LEGACY)=" <<<"$out"'
+git switch --quiet -c feat/003-t001-older
+check "when the current branch is a per-task branch of a legacy feature and none is named, then its tasks are not served and the new feature is" \
+  'out="$("$n")"; ! grep -q "Older" <<<"$out" && grep -q "^FEATURE=001 " <<<"$out"'
+git switch --quiet main; git branch --quiet -D feat/003-t001-older
 
 mkdir -p specs/004-new; printf '%s\n' '- [ ] T001 New in `n`' > specs/004-new/tasks.md
 check "when two new features have work and none is named, then it lists them and asks, leaving the legacy ones out" \

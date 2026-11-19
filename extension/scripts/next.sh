@@ -49,8 +49,8 @@ if [[ -n "${1:-}" ]]; then
   fdir="$(resolve_feature "$1")"
   mkdir -p .specify; printf '{ "feature_directory": "%s" }\n' "$fdir" > .specify/feature.json
   refuse_legacy "$fdir"
-elif fdir="$(branch_feature)" && [[ -n "$fdir" ]]; then
-  : # on a task ref or feature branch, its feature (no feature.json: the branch decides on every call)
+elif fdir="$(branch_feature)" && [[ -n "$fdir" ]] && ! legacy_feature "$fdir"; then
+  : # on a task ref or feature branch, its feature (no feature.json: the branch decides on every call); a legacy one is left out as in the scan
 else
   # Several features with a task to build: say so instead of silently serving the last one touched.
   startable=(); summary=""; last=""
