@@ -316,7 +316,7 @@ of the same commit is not caught.
 ## Measurements
 
 The scripts append one line per step to `.git/landspec-events`, shared by every worktree of the
-clone: `<epoch> <UTC time> <branch> <event> key=value...`. The events are `start` (`branch.sh`
+clone: `<epoch> <UTC time> <branch> <event> key=value...`. The events are `start` (the implementer, on a task's new ref, with `task=`; and `branch.sh`
 made the branch), `review` (`review.sh record`, `round=full|delta|plan|feature` and the verdict;
 a plan round also names its `feature=` and its `h=`, `m=` and `l=` counts), `issues` (older logs only: a run of the removed issue step
 that created or linked issues, `created=<n>`), `outside` (`review.sh outside --plan <n>`, the real
@@ -331,6 +331,12 @@ Nothing rotates it (about 10 lines per PR).
 (and per PR of a per-task feature); a feature PR's row also counts its tasks' refs
 (`landspec/<NNN>-t<nnn>-task`), so the review rounds of every task add up on it (minutes from start to its first `pr` event, `?` with no `start` event, so a later `pr.sh` run that finds the open
 PR, or marks the draft ready, does not move it; full and delta review rounds, the first verdict, the test time and runs, and `H+M`, the high and medium findings its reviews counted, `?` when no report carried the `Findings:` count line),
+then, for each feature whose tasks landed on its one branch, one
+`TASK <NNN>/<id> first->land <m>m | reviews <f> full + <d> delta | conflict yes|no` line per landed task
+(minutes from the first event on its ref to its `land` event: the `start` its implementer logs, or, in an older
+log with none, its first `mark` or `review`, so the build before it is not counted; `conflict`: it had a landing conflict round) and one
+`FEATURE <branch> first->land <m>m | tasks <n> | checks <n>` line (from the first event of any of its tasks to its
+last landing, the tasks landed, and the end-check rounds),
 then one `PLAN <feature> rounds <n> (<r> ready) | findings <h>/<m>/<l> … | outside <n>`
 line per feature with plan events (the counts of each plan round, `?` when its report had none; plan events
 written by 2.7.0 name no feature and are grouped under `?`),
