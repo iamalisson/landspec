@@ -236,6 +236,18 @@ check "when review.md is read, then step 3 tries to break each claim, the Claims
    && "$f" == *"A plan review or a feature review skips this step"* && "$r" == *"after the risk map and before the findings"* \
    && "$r" == *"- held: <claim>"* && "$r" == *"- broke: <claim>"* && "$r" == *"try to disprove it"* && "$r" == *"exactly \`Findings: <n> high, <n> medium, <n> low\`"* \
    && "$f" == *"**Reuse:** a task that adds a helper"* && "$f" == *"every caller of a function whose behaviour it changes"* ]]'
+# Feature 008 T018 (R13): the Assessment follows the gates, and a delta has no size limit.
+check "when review.md's Report is read, then a plan review ends changes needed only with a High and a task review only with a High or Medium" \
+  'r="$(sed -n "/^## Report/,\$p" extension/commands/review.md | tr "\n" " " | tr -s " ")"
+   [[ "$r" == *"a plan review ends \`changes needed\` only with a High finding"* && "$r" == *"a task review (full or delta) only with a High or Medium"* ]]'
+check "when review.md is read, then a delta has no 20-line limit and a conflict round's delta reads the merge's resolution" \
+  'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; ! grep -qF "20 lines" extension/commands/review.md \
+   && [[ "$f" == *"reads the merge'"'"'s resolution (\`git show --remerge-diff <merge>\`) and the commits after it"* ]]'
+check "when review.md's delta is read, then a bug it notices outside its fix commits is not counted on the Findings: line" \
+  'tr "\n" " " < extension/commands/review.md | tr -s " " | grep -qF "is reported at its true severity, is not counted on the \`Findings:\` line and does not change the assessment"'
+check "when review.md's plan review is read, then only a High failing row or open earlier finding blocks a ready" \
+  'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"refuses a \`ready\` with a failing row only when the report counts a High finding"* \
+   && "$f" == *"and a \`ready\` with an \`open\` row only when it counts a High finding"* ]]'
 check "when the Impact rule is read, then the tasks template and issues step 1 also search what a task changes the behaviour of" \
   'grep -qF "changes the behaviour of" extension/commands/issues.md && tr "\n" " " < preset/templates/tasks-template.md | tr -s " " | grep -qF "removes or changes the behaviour of"'
 check "when review.md lists the bugs to look for, then it names data reaching a log inside a helper, says to open each helper, and ranks a faked asserted component" \

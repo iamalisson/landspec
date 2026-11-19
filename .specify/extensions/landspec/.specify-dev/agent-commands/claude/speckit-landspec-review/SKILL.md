@@ -28,7 +28,8 @@ Wait for its report. The reviewer writes it to a file itself and names it on its
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:
 `bash .specify/extensions/landspec/scripts/review.sh record <file>` (`record --plan <file>` for a plan
 review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `issues.sh` refuse to
-open anything without a recorded review that said `ready` for the current state, at every level,
+open anything without a recorded review of the current state that passes its gate (no High
+finding in a plan review, no High or Medium in a task review), at every level,
 so a commit after the review means another review. Recording removes the reviewer's copy (its
 `Copy:` line) once it is safe to.
 
@@ -80,11 +81,11 @@ Facts the author passes:
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
 changes how a function fails makes every caller of that function part of the fix (step 2's caller
 account applies to them, in the diff or not). A bug it notices outside those
-commits is reported at its true severity and does not change the assessment. `record --delta` refuses it unless a round was
-recorded on this branch, `<sha>` is still on the branch, something was committed since, and the fix
-changes at most 20 lines outside the previous findings' files (test files aside); otherwise run a
-new full review. Lines a merge of the base brought in are not counted (a conflict resolution's
-lines and a merge of any other branch are).
+commits is reported at its true severity, is not counted on the `Findings:` line and does not change the assessment. `record --delta` refuses it unless a round was
+recorded on this branch, `<sha>` is still on the branch, and something was committed since;
+otherwise run a new full review. A fix of any size is a delta. The delta of a conflict round (the
+feature branch merged into the task's branch) reads the merge's resolution (`git show
+--remerge-diff <merge>`) and the commits after it, not the other tasks' code the merge brought in.
 
 **A feature review** checks the whole feature, all its task branches merged together, against its
 spec: read `spec.md` (every FR, every acceptance scenario, every SC), `plan.md`, `tasks.md` and `git diff
@@ -171,7 +172,9 @@ whose last cell is the row's status, one of that pass's statuses. A pass with no
 writes one row, its only row, `none: <why>` (`| none: no task writes data |`). Each failing row is
 also a finding. `review.sh record --plan` reads the tables: it refuses any report with a pass
 missing, a pass with no row, or a status outside its pass's list, and refuses a `ready` with a
-failing row (`MISSING`, `DIFFERENT: <what>`, `FALSE`, `BREAKS: <how>`), with a defined `FR-NNN` or
+failing row only when the report counts a High finding (a failing row is `MISSING`, `DIFFERENT:
+<what>`, `FALSE` or `BREAKS: <how>`; only a High one blocks `ready`, a Medium or Low one is listed
+among the findings and shown to the developer), with a defined `FR-NNN` or
 `SC-NNN` of `spec.md` (a line starting `- **FR-NNN**` or `- **SC-NNN**`) that has no requirements
 row, with a task of `tasks.md` that has no size row, or with a `spec.md` that defines no `FR-NNN`.
 
@@ -242,7 +245,8 @@ the diff changed first. Fill a table under a heading exactly `### Earlier findin
 finding of that report, its last cell `resolved` (with the line that resolves it, an invariant or
 a changed text, in a cell before it) or `open`, never `none:`. An `open` row is also a finding.
 `review.sh record --plan` refuses a report without that table when the last recorded round had
-findings (its `Findings:` total above 0), and a `ready` with an `open` row. When that report
+findings (its `Findings:` total above 0), and a `ready` with an `open` row only when it counts a
+High finding. When that report
 counted no findings (`Findings: 0 high, 0 medium, 0 low`), leave the table out.
 
 ## Report
@@ -260,8 +264,6 @@ Written for the author, who fixes it, and for the human who merges:
 - **Claims**, after the risk map and before the findings, one line per claim of step 3:
   `- held: <claim> — <counterexample>: stopped at <file:line>`
   `- broke: <claim> — <counterexample>: finding <n>`
-  Before the findings, because `review.sh record` counts every `file:line` after them as a
-  finding's file, which a delta may then change freely.
 - **Findings**, ranked: **High** (wrong result, data loss, a broken upgrade on existing state,
   security), **Medium** (a real bug: a guard the siblings have, an unhandled real-path
   case, a silent failure path), **Low** (worth a line, not a block: a test gap where the code
@@ -307,8 +309,12 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   branch's (or the delta's), a commit made after the review started, and a plan state that is not
   a hash or not the plan's current one. Then one count line, exactly
   `Findings: <n> high, <n> medium, <n> low` (security ones included; `record --plan` checks it against the tagged findings).
-- The last line, exactly: `Assessment: ready`, or `Assessment: changes needed` when there is a
-  High or Medium in the lines this review covers (the branch's diff, or a delta's commits). `review.sh record` reads that line; without it the report cannot be recorded.
+- The last line, exactly: `Assessment: ready`, or `Assessment: changes needed`: a plan review ends
+  `changes needed` only with a High finding, a task review (full or delta) only with a High or
+  Medium in the lines it covers (the branch's diff, or a delta's commits). `review.sh record`
+  reads that line; without it the report cannot be recorded. `review.sh check` gates on the
+  `Findings:` count the same way: a plan review passes with no High, a task review with no High
+  or Medium.
 
 The PR never shows this report: its "Independent review" block holds only the recorded facts (a
 review of this diff, by patch id, the `Assessment:` line, the model and any warning about it, and
