@@ -16,6 +16,12 @@ suite() { printf '%b' "$1" > "$TMP/suite/a.test.sh"; bash "$TMP/suite/run.sh"; }
 check "when a test file passes and ends in its exit line, then run.sh passes" 'suite "FAIL=0\nexit \"\$FAIL\"\n"'
 check "when a test file prints a FAIL line and still exits 0, then run.sh fails" '! suite "FAIL=0\necho \"FAIL - x\"\nexit \"\$FAIL\"\n"'
 check "when a test file loses its last line, then run.sh fails and names it" 'fails_with "a.test.sh" suite "FAIL=0\necho fine\n"'
+printf 'FAIL=0\nexit "$FAIL"\n' > "$TMP/suite/b.test.sh"
+check "when two files run at once and the first prints a FAIL line, then run.sh fails, and prints both in file order" \
+  'out="$(LANDSPEC_TEST_JOBS=2 suite "FAIL=0\necho \"FAIL - x\"\nexit \"\$FAIL\"\n")" && exit 1; [[ "$(grep "^== " <<<"$out" | tr "\n" " ")" == "== a.test.sh == b.test.sh " ]]'
+check "when LANDSPEC_TEST_JOBS is 1, then a passing suite passes; when it is 0, run.sh refuses it" \
+  'LANDSPEC_TEST_JOBS=1 suite "FAIL=0\nexit \"\$FAIL\"\n" >/dev/null && LANDSPEC_TEST_JOBS=0 fails_with "LANDSPEC_TEST_JOBS must be a whole number above 0" suite "FAIL=0\nexit \"\$FAIL\"\n"'
+rm "$TMP/suite/b.test.sh"
 
 # The real spec-kit job cannot skip setup.test.sh's second half.
 check "when the Linux job runs the tests, then it sets REQUIRE_SPECIFY" \
