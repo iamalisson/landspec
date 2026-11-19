@@ -705,4 +705,23 @@ pad() { echo "1; END {for (i = 0; i < $(($1 - $(wc -c < "$scp"))); i++) printf \
 check "when the policy holds 5121 characters, then the check names it, and at exactly 5120 it does not" \
   'scp_broken "longer than the 5120 characters" "$(pad 5121)" && ! scp_broken "longer than the 5120 characters" "$(pad 5120)" && [[ "$(wc -c < "$TMP/scp/p.json")" -eq 5120 ]]'
 
+# Spec 008 T016 (FR-016): no shipped file names a per-task mode or the issue step. One allow-list.
+per_task='pr\.sh (task|spec)|branch\.sh [^ ]+ T[0-9]|speckit-implement T(nnn|[0-9])|restack|check-copy|review_model|issues\.sh|landspec[.-]issues|issue_labels|SIMPLIFY|Simplify|answer --plan|task PR|spec PR|one task = one issue|task = issue|one issue per (task|feature)|one issue and one PR|feature issue|one task per run|(before|after) (the )?issues'
+per_task_ok=(
+  '^docs/releases/'                                              # release notes: what earlier versions did
+  "^docs/GUARDRAILS\.md:[0-9]+:.*landspec's own"                 # evidence rows: incidents from landspec's own past use
+  'finish its open task PRs as ordinary PRs'                     # the R11 legacy message (lib.sh, skills/next)
+  'scripts/implement\.sh:[0-9]+:.*(legacy|no task PR of)'        # release-plan's path for a legacy feature (R11)
+)
+per_task_leftovers() { # per_task_leftovers <path>...: "file:line" of each match outside the allow-list
+  grep -rnIE "$per_task" "$@" | grep -vE "$(IFS='|'; echo "${per_task_ok[*]}")" | cut -d: -f1,2 | tr "\n" " " || true
+}
+left="$(per_task_leftovers README.md docs skills agents extension preset hooks examples .specify/extensions/landspec)"
+check "no shipped file names a per-task mode or the issue step${left:+ — found: $left}" '[[ -z "$left" ]]'
+mkdir -p "$TMP/neg/docs" "$TMP/neg/scripts"
+echo "Merge the spec PR, then run /speckit-implement T001." > "$TMP/neg/docs/old.md"
+printf '#!/usr/bin/env bash\n# after implement.sh restack, the task PR moves\n' > "$TMP/neg/scripts/old.sh"
+check "when an old line is put back in a doc, then the check names it" '[[ "$(per_task_leftovers "$TMP/neg/docs")" == *old.md:1* ]]'
+check "when an old line is put back in a script comment, then the check names it" '[[ "$(per_task_leftovers "$TMP/neg/scripts")" == *old.sh:2* ]]'
+
 exit "$FAIL"
