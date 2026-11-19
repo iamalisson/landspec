@@ -63,7 +63,7 @@ Your stack (Rust, Node with npm/pnpm/yarn, Python with uv/pip, Go) is detected a
 and the constitution; the constitution's **Commands** line, once `/landspec:adopt` fills it,
 is what the generated CI runs. A repo whose workflows already check pull requests gets no second
 CI; one whose `pull_request` filter leaves out the base branch is named
-("never runs on a task PR"), so you can add that branch. Your files are never overwritten: the ones landspec generates carry a
+("never runs on the feature PR into <base>"), so you can add that branch. Your files are never overwritten: the ones landspec generates carry a
 `# landspec: managed file` first line and are re-created on `/landspec:level`; delete that
 line to make one yours. Repos that run hooks through the pre-commit framework or husky get landspec's
 two checks added there.
