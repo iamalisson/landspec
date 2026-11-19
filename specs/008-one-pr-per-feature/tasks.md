@@ -69,7 +69,7 @@ and landed on the branch; one draft PR per feature.
     `LEGACY=` and exits non-zero; `feature_dir` resolves both branch shapes; `bash tests/pr.test.sh`
     passes unchanged (the carry helper); `tests/run.sh` passes.
 
-- [ ] T002 [US1] Report task states from landing commits and land a reviewed task on the feature branch, in extension/scripts/implement.sh (depends on T001)
+- [X] T002 [US1] Report task states from landing commits and land a reviewed task on the feature branch, in extension/scripts/implement.sh (depends on T001)
   - Comes from: FR-004, FR-006, FR-007, FR-014, FR-015, US1 scenarios 1-3, edge cases (red twice, run stopped midway, developer commit); research R2, R3, R7, R11; data-model "Task", "Task ref", "Landing commit"; contracts/scripts.md "implement.sh", "review.sh"
   - What: on a feature branch (`feature_branch` matches), `status` per contracts/scripts.md: refuse
     without `review.sh check --plan`, a legacy feature, or (level `full`) the analyzed marker; one
@@ -105,7 +105,10 @@ and landed on the branch; one draft PR per feature.
     landed twice); a developer commit on the branch is kept by `land`, a conflicting one aborts with
     the file named; a legacy feature and a missing plan review are refused; `bash tests/review.test.sh`
     passes with a plan review that stays `ready` after a tick and an added `**Issue**:` line, and
-    goes stale after a changed task line; `tests/run.sh` passes.
+    goes stale after a changed task line; a merged-in commit carrying another feature's
+    `Landspec-Task: 007/T001` (through a PR merge or a squash) leaves T001 `pending`, this feature's
+    landing reached only through a merge's second parent (a pull merge) shows `done`, and a bare
+    `Landspec-Task: T001` does not count; `tests/run.sh` passes.
 
 - [ ] T003 [US1] Open one draft PR per feature with the task table and the latest end check, in extension/scripts/pr.sh (depends on T002)
   - Comes from: FR-010, FR-011, FR-012, US1 scenarios 2 and 4, US4 scenario 4, US5 scenarios 1-2; research R9; data-model "Feature PR"; contracts/scripts.md "pr.sh"
@@ -334,7 +337,10 @@ only one PR per feature.
     `pr.sh task T001` call in `tests/pr.test.sh` becomes `pr.sh fix`, which runs the same arm, so
     every gate and review-record case keeps passing unchanged (SC-005), except these, named here: the
     dirty-tree cases get a body file (`fix` needs one); the task-branch refusal and the `Closes #N`
-    cases go with task mode (T003 covers `Closes #N` for the feature PR); the spec and stacked
+    cases go with task mode (T003 covers `Closes #N` for the feature PR), except the case that
+    checks the recorded review's folded block reaches the body (`Independent review recorded for
+    this diff`, `Assessment:`): it stays, running through `pr.sh fix`, and drops only its clause
+    that the block sits before `Closes #N`; the spec and stacked
     cases go. `open_pr` keeps its draft branch for `feature` when the stacked-parent logic goes. `extension/scripts/guard.sh`'s block message names
     `pr.sh feature` and `pr.sh fix`; `extension/commands/analyzed.md` drops the level-`full` spec PR
     step; the header comments of `extension/scripts/mutants.sh` and `security-scan.sh` name
