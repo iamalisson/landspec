@@ -66,7 +66,10 @@ Each pass:
      at a time. `LANDED=<id> COMMIT=<sha>`: when it is the first landing of this run and `status` had
      `PR=-`, open the draft (below). `CONFLICT=<id> FILES=<files>`: the next `status` lists the task
      in `FIX=` with `REASON=conflict`. `status` again after every landing: a landing can make
-     another task startable.
+     another task startable (one `waiting` with `REASON=waits for Tnnn`, or with `REASON=shares
+     <file> with <Tnnn>`: an earlier task that can run or is running names the same backticked
+     path on its line, so the two do not conflict at landing; a `waiting` or failed task holds
+     nothing).
 
    Any `FAILED=<id>`: reported, and the run goes on with every task that does not depend on it (its
    dependants stay `waiting`); `mark`, `land` and `fail` print it.
@@ -212,7 +215,7 @@ At the end of each run in which a task landed, update the draft (above). Then sh
 then only what is left for the developer:
 
 - each task's state from the last `status`, and `DONE=`; each `waiting` task with its `REASON=` (`waits
-  for Tnnn`); for `REASON=locked worktree <path>` (an agent stopped mid-task), the commands to free
+  for Tnnn`, or `shares <file> with <Tnnn>`); for `REASON=locked worktree <path>` (an agent stopped mid-task), the commands to free
   it: `git worktree unlock <path>`, then `git worktree remove <path>`;
 - the feature PR, written `[#N](<url>)` (`PR=` of `status`), still a draft;
 - each `failed` task with its reason and, when its review rounds failed it, the findings of its last report
