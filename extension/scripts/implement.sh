@@ -8,13 +8,17 @@
 #       behind its origin branch and checked out nowhere.
 #   On the feature's branch (<branch_prefix>/<NNN>-<name>), status reads tasks from landing commits instead:
 #       One "TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=<n>] [REASON=<why>]"
-#       line per task, then at most one of START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head>
-#       [RESUME=yes], REVIEW=<id>, FIX=<id>, LAND=<id>, then CHECK=yes|no PR=<url|-> ORDER= DONE=.
+#       line per task, then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
+#       per startable task while fewer than parallel_tasks: (default 4) are in flight (--running, repeatable),
+#       one REVIEW=<id>, FIX=<id> [REASON=conflict] or LAND=<id> per task in that state, then
+#       CHECK=yes|no PR=<url|-> ORDER= DONE=.
 #   implement.sh [feature] land <task>
-#       On the feature's branch: commits the tick on the task ref, merges it --no-ff with the trailers
-#       Landspec-Task: <NNN>/<id> and Landspec-Review, pushes, deletes the ref. Prints LANDED=<id> COMMIT=<sha>.
+#       On the feature's branch: merges the task ref --no-ff with the tick in tasks.md (on the branch's side) and the trailers
+#       Landspec-Task: <NNN>/<id> and Landspec-Review (and one Low: line per low finding of its review),
+#       pushes, deletes the ref. Prints LANDED=<id> COMMIT=<sha>. A conflict aborts the merge, prints
+#       CONFLICT=<id> FILES=<files> and gives the task one conflict round; a second prints FAILED=<id>. Both exit 1.
 #   implement.sh [feature] mark <task> implemented|changes|ready|pr [<report>]
-#       changes at task_rounds: (default 3) fix rounds also marks the task failed and prints FAILED=<id>.
+#       changes at task_rounds: (default 2) fix rounds also marks the task failed and prints FAILED=<id>.
 #   implement.sh [feature] mark <task> red   adds 1 to red= (tests red after its implementer said done), prints RED=<n>
 #   implement.sh [feature] fail <task> <reason>
 #   implement.sh [feature] retry <task>   also deletes the task ref, so the task starts again from the feature head
@@ -61,9 +65,9 @@ num="$(feature_key "$fdir")"
 rdir="$(git rev-parse --git-common-dir)/landspec-run/$(basename "$fdir")"
 fb="$(feature_branch "$fdir")"
 
-# task_rounds: the fix rounds a task gets before it fails (task_rounds:, default 3).
+# task_rounds: the fix rounds a task gets before it fails (task_rounds:, default 2: the first review and one delta).
 task_rounds() {
-  local n; n="$(cfg task_rounds 3)"
+  local n; n="$(cfg task_rounds 2)"
   [[ "$n" =~ ^[1-9]$ ]] || die "task_rounds must be a number from 1 to 9"
   echo "$n"
 }
@@ -166,9 +170,10 @@ move() {
 # deps <task line>: the tasks its "(depends on …)" names, one per line.
 deps() { grep -oiE 'depends on T[0-9]{3,}([, ]+(and )?T[0-9]{3,})*' <<<"$1" | grep -oE 'T[0-9]{3,}' || true; }
 
-# feature_status: status on the feature's branch (contracts/scripts.md "implement.sh"); one task at a time.
+# feature_status: status on the feature's branch (contracts/scripts.md "implement.sh"); every startable
+# task starts at once, up to parallel_tasks in flight.
 feature_status() {
-  local line t r rh w st why f fh phase round d marker plain act="" first="" running=false ids="" out="" n=0 done_n=0 pr
+  local line t r rh w st why f fh phase round d marker plain acts="" starts="" fly=0 ids="" out="" n=0 done_n=0 pr
   refuse_legacy "$fdir"
   bash "$(dirname "$0")/review.sh" check --plan >/dev/null || exit 1
   if [[ "$(landspec_level)" == full ]]; then
@@ -188,7 +193,7 @@ feature_status() {
     f="$(rec "$t" failed)"; fh="$(rec "$t" head)"; phase="$(rec "$t" phase)"; round="$(rec "$t" round)"
     if task_done "$fdir" "$t"; then st=done; done_n=$((done_n + 1))
     elif [[ -n "$f" && ( -z "$fh" || "$fh" == "$rh" ) ]]; then st=failed; why="$f"
-    elif [[ "$running_list" == *" $t "* ]]; then st=building; running=true
+    elif [[ "$running_list" == *" $t "* ]]; then st=building; fly=$((fly + 1))
     elif [[ "$w" == *$'\t'1 ]]; then st=waiting; why="locked worktree ${w%%$'\t'*}"
     else
       st=""
@@ -203,26 +208,40 @@ feature_status() {
     fi
     out+="TASK=$t STATE=$st"; [[ "${round:-0}" == 0 || "$st" == done ]] || out+=" ROUND=$round"
     out+="${why:+ REASON=$why}"$'\n'
-    # the one next step: the task already under way, else the first pending one
-    if [[ -z "$act" ]]; then
-      case "$st" in
-        built) act="REVIEW=$t" ;; review) act="LAND=$t" ;; changes) act="FIX=$t" ;;
-        pending) if [[ -n "$rh" ]]; then act="START=$t REF=$r FROM=$(git rev-parse "refs/heads/$fb") RESUME=yes"
-                 elif [[ -z "$first" ]]; then first="START=$t REF=$r FROM=$(git rev-parse "refs/heads/$fb")"; fi ;;
-      esac
-    fi
+    case "$st" in
+      built) acts+="REVIEW=$t"$'\n' ;; review) acts+="LAND=$t"$'\n' ;;
+      # a conflict's record has no review report (land clears it); a review's changes have one
+      changes) acts+="FIX=$t"; [[ -z "$(rec "$t" conflict)" || -n "$(rec "$t" report)" ]] || acts+=" REASON=conflict"; acts+=$'\n' ;;
+      pending) starts+="START=$t REF=$r FROM=$(git rev-parse "refs/heads/$fb")${rh:+ RESUME=yes}"$'\n' ;;
+    esac
   done < <(grep -E '^- \[.\] T[0-9]{3,} ' "$fdir/tasks.md" || true)
   pr="$(gh pr list --head "$fb" --state open --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')" \
     || die "cannot look up the feature's pull request; fix gh's error above"
   printf '%s' "$out"
-  if ! $running; then act="${act:-$first}"; [[ -z "$act" ]] || echo "$act"; fi
+  if ((par > fly)); then printf '%s' "$starts" | head -n "$((par - fly))"; fi
+  printf '%s' "$acts"
   echo "CHECK=$( ((n > 0 && done_n == n)) && echo yes || echo no)"
   echo "PR=${pr:--}"; echo "ORDER=${ids# }"; echo "DONE=$done_n/$n"
 }
 
+# low_lines <report>...: "Low: <path:line[-line]> <title>" (or "Low: <title>" with no location) per low finding,
+# deduped. Reviewers write lows loosely: a list item (-, * or N.) whose first word, past ** and backticks, is Low.
+low_lines() {
+  awk '{ s = $0
+      if (!sub(/^[[:space:]]*([-*]|[0-9]+\.)[[:space:]]+/, "", s)) next
+      gsub(/\*\*|`/, "", s)
+      if (!sub(/^[[:space:]]*[Ll]ow([^A-Za-z]|$)/, "", s)) next
+      loc = ""; n = split(s, w, " ")
+      for (i = 1; i <= n; i++) if (w[i] ~ /^[^ ]+:[0-9]+(-[0-9]+)?[:,;.]?$/) { loc = w[i]; sub(/[:,;.]$/, "", loc); w[i] = ""; break }
+      s = ""; for (i = 1; i <= n; i++) if (w[i] != "") s = s (s == "" ? "" : " ") w[i]
+      while (sub(/^(—|–|-|:|,)[[:space:]]*/, "", s)) {}
+      l = "Low: " (loc == "" ? "" : loc (s == "" ? "" : " ")) s
+      if (!seen[l]++) print l }' "$@"
+}
+
 # land <task>: the reviewed task ref merged into the feature branch (data-model "Landing commit").
 land() {
-  local t="$1" r rh line pid tick blob mode tree c msg files err w
+  local t="$1" r rh line pid c msg files err w lows rv
   on_feature_branch || die "land merges into the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
   task_done "$fdir" "$t" && die "$t is landed already; push the branch if origin lacks it: git push origin $fb"
   r="$(task_ref "$t")"; git show-ref --verify --quiet "refs/heads/$r" || die "$t has no task ref $r in this clone: start it first"
@@ -238,21 +257,30 @@ land() {
   w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then land again"
   pid="$(diff_id "$r")" || exit 1
   line="$(task_line "$fdir" "$t")"
-  # The tick, committed on the ref without checking it out (a temporary index).
-  tick="$(git show "$rh:$fdir/tasks.md" | sed -E "s/^- \[ \] $t /- [X] $t /")" || die "$r has no $fdir/tasks.md"
-  blob="$(printf '%s\n' "$tick" | git hash-object -w --stdin)"
-  mode="$(git ls-tree "$rh" -- "$fdir/tasks.md" | cut -d' ' -f1)"
-  tree="$(export GIT_INDEX_FILE; GIT_INDEX_FILE="$(mktemp)"; git read-tree "$rh" && git update-index --cacheinfo "$mode,$blob,$fdir/tasks.md" && git write-tree; rm -f "$GIT_INDEX_FILE")"
-  if [[ "$tree" != "$(git rev-parse "$rh^{tree}")" ]]; then
-    c="$(git commit-tree "$tree" -p "$rh" -m "docs(specs): tick $t")"; git update-ref "refs/heads/$r" "$c" "$rh"
-  fi
-  msg="$(printf '%s: %s\n\nLandspec-Task: %s/%s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$num" "$t" "$pid")"
-  if ! err="$(git merge --quiet --no-ff --no-edit -m "$msg" "refs/heads/$r" 2>&1)"; then
+  rv="$(git rev-parse --git-common-dir)/landspec-review/task-${r//\//__}"
+  # A delta's record holds only the delta's report: the first round's lows are in the report mark changes kept.
+  if grep -qx 'round: delta' "$rv" && [[ -f "$rdir/$t.report" ]]; then lows="$(low_lines "$rdir/$t.report" "$rv")"; else lows="$(low_lines "$rv")"; fi
+  [[ -z "$lows" ]] || lows+=$'\n\n' # a paragraph of their own, above the trailers
+  msg="$(printf '%s: %s\n\n%sLandspec-Task: %s/%s\nLandspec-Review: ready %s' "$t" "$(task_summary "$line")" "$lows" "$num" "$t" "$pid")"
+  # The tick goes into the merge commit, on the feature branch's side, so a tasks.md edit there never
+  # conflicts with a ref that did not touch it.
+  if ! err="$(git merge --quiet --no-ff --no-commit "refs/heads/$r" 2>&1)"; then
     files="$(git diff --name-only --diff-filter=U | paste -sd, -)"
     git merge --abort 2>/dev/null || true
-    git update-ref "refs/heads/$r" "$rh" # the tick goes, so the review still matches the ref
     [[ -n "$files" ]] || { echo "$err" >&2; die "could not merge $r into $fb (not a conflict); fix git's error above, then land again"; }
-    die "$r conflicts with $fb in $files: merge $fb into $r in the task's copy, review it again, then land again"
+    if [[ -n "$(rec "$t" conflict)" ]]; then # its one conflict round is spent
+      write_rec "$t" "head=$rh" "failed=a second landing conflict in $files"; event fail task="$t" branch="$r"; echo "FAILED=$t"; exit 1
+    fi
+    # one conflict round, outside task_rounds: round stays; report= empties so status tells it from a review's changes
+    write_rec "$t" "phase=changes" "head=$rh" "conflict=1" "report="; event conflict task="$t" files="$files"
+    echo "CONFLICT=$t FILES=$files"
+    echo "landspec: $r conflicts with $fb in $files: merge $fb into $r in the task's copy, run its tests, review the round, then land again" >&2
+    exit 1
+  fi
+  if ! { sed -E "s/^- \[ \] $t /- [X] $t /" "$fdir/tasks.md" > "$fdir/tasks.md.tmp" && mv "$fdir/tasks.md.tmp" "$fdir/tasks.md" \
+         && git add -- "$fdir/tasks.md" && git commit --quiet --no-edit -m "$msg"; }; then
+    rm -f "$fdir/tasks.md.tmp"; git merge --abort 2>/dev/null || true
+    die "could not commit the landing of $t on $fb (a commit hook refused it?); fix the error above, then land again"
   fi
   c="$(git rev-parse HEAD)"
   git push --quiet origin "$fb" || die "$t landed as $c but $fb could not be pushed: git push origin $fb"
@@ -299,18 +327,18 @@ case "$action" in
     if git show-ref --verify --quiet "refs/heads/$r"; then # refused before any write: the record stays as it was
       hr=true; w="$(ref_wt "$r")"; [[ -z "$w" ]] || die "$r is checked out in ${w%%$'\t'*}: switch away there (git switch --detach), then run retry again"
     fi
-    if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
+    if [[ -f "$rdir/$t" ]]; then grep -vE '^(failed|round|red|conflict)=' "$rdir/$t" > "$rdir/$t.tmp" || true; mv "$rdir/$t.tmp" "$rdir/$t"; fi
     if $hr; then git branch --quiet -D "$r"; git config --remove-section "branch.$r" 2>/dev/null || true; fi # the task starts again from the feature head
     echo "RETRY=$t" ;;
   status)
-    running_list=""
-    if [[ "${1:-}" == --running ]]; then running_list=" $(tr ',' ' ' <<<"${2:-}") "; fi
+    running_list=" "
+    while [[ "${1:-}" == --running ]]; do running_list+="$(tr ',' ' ' <<<"${2:-}") "; shift 2 || shift; done
     rounds="$(task_rounds)"
-    if on_feature_branch; then feature_status; exit 0; fi
-    base="$(base_branch)"
     par="$(cfg parallel_tasks 4)"
     [[ "$par" =~ ^[0-9]+$ ]] && ((10#$par >= 1 && 10#$par <= 16)) || die "parallel_tasks must be a number from 1 to 16"
     par=$((10#$par))
+    if on_feature_branch; then feature_status; exit 0; fi
+    base="$(base_branch)"
     command -v gh >/dev/null || die "the GitHub CLI (gh) is required: https://cli.github.com"
     git fetch --quiet origin || die "cannot fetch origin, so tasks claimed in other clones cannot be seen; fix the error above"
     # The same refusals as branch.sh: a run starts tasks, and each starts from the base.

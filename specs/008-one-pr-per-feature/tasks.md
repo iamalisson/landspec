@@ -146,7 +146,7 @@ landed on the branch as each is ready; one draft PR per feature.
     with its not met lines and `checked at`; the `task`, `spec`, `fix` and `state` cases pass
     unchanged; `tests/run.sh` passes.
 
-- [ ] T017 [US1] Start every startable task at once and give a conflicting landing one round, in extension/scripts/implement.sh (depends on T002)
+- [X] T017 [US1] Start every startable task at once and give a conflicting landing one round, in extension/scripts/implement.sh (depends on T002)
   - Comes from: FR-004, FR-006, FR-018, US1 scenarios 1, 3 and 4, edge cases (more tasks than the limit, parallel tasks on the same lines); research R7; data-model "Task", "Landing commit"; contracts/scripts.md "implement.sh"
   - What: feature-branch `status` prints one `START=<id> REF=… FROM=<feature head> [RESUME=yes]`
     line for every task whose `depends on` tasks are done and which is not done, failed or named
