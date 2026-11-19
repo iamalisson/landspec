@@ -426,6 +426,36 @@ diff.
     findings` without `high`, any gitleaks finding gives `findings high`, a missing scanner stays
     `missing`; `tests/run.sh` passes.
 
+- [ ] T022 [US5] Run the release, not the end check, once the feature PR is merged, in extension/scripts/implement.sh and skills/implement/SKILL.md
+  - Comes from: the end check's feature review, round 1: FR-013 and US5 scenario 4 not met (after
+    the merge, `/landspec:implement` reruns the end check, `check` merges the base into the merged
+    branch and pushes it, and `pr.sh feature --ready` opens a second PR; the skill's release keys on
+    a `merged` state `status` never prints)
+  - What: `implement.sh status` looks up the feature PR merged from the feature branch (`gh pr list
+    --head <fb> --state merged`, this repository's PRs only, as the other lookups) and prints
+    `MERGED=<n>` when there is one; `check` then refuses before any merge or push: `the feature PR
+    #<n> is merged: run release-plan`. In `skills/implement/SKILL.md`, "The release" starts on
+    `MERGED=` (not on "every task is merged"), and the loop and the end check do not run then;
+    `skills/next/SKILL.md` gives the order as: the end check and the ready PR, then, once the
+    developer merged it, the audit and the release.
+  - Impact: `tests/implement.test.sh`; `tests/static.test.sh` (the skill's release keys on
+    `MERGED=`); `README.md` and `docs/reference.md` only where they say what runs after the merge.
+  - Completed when: `bash tests/implement.test.sh` passes: with a merged feature PR in the fake gh,
+    `status` prints `MERGED=<n>`, `check` refuses with that message and the branch and origin are
+    unchanged, and `release-plan` still prints `RELEASE=bump … PRS=<that PR>`; with no merged PR,
+    `status` prints no `MERGED=`; `bash tests/static.test.sh` passes; `tests/run.sh` passes.
+
+- [ ] T023 [P] [US5] Scan no symbolic link in the changed files, in extension/scripts/security-scan.sh
+  - Comes from: the end check's scan, round 1: FR-022 (`security-scan.sh --changed` on this feature
+    gave `semgrep failed` with "Invalid scanning root: … is a symbolic link", so the code patterns of
+    any diff holding a linked skill file are never scanned)
+  - What: `--changed` leaves out of its target list every path that is a symbolic link (the file it
+    points to is scanned when it changed too); the record and its line format are unchanged.
+  - Impact: `tests/security-scan.test.sh`.
+  - Completed when: `bash tests/security-scan.test.sh` passes with a case where the changed files
+    include a symbolic link and the fake semgrep is given no link among its targets (and fails the
+    way the real one does when it is); `tests/run.sh` passes.
+
 - [X] T010 [US5] Key the release and the stats on the feature PR, in extension/scripts/implement.sh and extension/scripts/stats.sh (depends on T002)
   - Comes from: FR-013, FR-015, US5 scenario 4, SC-004; research R10, R11
   - What: `release-plan`: PRs merged whose head starts with `<branch_prefix>/<NNN>-` (not
@@ -590,6 +620,7 @@ Every task of a wave starts at once; a wave starts as soon as its tasks' depende
 | 8 | T013 | |
 | 9 | T014, T015 | |
 | 10 | T016 | |
+| 11 | T022, T023 | the end check's gaps, round 1 |
 
 ## Implementation strategy
 
