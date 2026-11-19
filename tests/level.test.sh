@@ -10,16 +10,16 @@ new_repo lite
 cp "$ROOT/preset/templates/constitution-template.md" .specify/memory/constitution.md 2>/dev/null \
   || { mkdir -p .specify/memory; cp "$ROOT/preset/templates/constitution-template.md" .specify/memory/constitution.md; }
 printf '[workspace]\n' > Cargo.toml; printf '{"packageManager":"pnpm@9.0.0","scripts":{"lint":"x","test":"y"}}\n' > package.json
-# An install from before these keys existed: level.sh must add them.
-sed -i.bak '/^milestone:/d; /^project:/d' .specify/extensions/landspec/landspec-config.yml
+# A new project's config holds no issue keys: level.sh writes none (FR-001).
+sed -i.bak '/^issue_labels:/d; /^milestone:/d; /^project:/d' .specify/extensions/landspec/landspec-config.yml
 
 "$l" lite >/dev/null
 check "when set to lite, then only the PR template is scaffolded" \
   '[[ -f .github/pull_request_template.md && -f .github/copilot-instructions.md && ! -f .github/workflows/ci.yml && ! -f .github/dependabot.yml ]]'
 check "then the constitution has one landspec block for lite" '[[ "$(blocks)" == 1 ]] && grep -q "level: lite" .specify/memory/constitution.md'
 check "then the branch flow targets main" 'grep -qF "feat/* → main" .specify/memory/constitution.md'
-check "then an older config gains empty milestone and project keys (nothing is guessed)" \
-  'grep -qx "milestone: \"\"" .specify/extensions/landspec/landspec-config.yml && grep -qx "project: \"\"" .specify/extensions/landspec/landspec-config.yml'
+check "then the config gets no issue_labels, milestone or project line" \
+  '! grep -qE "^(issue_labels|milestone|project):" .specify/extensions/landspec/landspec-config.yml'
 check "then Claude settings drop AI attribution from commits and PRs" 'grep -q "\"attribution\"" .claude/settings.json'
 check "then every file it wrote is recorded with its SHA-256 (what remove.sh compares against)" \
   'h="$(sha256sum < .githooks/pre-commit 2>/dev/null || shasum -a 256 < .githooks/pre-commit)"; grep -qxF "${h%% *} .githooks/pre-commit" .specify/landspec-files.sha256 && [[ "$(grep -c " .githooks/pre-commit$" .specify/landspec-files.sha256)" == 1 ]] && "$l" lite >/dev/null && [[ "$(grep -c " .githooks/pre-commit$" .specify/landspec-files.sha256)" == 1 ]]'

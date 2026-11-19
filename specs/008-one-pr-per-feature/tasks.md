@@ -211,7 +211,7 @@ landed on the branch as each is ready; one draft PR per feature.
 
 **Independent Test**: quickstart L4 and Q2.
 
-- [ ] T005 [US2] Remove the GitHub issues: issues.sh, its command and config keys; the tasks hooks run the plan review, in extension/scripts/issues.sh, extension/commands/issues.md and extension/extension.yml (depends on T003, T006)
+- [X] T005 [US2] Remove the GitHub issues: issues.sh, its command and config keys; the tasks hooks run the plan review, in extension/scripts/issues.sh, extension/commands/issues.md and extension/extension.yml (depends on T003, T006)
   - Comes from: FR-001, FR-002, FR-016, US2 scenario 1, SC-001; research R5 (superseded), R6; contracts/scripts.md "issues.sh (removed)", "lib.sh", "extension.yml hooks"
   - What: (replaces "one issue per feature", superseded 2026-11-18; the issues.sh work built for
     the old T005 is not landed.) Delete `extension/scripts/issues.sh` and `tests/issues.test.sh`.

@@ -6,7 +6,7 @@
 # (Landspec-Task: <NNN>/Tnnn, lib.sh task_done), failed when its run record says so, waiting while a task its line
 # "depends on" is not done, else pending. No GitHub issue is read.
 # Prints "done|failed|pending|waiting Tnnn <summary>" per task, then
-# FEATURE=<num> BRANCH=<branch> ISSUE=<#N|-> PR=<url|->, then DONE=x/y NEXT=<first pending Tnnn, or empty>.
+# FEATURE=<num> BRANCH=<branch> PR=<url|->, then DONE=x/y NEXT=<first pending Tnnn, or empty>.
 # A legacy feature (a task line ends in " — #N") named here prints LEGACY=<name> and stops.
 # With no argument on a task ref or a feature branch, it serves that branch's feature. Otherwise,
 # legacy features left out, with several features that have a task to build it prints one
@@ -75,8 +75,7 @@ fi
 
 scan "$fdir" true
 fb="$(feature_branch "$fdir")"
-issue="$(sed -nE 's/^\*\*Issue\*\*: #([0-9]+)[[:space:]]*$/\1/p' <<<"$TASKS" | head -1)"
 pr="$(gh pr list --head "$fb" --state open --json url,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].url // empty')" \
   || die "cannot look up the feature's pull request; fix gh's error above"
-echo "FEATURE=$(feature_key "$fdir") BRANCH=$fb ISSUE=${issue:+#}${issue:--} PR=${pr:--}"
+echo "FEATURE=$(feature_key "$fdir") BRANCH=$fb PR=${pr:--}"
 echo "DONE=$DONE_N/$TOTAL NEXT=$NEXT_ID"

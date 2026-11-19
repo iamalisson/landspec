@@ -166,7 +166,7 @@ new_repo() {
   mkdir -p .specify/extensions specs/001-demo
   printf '# Spec\n\n- **FR-001**: the demo MUST search.\n' > specs/001-demo/spec.md # one requirement, for the plan review's tables
   mkdir -p .specify/extensions/landspec && ln -s "$ROOT/extension/scripts" .specify/extensions/landspec/scripts # as spec-kit installs it
-  printf 'level: %s\nbase_branch: auto\nbranch_prefix: feat\nissue_labels: "type:task"\nmilestone: ""\nproject: ""\n' "$1" > .specify/extensions/landspec/landspec-config.yml
+  printf 'level: %s\nbase_branch: auto\nbranch_prefix: feat\n' "$1" > .specify/extensions/landspec/landspec-config.yml
   echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
   # Local test state stays out of git so config edits never dirty the tree.
   printf '.specify/\n*.bak\n' > .gitignore

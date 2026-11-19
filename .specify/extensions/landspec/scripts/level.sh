@@ -26,9 +26,6 @@ previous="$(cfg level none)"
 cfg_set level "$level"
 grep -qE '^base_branch:' "$LANDSPEC_CONFIG" || cfg_set base_branch auto
 grep -qE '^branch_prefix:' "$LANDSPEC_CONFIG" || cfg_set branch_prefix feat
-grep -qE '^issue_labels:' "$LANDSPEC_CONFIG" || cfg_set issue_labels '"type:task"'
-grep -qE '^milestone:' "$LANDSPEC_CONFIG" || cfg_set milestone '""'
-grep -qE '^project:' "$LANDSPEC_CONFIG" || cfg_set project '""'
 echo "level: $previous → $level"
 
 case "$level" in

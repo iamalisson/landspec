@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: landspec's independent reviewer, a fresh reader for a branch or a plan. Launched by /speckit-landspec-pr, /speckit-landspec-issues and /speckit-landspec-review with commands/review.md as its prompt.
+description: landspec's independent reviewer, a fresh reader for a branch or a plan. Launched by /speckit-landspec-pr, /speckit-landspec-plan-review and /speckit-landspec-review with commands/review.md as its prompt.
 model: opus
 effort: medium
 isolation: worktree
