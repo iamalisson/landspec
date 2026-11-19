@@ -2,6 +2,7 @@
 # shellcheck disable=SC2016,SC2034  # checks are strings evaluated by check()
 # shellcheck source=helpers.sh
 source "$(dirname "$0")/helpers.sh"
+fake_gh # branch.sh looks up the feature PR before it makes or pushes the branch
 r="$SCRIPTS/review.sh"
 # Every task report states its range (the merge-base with the base, then HEAD) and the reviewer's model.
 range() { echo "Reviewed: $(git merge-base HEAD origin/develop)..$(git rev-parse HEAD)"; }

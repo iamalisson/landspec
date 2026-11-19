@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The state of every task of a feature, for /landspec:implement, and the one record per task it keeps.
 #   implement.sh [feature] status [--running T001,T002]
+#       Once the feature PR is merged: MERGED=<n> alone, on any branch (the release's turn: release-plan).
 #       On the feature's branch (<branch_prefix>/<NNN>-<name>) only, read from its landing commits:
 #       One "TASK=<id> STATE=pending|waiting|building|built|review|changes|done|failed [ROUND=<n>] [REASON=<why>]"
 #       line per task, then one START=<id> REF=landspec/<NNN>-<tnnn>-task FROM=<feature head> [RESUME=yes]
@@ -18,7 +19,7 @@
 #   implement.sh [feature] fail <task> <reason>
 #   implement.sh [feature] retry <task>   also deletes the task ref, so the task starts again from the feature head
 #   implement.sh [feature] check
-#       The end check, on the feature's branch once every task is done: merges origin/<base> in first (a
+#       The end check, on the feature's branch once every task is done, refused once the feature PR is merged: merges origin/<base> in first (a
 #       conflict aborts and dies naming the files), points refs/landspec/check/<feature> at the head and
 #       writes the end-check record (head:, heads:, tests: pending). Prints CHECK=<head> ROUND=<n> (n: the
 #       heads checked), UNCHANGED=<n> (this head's tests or its own review failed), or ROUNDS_EXHAUSTED=<max>
@@ -95,6 +96,9 @@ deps() { grep -oiE 'depends on T[0-9]{3,}([, ]+(and )?T[0-9]{3,})*' <<<"$1" | gr
 feature_status() {
   local line t r rh w st why f fh phase round d marker plain acts="" starts="" fly=0 ids="" out="" n=0 done_n=0 pr
   refuse_legacy "$fdir"
+  # first, so any clone, on any branch, sees the merge: only the release runs after it
+  pr="$(merged_pr "$fb")" || die "cannot look up the feature's pull request; fix gh's error above"
+  [[ -z "$pr" ]] || { echo "MERGED=$pr"; return 0; }
   on_feature_branch || die "status reads the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
   bash "$(dirname "$0")/review.sh" check --plan >/dev/null || exit 1
   if [[ "$(landspec_level)" == full ]]; then
@@ -262,6 +266,7 @@ case "$action" in
     par=$((10#$par))
     feature_status ;;
   check)
+    refuse_merged "$fdir" # before any merge or push
     on_feature_branch || die "the end check runs on the feature's branch: switch to it first (branch.sh $(basename "$fdir"))"
     max="$(cfg feature_rounds 3)"; [[ "$max" =~ ^[1-9]$ ]] || die "feature_rounds must be a number from 1 to 9"
     for t in $(sed -nE 's/^- \[.\] (T[0-9]{3,}) .*/\1/p' "$fdir/tasks.md"); do

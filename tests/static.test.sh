@@ -525,6 +525,11 @@ check "then publish reads the notes from the base, or from the release PR's body
    && grep -qF "before the first line that is exactly \`## Evidence\` or \`## Review\`, whichever comes first" <<<"$rl" && grep -qF "stop and say the release PR has no notes" <<<"$rl" \
    && grep -qF "put the notes first in the release PR'"'"'s body, before its" <<<"$rl" && ! grep -qF -- "--generate-notes" <<<"$rl"'
 check "then nothing in the skill merges a PR" '! grep -qF "gh pr merge" skills/implement/SKILL.md'
+check "then the release starts on status's MERGED= (or branch.sh's merged refusal), and the loop and the end check do not run then (spec 008 T022)" \
+  'f="$(flat < skills/implement/SKILL.md)"; [[ "$(flat <<<"$rl")" == *"When \`status\` prints \`MERGED=<n>\` (or \`branch.sh\` refused naming the merged feature PR #<n>), and only then, run \`I release-plan\`"* ]] \
+   && [[ "$f" == *"When it prints \`MERGED=<n>\` (alone: the developer merged the feature PR), the loop and the end check do not run: go to \"The release\""* ]] \
+   && [[ "$f" == *"When it refuses with \`the feature PR #<n> is merged\`, go to \"The release\""* ]] && ! grep -qF "every task is \`merged\`" skills/implement/SKILL.md \
+   && [[ "$(flat < skills/next/SKILL.md)" == *"marks the feature'"'"'s one PR ready; then, once the developer merged it, the next run audits it and makes the release"* ]]'
 check "then landspec's own config names its four version files and docs/releases" \
   'c=.specify/extensions/landspec/landspec-config.yml; for f in .claude-plugin/plugin.json extension/extension.yml preset/preset.yml .specify/extensions/landspec/extension.yml; do grep "^version_files:" $c | grep -qF "$f" || exit 1; done; grep -qx "release_notes: docs/releases" $c'
 

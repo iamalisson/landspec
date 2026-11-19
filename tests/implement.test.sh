@@ -138,6 +138,32 @@ fp_setup "feat: one PR per feature" OPEN; rp
 check "when the feature PR is still open, then no bump: release-plan says the feature PR #40 is not merged yet" \
   'grep -qF "the feature PR #40 of 001-demo is not merged yet" <<<"$out" && ! grep -q "^RELEASE=" <<<"$out" && ! grep -qE "^(issue|api graphql)" "$GH_LOG"'
 
+# ── Spec 008 T022: once the feature PR is merged, implement runs the release, not the end check ──
+if command -v jq >/dev/null; then # GH_PR_JSON runs the script's own --jq
+  fp_setup "feat: one PR per feature" MERGED
+  # GitHub's PRs as JSON: a fork's merged PR from a branch of the same name first (never ours), then fp_setup's.
+  jq -R -s '[{number: 39, title: "feat: a fork", headRefName: "feat/001-demo", state: "MERGED", mergeCommit: {oid: "0000000000000000000000000000000000000000"}, mergedAt: "2026-11-13T10:00:00Z", isCrossRepository: true}]
+    + (split("\n") | map(select(. != "") | split("\t") | {number: (.[0] | tonumber), title: .[1], headRefName: .[2], state: .[3],
+       mergeCommit: (if .[4] == "" then null else {oid: .[4]} end), mergedAt: (if .[5] == "" then null else .[5] end), isCrossRepository: false}))' "$GH_REL" > "$TMP/merged.json"
+  export GH_PR_JSON="$TMP/merged.json"
+  # GitHub deleted the merged head branch; this clone keeps it, with no upstream, and has no plan review or analysis.
+  fh="$(git rev-parse feat/001-demo)"; git branch --quiet -u origin/feat/001-demo feat/001-demo; git push --quiet origin --delete feat/001-demo; git fetch --quiet --prune origin
+  remote() { git ls-remote origin | sort; }; r0="$(remote)"
+  check "when the feature PR is merged and the clone is off the branch, then status prints MERGED=40 alone, past the other gates" \
+    '[[ "$("$I" status 2>&1)" == MERGED=40 ]]'
+  check "when the feature PR is merged and the branch has no upstream, then branch.sh refuses naming release-plan and pushes nothing" \
+    'one_refusal "the feature PR #40 is merged: run implement.sh 001-demo release-plan" "$SCRIPTS/branch.sh" 001 && [[ "$(remote)" == "$r0" ]]'
+  git switch --quiet feat/001-demo
+  check "when the feature PR is merged, then check refuses naming release-plan, and the branch and origin are unchanged" \
+    'one_refusal "the feature PR #40 is merged: run implement.sh 001-demo release-plan" "$I" check && [[ "$(git rev-parse HEAD)" == "$fh" && "$(remote)" == "$r0" ]]'
+  rp
+  check "then release-plan still prints bump 1.5.0 with PRS=40, the fork's PR left out" '[[ "$out" == "RELEASE=bump 1.5.0 FILES=package.json NOTES=- PRS=40" ]]'
+  git switch --quiet main; git branch --quiet -D feat/001-demo
+  check "when the merged branch is in neither this clone nor origin, then branch.sh refuses before creating it, and origin gains no branch" \
+    'one_refusal "the feature PR #40 is merged" "$SCRIPTS/branch.sh" 001 && [[ "$(remote)" == "$r0" ]] && ! git show-ref --verify --quiet refs/heads/feat/001-demo && [[ "$(git branch --show-current)" == main ]]'
+  unset GH_PR_JSON
+fi
+
 # ── Spec 004 T010: the audit before the bump, once per base commit ──
 ap() { out="$("$I" audit-plan 2>&1)" || true; }
 c0="$(git rev-parse origin/main)"; ap
@@ -251,6 +277,7 @@ check "then T001 is done, T002 starts from the new head, and the plan review sti
 check "when T001 is landed already, then land refuses it" 'one_refusal "T001 is landed already" "$I" land T001'
 echo "https://github.com/acme/app/pull/99" > "$GH_PR"; echo "$FB" > "$GH_PR.head"; fs
 check "when the feature branch has an open PR, then status prints PR=<its url>" 'grep -qx "PR=https://github.com/acme/app/pull/99" <<<"$out"'
+check "when the feature PR is open and none is merged, then status prints no MERGED=" '! grep -q "^MERGED=" <<<"$out" && grep -q "^DONE=" <<<"$out"'
 rm -f "$GH_PR" "$GH_PR.head"
 build "$R3"; "$I" mark T003 implemented >/dev/null; ready "$R3"; "$I" mark T003 ready >/dev/null
 git merge --quiet --no-ff --no-edit "refs/heads/$R3"; hm="$(git rev-parse HEAD)"

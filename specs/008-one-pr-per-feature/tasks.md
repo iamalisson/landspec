@@ -426,7 +426,7 @@ diff.
     findings` without `high`, any gitleaks finding gives `findings high`, a missing scanner stays
     `missing`; `tests/run.sh` passes.
 
-- [ ] T022 [US5] Run the release, not the end check, once the feature PR is merged, in extension/scripts/implement.sh and skills/implement/SKILL.md
+- [X] T022 [US5] Run the release, not the end check, once the feature PR is merged, in extension/scripts/implement.sh and skills/implement/SKILL.md
   - Comes from: the end check's feature review, round 1: FR-013 and US5 scenario 4 not met (after
     the merge, `/landspec:implement` reruns the end check, `check` merges the base into the merged
     branch and pushes it, and `pr.sh feature --ready` opens a second PR; the skill's release keys on
