@@ -177,6 +177,15 @@ r0="$(sed "s/.*REPORT=//; s/ HOLD=.*//" <<<"$out")"; "$I" audit-record "$c0" "$r
 check "when the held report itself is recorded again with 0 (a disproved finding), then done" '[[ "$out" == "AUDIT=done COMMIT=$c0 REPORT=$r0 HOLD=0" ]] && grep -qx "# report" "$r0"'
 c1="$(on_main fix fix.txt 'fixed\n')"; ap
 check "when origin/main moved since the audit, then needed again for the new commit" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
+# release_audit: on (the default) or off; off skips the audit without fetching or reading a record.
+ra() { sed -i.bak '/^release_audit:/d' .specify/extensions/landspec/landspec-config.yml; rm -f .specify/extensions/landspec/landspec-config.yml.bak; [[ -z "$1" ]] || echo "release_audit: $1" >> .specify/extensions/landspec/landspec-config.yml; }
+ra on; ap
+check "when release_audit is on, then audit-plan says needed as with the key absent" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
+ou="$(git remote get-url origin)"; git remote set-url origin "$TMP/no-such-origin"; ra off; ap; git remote set-url origin "$ou"
+check "when release_audit is off, then audit-plan prints exactly the skipped line, with origin unreachable" '[[ "$out" == "AUDIT=skipped (release_audit: off)" ]]'
+ra maybe
+check "when release_audit is neither on nor off, then audit-plan refuses naming the key and the two values" 'fails_with "release_audit must be on or off" "$I" audit-plan'
+ra ""
 check "when audit-record gets a short sha, a missing report or a hold that is not a number, then it refuses" \
   'fails_with "usage: implement.sh audit-record" "$I" audit-record "${c1:0:7}" "$TMP/audit.md" 0 \
    && fails_with "usage: implement.sh audit-record" "$I" audit-record "$c1" "$TMP/none.md" 0 \

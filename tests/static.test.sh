@@ -572,6 +572,9 @@ check "then with HOLD=0 the notes get Known issues by visibility, counts only on
    && grep -qF "on a \`PUBLIC\` one, only a count per severity" <<<"$au" && grep -qF "on a private or internal one, each" <<<"$au" \
    && grep -qF "confirmed medium or low and each plausible finding, with its title and category" <<<"$au" && grep -qF "the title" <<<"$au" && grep -qF "rewritten if it carries more than what is affected. Never an exploit detail" <<<"$au" && grep -qF "<code-review file>" <<<"$au" && grep -qF "<security-review file>" <<<"$au" \
    && grep -qF "\"Known issues\" of the audit (below)" skills/implement/SKILL.md'
+check "then with release_audit: off the skill runs no audit, never calls audit-record, and the notes say Not audited" \
+  'grep -qF -- "- \`AUDIT=skipped (release_audit: off)\`" <<<"$au" && grep -qF "\"## Not audited\"" <<<"$au" && grep -qF "never call \`audit-record\`" <<<"$au" \
+   && grep -q "^| \`release_audit\` | \`on\` |" docs/reference.md && grep -qF "release_audit: off" docs/security.md'
 check "then the run report names the missing scanners, which do not hold the release" \
   'e="$(sed -n "/^## End/,\$p" skills/implement/SKILL.md)"; grep -qF "report'"'"'s coverage names as missing (they do not hold the release" <<<"$e"'
 check "then /landspec:security has the unattended mode (steps 1 to 6, HOLD=) and takes a report for step 7" \
