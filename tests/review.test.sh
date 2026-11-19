@@ -70,6 +70,15 @@ plan_report
 check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/plan.md" >/dev/null && "$r" check --plan'
 sedi 's/ — #5$/ — #9/' specs/001-demo/tasks.md
 check "when only the issue numbers changed, then the plan review still holds" '"$r" check --plan'
+sedi 's/^- \[ \] T001 /- [X] T001 /' specs/001-demo/tasks.md
+check "when a task is ticked [X] after the plan review, then the plan review still holds" \
+  'grep -q "^- \[X\] T001 " specs/001-demo/tasks.md && "$r" check --plan'
+{ printf '**Issue**: #7\n\n'; cat specs/001-demo/tasks.md; } > "$TMP/t.md"; mv "$TMP/t.md" specs/001-demo/tasks.md
+check "when the feature's **Issue**: line is added after the plan review, then the plan review still holds" \
+  'grep -qx "\*\*Issue\*\*: #7" specs/001-demo/tasks.md && "$r" check --plan'
+sedi 's/Add search/Add find/' specs/001-demo/tasks.md
+check "when a ticked task's line is changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
+sedi 's/Add find/Add search/' specs/001-demo/tasks.md
 echo '# Plan: data model changed' > specs/001-demo/plan.md
 check "when plan.md changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
 plan_review >/dev/null

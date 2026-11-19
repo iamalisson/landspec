@@ -153,6 +153,31 @@ feature_branch() { echo "$(cfg branch_prefix feat)/$(basename "$1")"; }
 # legacy_feature <feature dir>: true when the feature was started under the per-task flow (a
 # tasks.md line ends in " — #N").
 legacy_feature() { grep -qE ' — #[0-9]+[[:space:]]*$' "$1/tasks.md" 2>/dev/null; }
+# refuse_legacy <feature dir>: a legacy feature prints LEGACY=<name> and stops with the one way on (research R11).
+refuse_legacy() {
+  legacy_feature "$1" || return 0
+  echo "LEGACY=$(basename "$1")"
+  die "$(basename "$1") was started under the per-task flow: finish its open task PRs as ordinary PRs, then delete the ' — #N' suffix (and close the issue) of each remaining task in $1/tasks.md to continue it"
+}
+
+# task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
+# landing commit: anywhere in its history, a commit whose message has the line "Landspec-Task: <NNN>/<Tnnn>".
+# The feature's number is in it because task ids restart at T001 in every feature: however the branch was
+# joined (a PR merge, a pull merge, a squash), its own landings are found and never another feature's.
+task_done() {
+  local b r; b="$(feature_branch "$1")"; r="refs/heads/$b"
+  git show-ref --verify --quiet "$r" || r="refs/remotes/origin/$b"
+  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $(feature_key "$1")/$2\$" "$r" -- 2>/dev/null)" ]]
+}
+
+# plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"
+# line, with the blank line after it, left out (kept when "issue" is given): what landing a task and
+# writing the feature's issue never change.
+plain_tasks() {
+  awk -v keep="${2:-}" 'drop && /^[[:space:]]*$/ { drop = 0; next } { drop = 0 }
+    keep == "" && /^\*\*Issue\*\*: #[0-9]+[[:space:]]*$/ { drop = 1; next }
+    /^- \[[xX]\] T[0-9][0-9][0-9]/ { sub(/^- \[[xX]\]/, "- [ ]") } { print }' "$1"
+}
 
 # carry_switch <dir> <target> <git switch args...>: switch branches with <dir>'s current content
 # (uncommitted files too) carried over; nothing else is touched.

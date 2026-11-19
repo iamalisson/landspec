@@ -69,7 +69,7 @@ and landed on the branch; one draft PR per feature.
     `LEGACY=` and exits non-zero; `feature_dir` resolves both branch shapes; `bash tests/pr.test.sh`
     passes unchanged (the carry helper); `tests/run.sh` passes.
 
-- [ ] T002 [US1] Report task states from landing commits and land a reviewed task on the feature branch, in extension/scripts/implement.sh (depends on T001)
+- [X] T002 [US1] Report task states from landing commits and land a reviewed task on the feature branch, in extension/scripts/implement.sh (depends on T001)
   - Comes from: FR-004, FR-006, FR-007, FR-014, FR-015, US1 scenarios 1-3, edge cases (red twice, run stopped midway, developer commit); research R2, R3, R7, R11; data-model "Task", "Task ref", "Landing commit"; contracts/scripts.md "implement.sh", "review.sh"
   - What: on a feature branch (`feature_branch` matches), `status` per contracts/scripts.md: refuse
     without `review.sh check --plan`, a legacy feature, or (level `full`) the analyzed marker; one
