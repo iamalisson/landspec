@@ -12,9 +12,10 @@
 #   review.sh answer --plan <area> <text>   record the developer's answer to a Simplify section, resetting the
 #                                           area's count (plan-<feature>.areas)
 #   review.sh outside --plan <n>            log the real findings the spec PR's outside reviewers found (OUTSIDE=<n>)
-#   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
+#   review.sh check [--plan]                exit 0 when the recorded review matches the current state and counts
+#                                           no high finding (a plan) or no high or medium one (a task)
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
-#   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
+#   review.sh report [--plan]               check, then print the recorded facts: the patch id, the Assessment line,
 #                                           the model, any warning and the risk maps as paths
 #                                           (never the report's text: pr.sh puts this in the public PR body)
 #   review.sh risk [<from>]                 the diff's risky paths, one "RISK=<category> <path>" line each (RISK=none)
@@ -46,9 +47,6 @@ if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan 
 if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
 if [[ "$action" == answer ]] && ! $plan; then die "usage: review.sh answer --plan <area> <text>"; fi
 if [[ "$action" == outside ]] && ! $plan; then die "usage: review.sh outside --plan <n>"; fi
-# A fix round may change this many lines outside the previous findings' files (tests aside);
-# more means the fix is new work, which gets a full review.
-DELTA_LINES=20
 dir="$(git rev-parse --git-common-dir)/landspec-review"
 
 if $plan; then
@@ -194,20 +192,24 @@ pass_rows() {
     END { flush() }' "$report"
 }
 
-# findings_total <file>: high + medium + low of its last "Findings: <n> high, <n> medium, <n> low" line, or nothing.
-findings_total() {
-  grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$1" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + $2 + $3 }' || true
+# findings_hml <file>: "<high> <medium> <low>" of its last "Findings: <n> high, <n> medium, <n> low" line, or nothing.
+findings_hml() {
+  grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$1" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + 0, $2 + 0, $3 + 0 }' || true
 }
+# findings_total <file>: high + medium + low of that line, or nothing.
+findings_total() { findings_hml "$1" | awk '{ print $1 + $2 + $3 }'; }
 
 # pass_tables: dies, naming the pass and the row, unless every pass has a table of rows whose statuses are its
 # own, the Earlier findings table is there when the last round had findings, and the findings are counted and
-# tagged; for a "ready", unless every row passes and every defined FR/SC id of spec.md and task id of tasks.md has its row.
+# tagged; for a "ready", unless every row passes (only when the report counts a high finding: a failing row of a
+# report with none is a medium or low one, R13) and every defined FR/SC id of spec.md and task id of tasks.md has its row.
 pass_tables() {
-  local rows err id total last=0 tags bad nt nf
+  local rows err id total last=0 tags bad nt nf high
   rows="$(pass_rows)"
   # A record with no Findings: line (2.7.0) counts as 0.
   if [[ -f "$record" ]]; then last="$(findings_total "$record")"; fi
-  err="$(P="$PASSES" V="$verdict" E="$((${last:-0} > 0))" awk -F'\t' '
+  high="$(findings_hml "$report" | cut -d' ' -f1)"
+  err="$(P="$PASSES" V="$verdict" H="${high:-0}" E="$((${last:-0} > 0))" awk -F'\t' '
     BEGIN { np = split(ENVIRON["P"], pass, " ")
       split("holds proven SAME TRUE provided handled safe holds", good, " ")
       split("BREAKS: MISSING DIFFERENT: FALSE MISSING MISSING BREAKS: BREAKS:", bad, " ")
@@ -223,10 +225,10 @@ pass_tables() {
     { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") ($1 == "earlier" ? "" : " or none: <why>") }
     s ~ /^none: *[^ ]/ && $1 == "earlier" { say("the Earlier findings table has the row " $4 ": it holds one row per earlier finding, resolved or open, never none: <why>"); next }
     s ~ /^none: *[^ ]/ { none[$1] = $4; next }
-    ENVIRON["V"] == "ready" && failcell($4) { say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
+    ENVIRON["V"] == "ready" && ENVIRON["H"] > 0 && failcell($4) { say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
     s == g[$1] { next }
     bd ~ /:$/ ? index(s, bd " ") == 1 && length(s) > length(bd) + 1 : s == bd {
-      nf++; if (ENVIRON["V"] == "ready") say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
+      nf++; if (ENVIRON["V"] == "ready" && ENVIRON["H"] > 0) say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
     { say(t[$1] " has the row " $4 " whose status \"" s "\" is not one of " list) }
     END { for (i = 1; i <= np; i++) { p = pass[i]
         if (!seen[p]) say("the report has no ### Pass: " p " table: run every pass of the plan review")
@@ -253,29 +255,6 @@ pass_tables() {
   for id in $(sed -nE 's/^- \[[ xX]\] (T[0-9]+).*/\1/p' "$fdir/tasks.md"); do
     grep -qF "size"$'\t'"$id"$'\t' <<<"$rows" || die "the size pass has no row for $id (tasks.md lists it): add its row"
   done
-}
-
-# outside <last>: the lines the fix changed since <last> outside the previous findings' files
-# (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
-# counts as more than the limit. When the base was merged in since <last>, the count starts from <last> with
-# that base merged (merge-tree's first line is the tree even on a conflict, so a resolution's lines count);
-# a git without merge-tree --write-tree (before 2.38) counts from <last>, which only refuses more.
-outside() {
-  local found re a d f n=0 from="$1" mb t
-  mb="$(git merge-base "$tip" "$(base_ref ${bopt:+"$bopt"})" 2>/dev/null || true)"
-  if [[ -n "$mb" && "$mb" != "$(git rev-parse "$tip")" ]] && ! git merge-base --is-ancestor "$mb" "$1"; then
-    t="$(git merge-tree --write-tree "$1" "$mb" 2>/dev/null | head -1 || true)"
-    if git rev-parse --quiet --verify "$t^{tree}" >/dev/null 2>&1; then from="$t"; fi
-  fi
-  # Claims lines and their heading are skipped: a claim's stopped-at file is not a finding's file.
-  found="$(awk 'NR == 1, /^$/ { next } /^(- (held|broke):|\*\*Claims)/ { next } tolower($0) ~ /findings/ { on = 1 }
-    on && match($0, /[A-Za-z0-9_.\/-]+:[0-9]+/) { s = substr($0, RSTART, RLENGTH); sub(/:[0-9]+$/, "", s); print s }' "$record")"
-  re="$(test_path_re)" || exit 1
-  while IFS=$'\t' read -r a d f; do
-    if grep -qxF -- "$f" <<<"$found" || grep -qE -- "$re" <<<"$f"; then continue; fi
-    if [[ "$a" == - ]]; then n=$((n + DELTA_LINES + 1)); else n=$((n + a + d)); fi
-  done < <(landspec_numstat "$from" "$tip")
-  echo "$n"
 }
 
 # remove_copy <report> <reviewed commit>: after a record, remove the reviewer's copy its last "Copy:"
@@ -384,8 +363,6 @@ case "$action" in
         fi
         [[ -n "$rf" && -n "$model" ]] \
           || die "the report must state Reviewed: <from>..<head> and Model: <id> for $from..$head: run the review again"
-        n="$(outside "$from")" || exit 1
-        ((n <= DELTA_LINES)) || die "the delta changes $n lines outside the previous findings (limit $DELTA_LINES): run a new full review"
         carried="$(hdr map-full)"
       else
         [[ -z "$df" ]] || die "this is a delta report: record it with --delta, or run a new full review"
@@ -458,8 +435,15 @@ case "$action" in
     [[ -f "$record" ]] || die "no independent review recorded for $what; run /speckit-landspec-review and record its report: review.sh record$($plan && echo ' --plan') <report-file>"
     [[ "$(hdr state)" == "$st" ]] \
       || die "$what changed since the last review; run /speckit-landspec-review again and record it"
-    [[ "$(hdr assessment)" == ready ]] \
-      || die "the last review said 'changes needed'; fix the findings, then review again and record it"
+    # The gate is the recorded Findings: count (R13); a record without one (before 2.9) keeps its Assessment line.
+    hml="$(findings_hml "$record")"
+    if [[ -z "$hml" ]]; then
+      [[ "$(hdr assessment)" == ready ]] || die "the last review said 'changes needed'; fix the findings, then review again and record it"
+    else
+      read -r h m _ <<<"$hml"
+      if $plan; then ((h == 0)) || die "the last plan review has $h high finding(s); fix them, then review the plan again and record it"
+      else ((h + m == 0)) || die "the last review has $h high and $m medium findings; fix them, then review again and record it"; fi
+    fi
     # No issue or spec PR while a Simplify question is open (data-model "Invariant").
     if $plan; then
       while read -r a _ s; do
@@ -470,7 +454,7 @@ case "$action" in
     if [[ "$action" == check ]]; then echo "REVIEW=ready"; exit 0; fi
     # Only facts checked or stored by record: no reviewer prose can be filtered for findings reliably (F3.1/F4.3).
     echo "Independent review recorded for this diff (patch id $(hdr state | cut -c1-12))"
-    echo "Assessment: ready"
+    echo "Assessment: $(hdr assessment)"
     m="$(hdr model)"; [[ -z "$m" ]] || echo "Model: $m"
     hdr warning | sed 's/^/warning: /'
     m="$(hdr map-full)"; [[ -z "$m" ]] || printf 'Risk map (round 1)\n%s\n' "$m"
