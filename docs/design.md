@@ -3,54 +3,83 @@
 Design decisions, each with its reason. The what is in the [README](../README.md) and the
 [reference](reference.md).
 
-## One task = one issue = one branch = one PR
+## One branch and one PR per feature
 
-- **Review finds bugs only in small changes.** A Cisco study of 2,500 reviews put the useful
-  size at 200 to 400 lines; past that, defects found per line fall off
-  ([SmartBear](https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/)).
-  Google's guide calls about 100 lines reasonable and 1,000 too large
-  ([small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)). This
-  matters more with AI-written code: a 150-line PR gets read, a 2,000-line one gets scrolled.
-- **Small batches are faster and safer at once.** DORA's research links batch size to both
-  delivery speed and stability
-  ([working in small batches](https://dora.dev/capabilities/working-in-small-batches/)), and the
-  2025 model lists it among the capabilities that make AI help instead of hurt.
-- **Failures localize.** A red CI, a security finding or a production bug points at one task.
-  One revert removes one task. In a one-PR feature, the revert takes everything. The promise rests
-  on one commit per task PR: `init` offers to turn rebase merges off on every level; lite merges by
-  squash only, and on standard and full task PRs are squashed by convention (merge commits stay for
-  the `develop` → `main` promotions, which a squash would split from `develop`).
-- **"Done" has an external definition.** The issue says which requirement produced the code and
-  closes only when the PR merges. That is what makes `/landspec:next` resumable after a month,
-  and what the independent review checks the PR against.
+- **The merge loop cost more than small PRs saved.** landspec used to give every task its own GitHub
+  issue, branch and PR, plus a PR for the spec, and another each time the end check found a gap. An
+  eleven-task feature meant a dozen PRs, each merged by hand before the next run could go on, and a
+  review round and a scan repeated on each one. The developer's time went into that loop, not into
+  reading code. Now a feature is what spec-kit already says it is: one spec folder, one branch
+  (`<branch_prefix>/<NNN>-<short-name>`, made when the spec is written), one PR, reviewed and
+  merged once. No GitHub issue is created: progress is `/landspec:next` and the PR's task table.
+- **Small reviews still happen, one per task.** Review finds bugs only in small changes: a Cisco
+  study of 2,500 reviews put the useful size at 200 to 400 lines
+  ([SmartBear](https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/)), and
+  Google's guide calls about 100 lines reasonable
+  ([small CLs](https://google.github.io/eng-practices/review/developer/small-cls.html)). So each
+  task is still reviewed alone, by one Opus review of its own diff against the feature head, before
+  it lands. What moved is the merge: a task lands on the feature branch, not on the base, so no
+  task waits for a person.
+- **Tasks are built in parallel.** `/landspec:implement` starts every task whose dependencies have
+  landed at once, up to `parallel_tasks` (default 4), each on its own local task ref
+  (`landspec/<NNN>-<tnnn>-task`, never pushed) in its own copy. A feature takes the time of its
+  longest chain of dependent tasks, not the sum of all of them, and a task that depends on another
+  simply starts once that one has landed: nothing is stacked.
+- **Landing is one commit.** `implement.sh land` merges a reviewed task ref `--no-ff` into the
+  feature branch with its tick in `tasks.md`, the review's low findings as `Low:` lines and the
+  trailers `Landspec-Task: <NNN>/<id>` and `Landspec-Review: ready <patch id>`. That merge is what
+  "done" means, in any clone, so `/landspec:next` and a resumed run read progress from git alone.
+  Failures still localize: there is one landing commit per task, and `git revert -m 1` of it takes
+  out one task before the feature merges. Two tasks that change the same lines conflict at landing;
+  the later one gets one round to take in the feature branch, is reviewed again and lands, and a
+  second conflict marks it failed.
+- **Every check runs once.** The tests run once per tree: a green run is recorded for that tree and
+  command, and every later step that needs it (`implement.sh mark implemented`, `pr.sh feature`, the
+  end check) reuses it. The plan review is one Opus pass; only a high finding sends it back. A task
+  review blocks on a high or medium finding and gets one fix round, re-checked as a delta
+  (`task_rounds`, default 2, counts both); a task still blocked after it is marked failed and named
+  at the end while the run goes on. The scanners and mutation testing run once, on the whole
+  feature diff, before the PR is marked ready. Loops that end only at zero findings are gone.
+- **The end check is the PR's review.** Each task review reads one diff; only a check of all of
+  them together, against the spec, answers "nothing is left and nothing breaks the others". When
+  every task has landed, `implement.sh check` runs the tests on the branch head and an Opus review
+  in feature mode reports each FR, scenario and SC as `met`, `not met` or `not verifiable`. Each
+  `not met` line becomes a new task on the same branch; rounds are capped (`feature_rounds`, default
+  3) so a fix that changes nothing never loops. One record, kept per feature, decides the PR:
+  `pr.sh feature` opens a draft after the first landing, with no scan yet, and keeps its body current
+  (tasks, low findings, test changes, end check), and
+  `pr.sh feature --ready` marks it ready only when every task is done, the latest feature review is
+  `ready` for the current head and the scan and mutants are recorded for that diff.
 
-The cost is real: a CI run, a review round and a merge per task. It pays off when tasks are
-**vertical slices**, one observable behavior with its test, and not layers. The tasks template
-says so, and the plan review flags layer-shaped tasks before any issue exists. Since other people
-promote the base branch while a feature is half built, each task must also be safe in production
-alone: a visible feature ships behind a flag that is off by default, and its last task turns it on.
+The cost is a larger PR to merge, and a revert after the merge takes the feature. That is why the
+PR carries the evidence a merge needs (each task's review, the end check's lines, the scan) and why
+tasks are still **vertical slices**, one observable behavior with its test: the reviews stay small
+even when the PR is not.
 
-## The spec is its own PR
-
-Task branches start from the base branch and read `tasks.md` there, so the spec has to be merged
-before any task starts. It also means you review the design while changing it costs one edit to a
-doc, and each task PR stays small and closes exactly one issue. The worked example in
-[examples/](../examples/README.md#why-two-kinds-of-pr) shows both kinds.
+Features started under the old per-task flow (a task line ending in ` — #N`) are not migrated:
+`next.sh`, `implement.sh` and `branch.sh` print `LEGACY=<feature>` and say how to finish its open
+PRs and continue it under this flow.
 
 ## The review is independent
 
 A review inside the session that wrote the code shares that session's assumptions and tests the
-path it already tested. landspec's review before every PR (`/speckit-landspec-review`) runs in a fresh agent
-that gets only facts: the branch, the task line, the PR body, the test command. It starts from the
+path it already tested. landspec's review (`/speckit-landspec-review`) of each task, of the plan and of the whole
+feature is an Opus review in a fresh agent that gets only facts: the branch or task ref, the task
+line, the test command. It starts from the
 diff and the code around it (what it calls and what calls it), once, and reports the real bugs in the changed lines, after trying to break each thing the change claims with a concrete counterexample, following personal data and secrets into the helpers they are passed to,
 since a leak usually hides one call away from the diff. It runs in its own copy of the
 reviewed commit, so whatever it runs (a test, a mutation) never touches the author's checkout. CI runs the tests. `## Evidence` is the author's: no script checks what it says.
 It works the way GitHub's Copilot code review does, one fast pass, with no Copilot subscription
 needed. The review is a gate, not a prompt: its
-report is recorded against the exact diff (`review.sh`), and `pr.sh` refuses the PR without a
-recorded `ready` for that diff, at every level; the same holds for the plan review before issues.
-What the gate proves is that a report saying `ready` was recorded for this exact diff; that a fresh
-reader wrote it rests on the prompt and the launch hook. The PR body shows those facts and nothing else, folded under "Independent review": the review was recorded for
+report is recorded against the exact diff (`review.sh`), at every level. `implement.sh land`
+refuses a task whose review of its ref's head has a high or medium finding; `implement.sh status`
+starts no task while the plan review is stale or has a high finding; `pr.sh feature --ready`
+refuses without a `ready` feature review of the branch head; `pr.sh fix` refuses a fix PR without a
+recorded `ready` for its diff. A review that could not run in its own copy (`Copy: none`) never
+passes. What the gate proves is that a report was recorded for this exact diff; that a fresh
+reader wrote it rests on the prompt and the launch hook. The feature PR's task table shows each
+task's assessment and the end check's lines; a fix PR's body shows the facts of its review and
+nothing else, folded under "Independent review": the review was recorded for
 this diff (its patch id), its `Assessment:` line, the model it ran on with any warning (a session
 that forces one subagent model, or a model outside the configured family), and the risk map's
 paths. The script copies none of the reviewer's
@@ -65,31 +94,14 @@ risky ones (a migration, a deletion, CI, authorization, secrets, money, styles a
 reviewer adds the risks a path cannot show. A fix round is a **delta**: it reviews only the commits
 since the last recorded head, and `record --delta` holds it to that: it follows a recorded round, names
 the head it starts from, and refuses a rebase or a range that is not the delta's; a fix of any
-size is a delta. Each report states the range and model it reviewed,
+size is a delta, and a task gets one. Each report states the range and model it reviewed,
 so a commit made while the review ran is never recorded as reviewed.
 
-## Parallel tasks, stacked PRs
+## The main session starts every agent
 
-`/landspec:implement` runs every task that can start at once, each in its own copy, so a feature
-takes the time of its longest chain of dependent tasks, not the sum of all of them. A task that
-depends on one still unmerged starts on that task's branch and its PR is a draft into it: each PR
-still shows only its own task's work and is reviewed alone, and GitHub cannot merge the child before
-its parent. Once the parent merges, `restack` moves the child onto the base, and the review it
-already has still counts unless the move changed its diff.
-
-Each task's review reads one diff. Only a check of all of them merged together, against the spec,
-answers "nothing is left and nothing breaks the others": so the run ends with one, in a copy that holds
-every task branch at once (made by the main session, since an agent's copy holds one), and its
-rounds are capped so a fix that changes nothing never loops.
-
-A task's fix rounds are deltas too, and a restack that rebased its branch makes the next one a full
-review. Each implementer runs the scan and mutation testing on its own branch before it returns, so a
-test that kills a survivor is in the diff the reviewer reads, not a late commit that needs another
-review.
-
-The main session starts every agent: implementers and reviewers are its background agents, and none
-starts another. Only the main session can watch them all, keep the review independent (the agent
-that wrote a branch never picks its reviewer), and wait for every one of them before it stops.
+Implementers and reviewers are the main session's background agents, and none starts another. Only
+the main session can watch them all, keep the review independent (the agent that wrote a task ref
+never picks its reviewer), land each task in turn and wait for every one of them before it stops.
 Agents that start agents would leave work that nobody watches.
 
 ## Levels instead of one setup
