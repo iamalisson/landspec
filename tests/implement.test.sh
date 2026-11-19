@@ -367,17 +367,17 @@ TASKS3='# Tasks
 - [ ] T005 Add e in `shared.txt` (depends on T001)'
 fsetup; TASKS3="$T3"; plan_review >/dev/null 2>&1; fs
 check "when T001 and T002 name the same file, then only T001 starts and T002 waits with REASON=shares shared.txt with T001" \
-  '[[ "$(starts)" == "START=T001 REF=$R1 FROM=$(head_fb) START=T003 REF=$R3 FROM=$(head_fb) START=T004 REF=$R4 FROM=$(head_fb) " ]] && line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
+  '[[ "$(starts)" == "START=T001 REF=$R1 FROM=$(head_fb) START=T003 REF=$R3 FROM=$(head_fb) START=T004 REF=$R4 FROM=$(head_fb) " ]] && line_of T002 | gq -x "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
 check "then T003, whose line names another file (the shared one only in a sub-bullet), starts beside T001" '[[ "$(state_of T003)" == pending ]]'
 check "then the waiting T002 holds nothing, so T004 (sharing other.txt with it) starts, and T005 reports its dependency first" \
-  '[[ "$(state_of T004)" == pending ]] && line_of T005 | grep -qx "TASK=T005 STATE=waiting REASON=waits for T001"'
+  '[[ "$(state_of T004)" == pending ]] && line_of T005 | gq -x "TASK=T005 STATE=waiting REASON=waits for T001"'
 "$I" fail T001 "no idea" >/dev/null; fs
 check "when the earlier T001 failed, then it does not hold T002, which starts" 'grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && [[ "$(state_of T001)" == failed ]]'
 "$I" retry T001 >/dev/null; build "$R1"; "$I" mark T001 implemented >/dev/null; fs
-check "when T001 is built but not landed, then T002 still waits for it" '[[ "$(state_of T001)" == built ]] && line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
+check "when T001 is built but not landed, then T002 still waits for it" '[[ "$(state_of T001)" == built ]] && line_of T002 | gq -x "TASK=T002 STATE=waiting REASON=shares shared.txt with T001"'
 ready "$R1"; "$I" mark T001 ready >/dev/null; "$I" land T001 >/dev/null 2>&1; fs
 check "when T001 has landed, then T002 starts, and T005 (its dependency done) waits for T002's shared.txt" \
-  'grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && line_of T005 | grep -qx "TASK=T005 STATE=waiting REASON=shares shared.txt with T002"'
+  'grep -qx "START=T002 REF=$R2 FROM=$(head_fb)" <<<"$out" && line_of T005 | gq -x "TASK=T005 STATE=waiting REASON=shares shared.txt with T002"'
 # Only a task that can run or is running holds another, and only paths count: no arrangement leaves every task waiting on a share.
 TASKS3='# Tasks
 
@@ -395,10 +395,10 @@ check "when T004's line names no backticked path, then it starts beside T001, wh
 check "when T005 and T006 both name the command \`npm test\`, then both start: only a token with a / or a . and no space is a path" \
   'grep -q "^START=T005 " <<<"$out" && grep -q "^START=T006 " <<<"$out"'
 check "when T007 depends on the later T008 and both name a.txt, then T008 starts: a task waiting for a dependency holds nothing" \
-  'line_of T007 | grep -qx "TASK=T007 STATE=waiting REASON=waits for T008" && grep -q "^START=T008 " <<<"$out"'
+  'line_of T007 | gq -x "TASK=T007 STATE=waiting REASON=waits for T008" && grep -q "^START=T008 " <<<"$out"'
 "$I" fail T001 "no idea" >/dev/null; fs
 check "when T001 failed and T002 (naming src/x.sh) waits for it, then the independent T003, naming src/x.sh too, starts" \
-  'line_of T002 | grep -qx "TASK=T002 STATE=waiting REASON=waits for T001" && grep -q "^START=T003 " <<<"$out"'
+  'line_of T002 | gq -x "TASK=T002 STATE=waiting REASON=waits for T001" && grep -q "^START=T003 " <<<"$out"'
 cfg_set ""
 # A ready mark whose review check fails (here a reviewer that could not verify: Copy: none) keeps the code: review again, no rebuild.
 fsetup; plan_review >/dev/null 2>&1; build "$R1"
@@ -407,7 +407,7 @@ printf 'Copy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\
 check "when T001 is marked ready but its review check fails, then it is built with REVIEW=T001, and it does not start again" \
   '[[ "$(state_of T001)" == built ]] && grep -qx "REVIEW=T001" <<<"$out" && ! grep -q "^START=T001 " <<<"$out" && ! grep -q "^LAND=" <<<"$out"'
 check "then land refuses it with review.sh's own message, not a changed diff" \
-  'one_refusal "$R1: the last review could not verify the diff (Copy: none)" "$I" land T001 && ! "$I" land T001 2>&1 | grep -q "changed since"'
+  'one_refusal "$R1: the last review could not verify the diff (Copy: none)" "$I" land T001 && ! "$I" land T001 2>&1 | gq "changed since"'
 check "then the refusal says to record the review once, not twice" '[[ "$("$I" land T001 2>&1 | grep -o "record it" | wc -l)" -eq 1 ]]'
 cp -R "$SCRIPTS" "$TMP/s"; printf '#!/usr/bin/env bash\nexit 1\n' > "$TMP/s/review.sh"
 check "when review.sh refuses with no message, then land's refusal still reads as a sentence, with the hint" \
