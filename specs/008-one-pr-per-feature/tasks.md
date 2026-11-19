@@ -309,7 +309,7 @@ medium, one fix round checked by a delta.
     files is recorded; `bash tests/static.test.sh` passes with checks that `review.md` states both
     Assessment rules and has no "20 lines", each seen failing on the old text; `tests/run.sh` passes.
 
-- [ ] T019 [P] [US3] Remove the Simplify sections and answers from the plan review, in extension/scripts/review.sh and extension/commands/review.md (depends on T018)
+- [X] T019 [P] [US3] Remove the Simplify sections and answers from the plan review, in extension/scripts/review.sh and extension/commands/review.md (depends on T018)
   - Comes from: FR-019, US3 scenario 1; research R6
   - What: delete `review.sh answer --plan`, the areas state, the `due`/`asked` refusals in `record
     --plan` and `check --plan`, and the `SIMPLIFY=` lines; `review.md` drops "A Simplify section"

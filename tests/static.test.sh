@@ -248,6 +248,8 @@ check "when review.md's delta is read, then a bug it notices outside its fix com
 check "when review.md's plan review is read, then only a High failing row or open earlier finding blocks a ready" \
   'f="$(tr "\n" " " < extension/commands/review.md | tr -s " ")"; [[ "$f" == *"refuses a \`ready\` with a failing row only when the report counts a High finding"* \
    && "$f" == *"and a \`ready\` with an \`open\` row only when it counts a High finding"* ]]'
+check "when review.md is read, then the plan review has no Simplify section: it names no ## Simplify:, simplify: fact or SIMPLIFY= line" \
+  '! grep -qiE "## Simplify:|simplify: <|SIMPLIFY=" extension/commands/review.md'
 check "when the Impact rule is read, then the tasks template and plan-review step 1 also search what a task changes the behaviour of" \
   'grep -qF "changes the behaviour of" extension/commands/plan-review.md && tr "\n" " " < preset/templates/tasks-template.md | tr -s " " | grep -qF "removes or changes the behaviour of"'
 check "when review.md lists the bugs to look for, then it names data reaching a log inside a helper, says to open each helper, and ranks a faked asserted component" \
