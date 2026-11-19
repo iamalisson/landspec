@@ -17,14 +17,13 @@ argument-hint: "[feature]"
    - If it stops with `cannot look up the feature's pull request`, show gh's error above it and stop.
    - If it prints `CHOOSE=...`, more than one feature has tasks to build: show the `feature` lines
      with their counts, ask which one, and run it again with that feature.
-2. Show the progress as a short list (done / failed / pending / waiting), then the `BRANCH=`,
-   `ISSUE=` and `PR=` it printed, and `DONE=x/y`.
+2. Show the progress as a short list (done / failed / pending / waiting), then the `BRANCH=`
+   and `PR=` it printed, and `DONE=x/y`.
    - **done**: its landing commit is on the feature branch (local, else origin's).
    - **failed**: its tests stayed red or its review still asked for changes after the fix rounds;
      `/landspec:implement <FEATURE>` names why, and `implement.sh <FEATURE> retry <task>` lifts it.
    - **waiting**: its line says "depends on Txxx" and that task has not landed yet.
    - **pending**: can be built now; `NEXT` is the first one.
-   - If `ISSUE=-`, the feature has no issue yet: suggest `/speckit-landspec-issues` first.
 3. Suggest `/landspec:implement <FEATURE>`, with the printed `FEATURE=`: it builds every ready task
    at once, each in its own copy, through its tests and an Opus review, and lands
    each one. When `NEXT` is empty and `DONE=y/y`, it checks the whole feature against the spec

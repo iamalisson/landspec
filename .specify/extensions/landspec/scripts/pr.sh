@@ -11,8 +11,8 @@
 #   pr.sh feature "feat(api): price search" <body-file>
 #       On the feature's branch: the gates of a fix PR on the whole diff from the base, except the
 #       review record and "## Review" (each landed task carries its own review). Refuses a task ticked
-#       [X] with no landing commit. Adds a "## Tasks" table, "## End check" from the feature's
-#       end-check record when there is one, and "Closes #N" from tasks.md's "**Issue**: #N" line.
+#       [X] with no landing commit. Adds a "## Tasks" table and "## End check" from the feature's
+#       end-check record when there is one; closes no issue.
 #       Opens a draft PR (or replaces the open one's body) and prints PR=<url> READY=no.
 #   pr.sh fix "fix(api): handle empty cart" <body-file>
 #       Any other PR (a small fix, a dependency bump, landspec's setup), from its own branch: the same
@@ -112,7 +112,6 @@ case "$mode" in
       [[ "$branch" == "$(feature_branch "$fdir")" ]] \
         || die "not on the feature's branch $(feature_branch "$fdir") (on '${branch:-a detached HEAD}'); run branch.sh $(basename "$fdir")"
       need_review=false; draft=true; ready=no; nodraft="do not merge this PR before pr.sh feature --ready"
-      issue="$(sed -nE 's/^\*\*Issue\*\*: #([0-9]+)[[:space:]]*$/\1/p' "$fdir/tasks.md" | tail -1)"
       feature_sections
     elif [[ "$mode" == task ]]; then
       task="${2:-}"; title="${3:-}"; body_file="${4:-}"

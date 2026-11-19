@@ -114,7 +114,7 @@ mkdir -p specs/002-new
 printf '%s\n' '- [ ] T001 Thing in `a` — #11' '- [ ] T002 Other in `b` — #12' > specs/002-new/tasks.md
 printf '%s\n' '- **FR-001**: the new thing MUST work.' > specs/002-new/spec.md
 echo '{ "feature_directory": "specs/002-new" }' > .specify/feature.json
-set_cfg milestone v2; set_cfg project Board
+printf "milestone: v2\nproject: Board\n" >> .specify/extensions/landspec/landspec-config.yml # an old config's keys
 plan_review claude-haiku-4-5 >/dev/null 2>&1
 echo "local data" > a
 check "when tasks.md names a file that is only untracked here, then the spec PR is refused before any switch" \
@@ -127,8 +127,8 @@ check "when opening the spec PR, then the spec folder is committed on spec/<feat
   '[[ "$(git branch --show-current)" == spec/002-new ]] && [[ -z "$(git status --porcelain specs)" ]] && git ls-remote --exit-code origin spec/002-new'
 check "then the spec PR lists the task issues" 'grep -q "#11 #12" "$GH_LOG"'
 check "then it explains, folded away, why the spec is its own PR" 'grep -q "<summary>Why is the spec its own PR?</summary>" "$GH_LOG"'
-check "then it gets the configured milestone and project" \
-  'grep -q -- "^pr edit https://github.com/acme/app/pull/99 --milestone v2$" "$GH_LOG" && grep -q -- "^pr edit https://github.com/acme/app/pull/99 --add-project Board$" "$GH_LOG"'
+check "then a milestone or project left in an old config is never set: the user is only assigned" \
+  'grep -q -- "^pr edit https://github.com/acme/app/pull/99 --add-assignee @me$" "$GH_LOG" && ! grep -qE -- "--milestone|--add-project" "$GH_LOG"'
 check "when the spec PR step runs again on its branch, then it reuses the branch and the PR" \
   'before="$(grep -c "^pr create" "$GH_LOG")"; "$p" spec && [[ "$(git branch --show-current)" == spec/002-new && "$(grep -c "^pr create" "$GH_LOG")" == "$before" ]]'
 check "when the first spec PR was opened, then its commit says add" \
@@ -725,7 +725,7 @@ check "then the body has the Tasks table: each task's state, landing commit and 
    && grep -qxF "| T001 | Add search | done | $(git log -1 --format=%h --grep="^Landspec-Task: 001/T001$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
    && grep -qxF "| T002 | Add ranking | done | $(git log -1 --format=%h --grep="^Landspec-Task: 001/T002$") | ready (patch id ${PID:0:12}) |" "$GH_LOG" \
    && grep -qxF "| T003 | Add export | pending | - | - |" "$GH_LOG" && ! grep -q "Independent review" "$GH_LOG"'
-check "then the body closes the feature issue and has no End check yet" 'grep -qxF "Closes #42" "$GH_LOG" && ! grep -q "## End check" "$GH_LOG"'
+check "then the body closes no issue, though tasks.md still has an **Issue** line, and has no End check yet" '! grep -q "Closes #" "$GH_LOG" && ! grep -q "## End check" "$GH_LOG"'
 : > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" 2>/dev/null)" || true
 check "when pr.sh feature runs again, then it replaces that PR's body and opens no other" \
   '! grep -q "^pr create" "$GH_LOG" && grep -q "^pr edit https://github.com/acme/app/pull/99 --body" "$GH_LOG" && [[ "$out" == *"PR=https://github.com/acme/app/pull/99 READY=no" ]]'

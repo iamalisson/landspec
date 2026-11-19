@@ -14,21 +14,21 @@ hooks:
     condition: null
   after_tasks:
   - extension: landspec
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     enabled: true
     optional: false
     priority: 10
-    prompt: Execute speckit.landspec.issues?
-    description: Create one GitHub issue per task
+    prompt: Execute speckit.landspec.plan-review?
+    description: Review the plan once and commit the spec folder on the feature branch
     condition: null
   after_converge:
   - extension: landspec
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     enabled: true
     optional: false
     priority: 10
-    prompt: Execute speckit.landspec.issues?
-    description: Create issues for the tasks /speckit-converge added
+    prompt: Execute speckit.landspec.plan-review?
+    description: Review the tasks /speckit-converge added and commit them on the feature branch
     condition: null
   after_analyze:
   - extension: landspec

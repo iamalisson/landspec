@@ -16,12 +16,10 @@ description: "Task list template for feature implementation"
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no dependencies)
-- A task that needs another one **merged** first says so on its line: `(depends on T003)`.
-  landspec holds it until T003's issue closes, instead of offering it with a caveat.
+- A task that needs another one **landed** first says so on its line: `(depends on T003)`.
+  landspec holds it until T003 has landed, instead of offering it with a caveat.
 - **[Story]**: Which user story this task belongs to (e.g., US1, US2, US3)
 - Include exact file paths in descriptions
-- **One task = one issue = one branch = one pull request.** Do not write issue numbers yourself:
-  after this file is generated, every task line gets ` — #N` appended automatically (landspec).
 - **Tests at the level the behavior demands**, named in *Completed when*: logic (parsing, rules,
   money) gets a unit test; a behavior through the interface (an endpoint, a query, a migration)
   gets an integration test against the real thing (in-memory HTTP, the database the project uses
@@ -50,7 +48,7 @@ description: "Task list template for feature implementation"
   and the **last task** turns the flag on, depending on every other task of the feature. A
   migration stays backward compatible with the code already in production (add, never rename or
   drop in the same release).
-- Under each task, add these sub-bullets (they become the issue body):
+- Under each task, add these sub-bullets (the builder and the reviewer read them):
   - `  - Comes from: <FR-/SC-/story IDs or plan section>`
   - `  - Impact: <existing code, tests, docs, data files and guards this task must update, found by
     searching the repo for every symbol, table, file and route it adds, renames, removes or changes

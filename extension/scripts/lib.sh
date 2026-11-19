@@ -390,21 +390,14 @@ repo_slug() {
   echo "$s"
 }
 
-# add_meta <issue|pr> <url>: assign the user, and set the configured milestone and project.
-# Runs after creation, one edit per item, and only warns: optional metadata never stops a run
-# halfway (a bot token that can't be assigned, a closed milestone, a token without project scope).
+# add_meta pr <url>: assign the user (no milestone, no project: those keys are gone).
+# Runs after creation and only warns: optional metadata never stops a run halfway (a bot token
+# that can't be assigned).
 add_meta() {
-  local kind="$1" url="$2" m p err i
-  m="$(cfg milestone "")"; p="$(cfg project "")"
-  local a=(--add-assignee @me)
-  [[ -n "$m" ]] && a+=(--milestone "$m")
-  [[ -n "$p" ]] && a+=(--add-project "$p")
-  for ((i = 0; i < ${#a[@]}; i += 2)); do
-    if ! err="$(gh "$kind" edit "$url" "${a[i]}" "${a[i+1]}" 2>&1 >/dev/null)"; then
-      echo "landspec: warning: could not set ${a[i]#--} '${a[i+1]}' on $url: ${err:-unknown error}" >&2
-      if [[ "${a[i]}" == --add-project ]]; then echo "landspec: (project access needs: gh auth refresh -s project)" >&2; fi
-    fi
-  done
+  local kind="$1" url="$2" err
+  if ! err="$(gh "$kind" edit "$url" --add-assignee @me 2>&1 >/dev/null)"; then
+    echo "landspec: warning: could not set add-assignee '@me' on $url: ${err:-unknown error}" >&2
+  fi
 }
 
 # pr_branches <workflow>: the patterns of on.pull_request.branches, one per line; none = every branch.

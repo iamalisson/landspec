@@ -58,7 +58,7 @@ setup . --level standard
 check "when the agent CLI is missing, then setup still succeeds and warns about it" 'grep -q "Claude Code CLI not found" "$TMP/setup.out"'
 check "when set up, then the five hooks are registered" \
   'for h in after_tasks after_converge after_analyze before_implement after_implement; do grep -q "^  $h:" .specify/extensions.yml || exit 1; done'
-check "then spec-kit registers the hook commands as skills" '[[ -d .claude/skills/speckit-landspec-branch && -d .claude/skills/speckit-landspec-issues && -d .claude/skills/speckit-landspec-review ]]'
+check "then spec-kit registers the hook commands as skills" '[[ -d .claude/skills/speckit-landspec-branch && -d .claude/skills/speckit-landspec-plan-review && ! -e .claude/skills/speckit-landspec-issues && -d .claude/skills/speckit-landspec-review ]]'
 check "then the preset templates win over the core ones" 'out="$(specify preset resolve tasks-template)"; grep -q "from: landspec" <<<"$out"'
 check "then spec-kit's implement command ends with landspec's one-task, no-tick override" \
   'f=.claude/skills/speckit-implement/SKILL.md; grep -q "Do not mark tasks \`\[X\]\`" "$f" && [[ "$(grep -n "mark the task off as \[X\]" "$f" | cut -d: -f1)" -lt "$(grep -n "Do not mark tasks" "$f" | cut -d: -f1)" ]]'

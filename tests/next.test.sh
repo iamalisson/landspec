@@ -23,8 +23,8 @@ git switch --quiet -c feat/001-demo; land T001; git switch --quiet main
 : > "$GH_LOG"; out="$("$n")"
 check "when one task of three has landed, then it is done, the next pending and the dependent one waiting" \
   'grep -qx "done T001 First" <<<"$out" && grep -qx "pending T002 Second" <<<"$out" && grep -qx "waiting T003 Third" <<<"$out"'
-check "then the last two lines name the feature, its branch, issue and PR, then DONE=1/3 NEXT=T002" \
-  '[[ "$(tail -2 <<<"$out")" == $'"'"'FEATURE=001 BRANCH=feat/001-demo ISSUE=#263 PR=-\nDONE=1/3 NEXT=T002'"'"' ]]'
+check "then the last two lines name the feature, its branch and PR (no ISSUE=), then DONE=1/3 NEXT=T002" \
+  '[[ "$(tail -2 <<<"$out")" == $'"'"'FEATURE=001 BRANCH=feat/001-demo PR=-\nDONE=1/3 NEXT=T002'"'"' ]]'
 check "then no GitHub issue is read, and there is no parallel, RUN= or CHOOSE= line" \
   '! grep -q "^issue " "$GH_LOG" && ! grep -q "^api graphql" "$GH_LOG" && ! grep -qE "^(parallel|RUN=|CHOOSE=)" <<<"$out"'
 check "when a commit only mentions a task, then it is not done" \
@@ -75,7 +75,7 @@ mkdir -p specs/004-new; printf '%s\n' '- [ ] T001 New in `n`' > specs/004-new/ta
 check "when two new features have work and none is named, then it lists them and asks, leaving the legacy ones out" \
   'out="$("$n")"; grep -qx "feature 001-demo DONE=0/3" <<<"$out" && grep -qx "feature 004-new DONE=0/1" <<<"$out" && [[ "$(tail -1 <<<"$out")" == "CHOOSE=001-demo 004-new" ]] && ! grep -qE "old|LEGACY" <<<"$out"'
 check "when a feature is named, then it becomes the active one and is served" \
-  'out="$("$n" 004)"; [[ "$(tail -1 <<<"$out")" == "DONE=0/1 NEXT=T001" ]] && grep -q "ISSUE=- " <<<"$out" && grep -q "specs/004-new" .specify/feature.json'
+  'out="$("$n" 004)"; [[ "$(tail -1 <<<"$out")" == "DONE=0/1 NEXT=T001" ]] && ! grep -q "ISSUE=" <<<"$out" && grep -q "specs/004-new" .specify/feature.json'
 check "when the name matches no single feature, then it refuses" 'fails_with "no single feature" "$n" 009'
 
 # On a task ref (landspec/NNN-tnnn-task), its feature is served.

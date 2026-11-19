@@ -9,7 +9,7 @@
       "priority": 10,
       "registered_commands": {
         "claude": [
-          "speckit.landspec.issues",
+          "speckit.landspec.plan-review",
           "speckit.landspec.analyzed",
           "speckit.landspec.branch",
           "speckit.landspec.pr",
