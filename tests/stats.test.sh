@@ -86,4 +86,38 @@ check "when a feature PR was opened and marked ready, then it gets one line with
   '[[ "$out" == "$(printf "%s\n" "feat/008-one-pr start->pr ?m | reviews 2 full + 1 delta | first changes-needed | tests 30s x1 | H+M 1" \
      "fix/typo start->pr 10m | reviews 1 full + 0 delta | first ready | tests 0s x0 | H+M 0" "PRS=2 MEDIAN_START_TO_PR=10m MEAN_ROUNDS=2.0 READY_FIRST=1/2")" ]]'
 
+# A feature built on one branch: T001 (its start logged) landed after one review, T002 (no start: timed from its first review) after a delta, a landing conflict and its
+# round, T003 has not landed; two end checks. Another feature's T001 keeps its own numbers.
+cat > "$ev" <<'EOF'
+400 1970-01-01T00:06Z landspec/010-t001-task start task=T001
+1000 1970-01-01T00:16Z - mark task=T001 phase=implemented round=0 branch=landspec/010-t001-task
+1300 1970-01-01T00:21Z - review round=full verdict=ready hm=0 branch=landspec/010-t001-task
+1360 1970-01-01T00:22Z - mark task=T001 phase=ready round=0 branch=landspec/010-t001-task
+1600 1970-01-01T00:26Z feat/010-timed land task=T001 commit=aaa
+1900 1970-01-01T00:31Z - review round=full verdict=changes-needed hm=1 branch=landspec/010-t002-task
+2000 1970-01-01T00:33Z - mark task=T002 phase=changes round=1 branch=landspec/010-t002-task
+2100 1970-01-01T00:35Z - review round=full verdict=ready branch=landspec/011-t001-task
+2500 1970-01-01T00:41Z - review round=delta verdict=ready hm=0 branch=landspec/010-t002-task
+2600 1970-01-01T00:43Z feat/010-timed conflict task=T002 files=a.txt
+3000 1970-01-01T00:50Z - review round=delta verdict=ready hm=0 branch=landspec/010-t002-task
+3700 1970-01-01T01:01Z feat/010-timed land task=T002 commit=bbb
+3800 1970-01-01T01:03Z feat/010-timed check feature=010-timed round=1
+3900 1970-01-01T01:05Z feat/010-timed check feature=010-timed round=2
+4000 1970-01-01T01:06Z - mark task=T003 phase=implemented round=0 branch=landspec/010-t003-task
+4100 1970-01-01T01:08Z feat/010-timed pr mode=feature url=https://github.com/acme/app/pull/7
+4200 1970-01-01T01:10Z feat/011-other land task=T001 commit=ccc
+EOF
+out="$("$s")"
+check "when a feature's tasks landed on its one branch, then each landed task gets a line with the minutes from its first event to its landing, its review rounds and whether it had a conflict round, and a task not landed gets none" \
+  'grep -qxF "TASK 010/T001 first->land 20m | reviews 1 full + 0 delta | conflict no" <<<"$out" \
+   && grep -qxF "TASK 010/T002 first->land 30m | reviews 1 full + 2 delta | conflict yes" <<<"$out" \
+   && grep -qxF "TASK 011/T001 first->land 35m | reviews 1 full + 0 delta | conflict no" <<<"$out" \
+   && [[ "$(grep -c "^TASK " <<<"$out")" == 3 ]]'
+check "then the feature gets a line, after its tasks, with the minutes from its first task event to its last landing, the tasks landed and the end-check rounds" \
+  '[[ "$(grep -n "^FEATURE \|^TASK 010/T002" <<<"$out" | head -2 | tail -1)" == *"FEATURE feat/010-timed first->land 55m | tasks 2 | checks 2" ]] \
+   && grep -qxF "FEATURE feat/011-other first->land 35m | tasks 1 | checks 0" <<<"$out"'
+check "then the feature PR's own line and the totals print as before, a task's start not timing the PR" \
+  '[[ "$(head -1 <<<"$out")" == "feat/010-timed start->pr ?m | reviews 2 full + 2 delta | first ready | tests 0s x0 | H+M 1" ]] \
+   && [[ "$(tail -1 <<<"$out")" == "PRS=1 MEDIAN_START_TO_PR=?m MEAN_ROUNDS=4.0 READY_FIRST=1/1" ]]'
+
 exit "$FAIL"
