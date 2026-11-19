@@ -79,8 +79,9 @@ case "$1 $2" in
              # --head <branch>: only the PR created for that branch (its head is kept in $GH_PR.head)
              h=""; a=("$@"); for ((i = 0; i < ${#a[@]}; i++)); do if [[ "${a[i]}" == --head ]]; then h="${a[i+1]:-}"; fi; done
              if [[ "$*" == *mergeCommit* ]]; then cat "$GH_REL" 2>/dev/null # implement.sh release-plan: "<n>\t<title>\t<head>\t<state>\t<merge sha>\t<merged at>"
-             elif [[ "$*" == *headRefName* && "$*" == *"--state all"* ]]; then cat "$GH_ALL" 2>/dev/null # implement.sh restack: every PR, with its state
+             elif [[ "$*" == *headRefName* && "$*" == *"--state all"* ]]; then cat "$GH_ALL" 2>/dev/null # implement.sh release-plan (a legacy feature): every PR, with its state
              elif [[ "$*" == *headRefName* ]]; then cat "$GH_OPEN" 2>/dev/null
+             elif [[ "$*" == *"--state merged"* ]]; then : # no merged PR unless GH_PR_JSON lists one
              elif [[ -n "$h" ]]; then if [[ -f "$GH_PR" && "$(cat "$GH_PR.head" 2>/dev/null)" == "$h" ]]; then cat "$GH_PR"; fi
              elif [[ -f "$GH_PR" ]]; then cat "$GH_PR"; fi; exit 0 ;;
   "pr create") if [[ -n "${GH_NO_DRAFT:-}" && "$*" == *--draft* ]]; then echo "GraphQL: Draft pull requests are not supported in this repository" >&2; exit 1; fi
@@ -166,7 +167,7 @@ new_repo() {
   mkdir -p .specify/extensions specs/001-demo
   printf '# Spec\n\n- **FR-001**: the demo MUST search.\n' > specs/001-demo/spec.md # one requirement, for the plan review's tables
   mkdir -p .specify/extensions/landspec && ln -s "$ROOT/extension/scripts" .specify/extensions/landspec/scripts # as spec-kit installs it
-  printf 'level: %s\nbase_branch: auto\nbranch_prefix: feat\nissue_labels: "type:task"\nmilestone: ""\nproject: ""\n' "$1" > .specify/extensions/landspec/landspec-config.yml
+  printf 'level: %s\nbase_branch: auto\nbranch_prefix: feat\n' "$1" > .specify/extensions/landspec/landspec-config.yml
   echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
   # Local test state stays out of git so config edits never dirty the tree.
   printf '.specify/\n*.bak\n' > .gitignore

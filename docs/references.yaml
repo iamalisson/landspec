@@ -40,7 +40,7 @@ practices:
       key: four keys are deploy frequency, lead time, change failure rate and recovery time. Small batches and fast feedback win.
     - title: DORA, Working in small batches
       url: https://dora.dev/capabilities/working-in-small-batches/
-      use_when: sizing tasks, PRs or releases, or arguing for one PR per task
+      use_when: sizing tasks, PRs or releases, or arguing for small task reviews inside one feature PR
       key: small batches predict delivery and organizational performance; the two pitfalls are pieces not small enough and regrouping them before release.
     - title: SmartBear, Best practices for peer code review (Cisco study)
       url: https://smartbear.com/learn/code-review/best-practices-for-peer-code-review/

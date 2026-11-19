@@ -1,30 +1,38 @@
 ---
 name: speckit-landspec-branch
-description: Switch to the task's branch before implementing
+description: Switch to the feature's branch before implementing
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: iamalisson
   source: landspec:commands/branch.md
 ---
 
-# Task branch (before `/speckit-implement`)
+# Feature branch (after `/speckit-specify`, before `/speckit-implement`)
 
-One task = one issue = one branch = one PR. This puts the session on the task's branch before
-any code is touched.
+One feature = one branch = one PR. This puts the session on the feature's branch,
+`<branch_prefix>/<NNN>-<short-name>`, before any code is touched. Its tasks are built on it, never
+on a branch of their own.
 
-1. Find the task ID: the single `T###` in the arguments passed to `/speckit-implement`.
-   - If there is none, or more than one: **stop the whole implement run**. Tell the user to pass
-     exactly one task, e.g. `/speckit-implement T003`. Do not implement anything.
-   - A feature number or folder in the arguments (`002`, `002-reports`) names the feature; without
-     it, the active one is used. `/speckit-implement 002 T001` is T001 of feature 002.
-2. Run `bash .specify/extensions/landspec/scripts/branch.sh [<FEATURE>] <TASK_ID>`. It also pushes a
-   new branch to origin at once, so the task shows as in progress to every clone and worktree.
-   - On failure, stop the implement run and show the script's message as is. It explains what is
-     missing: the issue, the spec PR, the analysis, or a clean working tree. Never work around
+**After `/speckit-specify`** (the `after_specify` hook), it makes the feature's branch:
+
+- Run `bash .specify/extensions/landspec/scripts/branch.sh` with no argument (the new feature is the
+  active one). It makes the branch from the base branch, commits the spec folder on it and pushes
+  it; on a later run it only switches to it.
+- On `LEGACY=<feature>`, or any other failure, show the script's message as is and stop. Never work
+  around it: no stash, no reset, no checkout of other files.
+- On success, print `On <BRANCH> for feature <FEATURE>`; the plan and tasks are written on that branch.
+
+**Before `/speckit-implement`** (the `before_implement` hook):
+
+1. A feature number or folder in the arguments passed to `/speckit-implement` (`002`,
+   `002-reports`) names the feature; without it, the active one is used. A task ID (`T003`) is
+   not an argument: the run builds the feature's tasks.
+2. Run `bash .specify/extensions/landspec/scripts/branch.sh [<FEATURE>]`.
+   - On failure, stop the implement run and show the script's message as is. Never work around
      it: no stash, no reset, no checkout of other files.
-3. On success, print `On <BRANCH> for <TASK> (#<ISSUE>)` and continue `/speckit-implement`
-   with **only that task**. Before writing code, follow the "Installed skills and MCP servers" section
-   of `.specify/extensions/landspec/commands/review.md`, and put its `Skills:` line in the PR's
+3. On success, print `On <BRANCH> for feature <FEATURE>` and continue `/speckit-implement`. Before
+   writing code, follow the "Installed skills and MCP servers" section of
+   `.specify/extensions/landspec/commands/review.md`, and put its `Skills:` line in the PR's
    *Evidence*. Follow the constitution's defaults while implementing.
    - When the branch already has an open PR (a run again: `gh pr list --head <BRANCH> --state open
      --json number -q '.[0].number'`), run `bash .specify/extensions/landspec/scripts/pr.sh state <pr>`
@@ -37,4 +45,5 @@ any code is touched.
      file. Otherwise follow `pr.md` step 7's hand-over: `pr.sh state <pr>`, and the PR is ready to merge only on
      `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable`, else its reason; the CI state ("CI
      passed", "CI still running", "CI failed: <jobs>") is shown beside it, never waited for.
-4. Do not tick the task's checkbox in `tasks.md`. The task is done when its issue closes.
+4. Do not tick a task's checkbox in `tasks.md` by hand: `implement.sh land` ticks it in its landing
+   commit.

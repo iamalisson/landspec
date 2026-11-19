@@ -2,8 +2,6 @@
 
 <!-- One or two sentences. -->
 
-Closes #
-
 ## Evidence
 
 <!-- How it was verified: test output, screenshot, run link. Required on level "full". -->

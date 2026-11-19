@@ -1,6 +1,6 @@
 # Feature Specification: Price search
 
-**Feature Branch**: `001-price-search` · **Status**: Approved
+**Feature Branch**: `feat/001-price-search` · **Status**: Approved
 
 ## User Scenarios
 

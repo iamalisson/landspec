@@ -4,7 +4,7 @@ extension:
   id: landspec
   name: "landspec"
   version: "2.9.0"
-  description: "One task = one issue = one branch = one PR, with defaults sized by project complexity"
+  description: "One branch and one PR per feature, with defaults sized by project complexity"
   author: iamalisson
   repository: https://github.com/iamalisson/landspec
   license: MIT
@@ -16,35 +16,39 @@ requires:
       required: true
     - name: gh
       required: true
-      description: "GitHub CLI, used for issues and pull requests"
+      description: "GitHub CLI, used for pull requests"
 
 provides:
   commands:
-    - name: speckit.landspec.issues
-      file: commands/issues.md
-      description: "Create one GitHub issue per task and open the spec PR"
+    - name: speckit.landspec.plan-review
+      file: commands/plan-review.md
+      description: "Ground the plan in the code, review it once and commit the spec folder on the feature branch"
     - name: speckit.landspec.analyzed
       file: commands/analyzed.md
       description: "Record that analysis ran on the current tasks"
     - name: speckit.landspec.branch
       file: commands/branch.md
-      description: "Switch to the task's branch before implementing"
+      description: "Switch to the feature's branch before implementing"
     - name: speckit.landspec.pr
       file: commands/pr.md
-      description: "Commit, push and open the task's pull request"
+      description: "Open the feature's draft pull request, or any other PR"
     - name: speckit.landspec.review
       file: commands/review.md
       description: "Independent review of the branch or the plan by a fresh reader grounded in the whole repository"
 
 hooks:
+  after_specify:
+    command: speckit.landspec.branch
+    optional: false
+    description: "Make the feature's branch and commit the spec on it"
   after_tasks:
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     optional: false
-    description: "Create one GitHub issue per task"
+    description: "Review the plan once and commit the spec folder on the feature branch"
   after_converge:
-    command: speckit.landspec.issues
+    command: speckit.landspec.plan-review
     optional: false
-    description: "Create issues for the tasks /speckit-converge added"
+    description: "Review the tasks /speckit-converge added and commit them on the feature branch"
   after_analyze:
     command: speckit.landspec.analyzed
     optional: false
@@ -52,10 +56,10 @@ hooks:
   before_implement:
     command: speckit.landspec.branch
     optional: false
-    description: "Switch to the task's branch"
+    description: "Switch to the feature's branch"
   after_implement:
     command: speckit.landspec.pr
     optional: false
-    description: "Open the task's pull request"
+    description: "Open or update the feature's draft pull request"
 
-tags: ["github", "issues", "branching", "workflow", "best-practices"]
+tags: ["github", "branching", "workflow", "best-practices"]

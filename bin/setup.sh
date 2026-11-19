@@ -115,5 +115,5 @@ cat <<EOF
 Done. Next:
   existing code?  /landspec:adopt      (fills the constitution from this repo)
   new project?    /speckit-constitution   (fills the [PLACEHOLDERS])
-  then per feature: /speckit-specify → /speckit-plan → /speckit-tasks → /speckit-implement T001
+  then per feature: /speckit-specify → /speckit-plan → /speckit-tasks → /landspec:implement
 EOF

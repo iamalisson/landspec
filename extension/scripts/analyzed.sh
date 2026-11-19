@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Record that /speckit-analyze ran on the current tasks.md (checked by branch.sh on level "full").
+# Record that /speckit-analyze ran on the current tasks.md (checked by implement.sh status on level "full").
 # Usage: analyzed.sh <report-file>  (the report, saved as it came; kept next to the marker)
 # The marker lives in .git, so it never dirties the working tree.
 set -euo pipefail
@@ -17,5 +17,6 @@ fdir="$(feature_dir)"
 dir="$(git rev-parse --git-common-dir)/landspec-analyzed"
 mkdir -p "$dir"
 cp "$report" "$dir/$(basename "$fdir").report.md"
-sha256 < "$fdir/tasks.md" > "$dir/$(basename "$fdir")"
+# ticks and the issue line left out, as implement.sh status reads it: landing a task never needs a new analysis
+plain_tasks "$fdir/tasks.md" | sha256 > "$dir/$(basename "$fdir")"
 echo "ANALYZED=$(basename "$fdir")"

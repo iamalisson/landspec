@@ -2,6 +2,7 @@
 # shellcheck disable=SC2016,SC2034  # checks are strings evaluated by check()
 # shellcheck source=helpers.sh
 source "$(dirname "$0")/helpers.sh"
+fake_gh # branch.sh looks up the feature PR before it makes or pushes the branch
 m="$SCRIPTS/mutants.sh"
 
 new_repo standard
@@ -18,8 +19,8 @@ FAKE
 chmod +x "$TMP/mutate.sh"; export TMP
 printf '**Commands**: build `[BUILD_COMMAND]` · test `npm test` · lint `[LINT_COMMAND]` · mutate `%s`\n' "$TMP/mutate.sh" > .specify/memory/constitution.md
 
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 check "when nothing changed on the branch, then it is skipped" 'out="$("$m")" && grep -q "^mutants skipped" <<<"$out"'
 
 mkdir -p src tests; echo 'export const search = 1' > src/search.ts; echo 'test' > tests/search.test.ts

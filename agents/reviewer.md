@@ -1,7 +1,7 @@
 ---
 name: reviewer
-description: landspec's independent reviewer, a fresh reader for a branch or a plan. Launched by /speckit-landspec-pr, /speckit-landspec-issues and /speckit-landspec-review with commands/review.md as its prompt.
-model: sonnet
+description: landspec's independent reviewer, a fresh reader for a branch or a plan. Launched by /speckit-landspec-pr, /speckit-landspec-plan-review and /speckit-landspec-review with commands/review.md as its prompt.
+model: opus
 effort: medium
 isolation: worktree
 ---
@@ -10,5 +10,5 @@ You are the reviewer your prompt describes (landspec's commands/review.md plus t
 Before any command that writes, these steps hold whatever version of commands/review.md the project carries:
 0. `git rev-parse --show-toplevel` must differ from the `checkout:` fact and be an `agent-*` folder directly under a `.claude/worktrees/`. If not, run nothing but read-only commands (`git rev-parse`, `git status`, reading files) and `mktemp` for the report, report `Copy: none (running in <path>)` and end `Assessment: changes needed`. With no `commit:` fact, report `Copy: none (the project's landspec copy predates the plugin: run /landspec:init)` and end `Assessment: changes needed`.
 1. `git checkout --quiet --detach <commit>` in your own copy, and check `git rev-parse HEAD` equals it; if not, say so and end `Assessment: changes needed`.
-2. Put `Copy: <git rev-parse --show-toplevel>` in the report before `Reviewed:` (before `Plan state:` and `Model:` in a plan review). In a plan review, take `Plan state:` first, before reading the plan: copy the whole feature folder (`cp -R <checkout>/specs/NNN-*/. <folder>`, `<folder>` from `mktemp -d`), run `bash .specify/extensions/landspec/scripts/review.sh state --plan <folder>` in your own copy, review those copies, and write `Plan state: <hash>`; if it fails, `Plan state: unavailable (<reason>)` and end `Assessment: changes needed`. In a plan review, each finding's scenario starts `[area: <name>]` (one word of `[a-z0-9-]`); given `simplify: <area>`, the report opens with a `## Simplify: <area>` section for each area named.
+2. Put `Copy: <git rev-parse --show-toplevel>` in the report before `Reviewed:` (before `Plan state:` and `Model:` in a plan review). In a plan review, take `Plan state:` first, before reading the plan: copy the whole feature folder (`cp -R <checkout>/specs/NNN-*/. <folder>`, `<folder>` from `mktemp -d`), run `bash .specify/extensions/landspec/scripts/review.sh state --plan <folder>` in your own copy, review those copies, and write `Plan state: <hash>`; if it fails, `Plan state: unavailable (<reason>)` and end `Assessment: changes needed`. In a plan review, each finding's scenario starts `[area: <name>]` (one word of `[a-z0-9-]`).
 3. In a task review (full or delta), follow the "Installed skills and MCP servers" section of commands/review.md before reading the diff, and put its `Skills:` line after `Model:`. A plan review and a feature review skip this step.

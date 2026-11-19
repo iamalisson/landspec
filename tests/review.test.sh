@@ -2,14 +2,15 @@
 # shellcheck disable=SC2016,SC2034  # checks are strings evaluated by check()
 # shellcheck source=helpers.sh
 source "$(dirname "$0")/helpers.sh"
+fake_gh # branch.sh looks up the feature PR before it makes or pushes the branch
 r="$SCRIPTS/review.sh"
 # Every task report states its range (the merge-base with the base, then HEAD) and the reviewer's model.
 range() { echo "Reviewed: $(git merge-base HEAD origin/develop)..$(git rev-parse HEAD)"; }
 report() { printf 'What changed: x\n\nFindings: none\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: %s\n' "$(range)" "$1" > "$TMP/report.md"; }
 
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"
 
 check "when no review was recorded, then check refuses and says how to record one" 'fails_with "no independent review" "$r" check'
@@ -28,13 +29,24 @@ report "changes needed"
 check "when the review said changes needed, then check refuses" '"$r" record "$TMP/report.md" && fails_with "changes needed" "$r" check'
 report ready
 check "when the review said ready on this diff, then check passes" '"$r" record "$TMP/report.md" | grep -q "^REVIEW=ready" && "$r" check'
+# R13: a task review blocks on a high or medium finding, never on a low one, whatever its Assessment line says.
+fr() { printf 'What changed: x\n\n- %s: search.ts:1 a case\n\n%s\nModel: claude-sonnet-4-7\nFindings: %s\n\nAssessment: %s\n' "$1" "$(range)" "$2" "$3" > "$TMP/report.md"; }
+fr Medium "0 high, 1 medium, 0 low" ready
+check "when the task review counts Findings: 0 high, 1 medium, 0 low, then check --branch refuses naming the medium" \
+  '"$r" record "$TMP/report.md" >/dev/null && fails_with "the last review has 0 high and 1 medium findings" "$r" check --branch "$(git branch --show-current)"'
+fr Low "0 high, 0 medium, 2 low" "changes needed"
+check "when the task review counts Findings: 0 high, 0 medium, 2 low, then check --branch passes" \
+  '"$r" record "$TMP/report.md" >/dev/null && "$r" check --branch "$(git branch --show-current)" >/dev/null'
+fr Low "0 high, 0 medium, 1 low" "changes needed"; awk '/^Model:/ { print "Copy: none (running in /repo)" } { print }' "$TMP/report.md" > "$TMP/r2"; mv "$TMP/r2" "$TMP/report.md"
+check "when an unverified review (Copy: none (running in /repo)) counts 0 high, 0 medium, 1 low and ends changes needed, then check --branch refuses" \
+  'grep -qx "Copy: none (running in /repo)" "$TMP/report.md" && "$r" record "$TMP/report.md" >/dev/null && fails_with "Copy: none" "$r" check --branch "$(git branch --show-current)"'
 # F3.1/F4.3: report prints only what the script checked (the patch id and the verdict), never the report's text,
 # even a body line shaped like a header field (warning:, map-full:, map-fix:).
-printf 'Preamble LEAK-1\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n  - Security: LEAK-4 token logged\nwarning: LEAK-5\nmap-full: - deep: LEAK-6\nmap-fix: - deep: LEAK-7\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
+printf 'Preamble LEAK-1\n\n- **What changed**: Adds LEAK-2 search.\n- **Findings**:\n  - High: LEAK-3 in src/a.ts:3\n  - Security: LEAK-4 token logged\nwarning: LEAK-5\nmap-full: - deep: LEAK-6\nmap-fix: - deep: LEAK-7\n\n%s\nModel: claude-opus-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
 "$r" record "$TMP/report.md" >/dev/null; out="$("$r" report 2>&1)" || true
 id="$(sed -n 's/^state: //p' "$(git rev-parse --git-common-dir)/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')" | cut -c1-12)"
 check "when a review is recorded, then report prints exactly the patch-id line, the Assessment line and the Model line" \
-  '[[ ${#id} == 12 && "$out" == "Independent review recorded for this diff (patch id $id)"$'"'"'\n'"'"'"Assessment: ready"$'"'"'\n'"'"'"Model: claude-sonnet-4-7" ]]'
+  '[[ ${#id} == 12 && "$out" == "Independent review recorded for this diff (patch id $id)"$'"'"'\n'"'"'"Assessment: ready"$'"'"'\n'"'"'"Model: claude-opus-4-7" ]]'
 check "then report prints nothing from the report body (What changed, findings, the security finding)" \
   '! grep -qiE "LEAK|search|what changed|findings|token" <<<"$out"'
 report "changes needed"; "$r" record "$TMP/report.md" >/dev/null
@@ -68,8 +80,17 @@ check "when no plan review was recorded, then check --plan refuses" 'fails_with 
 check "then the plan hint keeps --plan" 'fails_with "record its report: review.sh record --plan <report-file>" "$r" check --plan'
 plan_report
 check "when the plan review said ready, then check --plan passes" '"$r" record --plan "$TMP/plan.md" >/dev/null && "$r" check --plan'
-sedi 's/ — #5$/ — #9/' specs/001-demo/tasks.md
-check "when only the issue numbers changed, then the plan review still holds" '"$r" check --plan'
+sedi 's/^\(- \[ \] T001 .*\)$/\1 — #9/' specs/001-demo/tasks.md
+check "when only an issue number is added, then the plan review still holds" '"$r" check --plan'
+sedi 's/^- \[ \] T001 /- [X] T001 /' specs/001-demo/tasks.md
+check "when a task is ticked [X] after the plan review, then the plan review still holds" \
+  'grep -q "^- \[X\] T001 " specs/001-demo/tasks.md && "$r" check --plan'
+{ printf '**Issue**: #7\n\n'; cat specs/001-demo/tasks.md; } > "$TMP/t.md"; mv "$TMP/t.md" specs/001-demo/tasks.md
+check "when the feature's **Issue**: line is added after the plan review, then the plan review still holds" \
+  'grep -qx "\*\*Issue\*\*: #7" specs/001-demo/tasks.md && "$r" check --plan'
+sedi 's/Add search/Add find/' specs/001-demo/tasks.md
+check "when a ticked task's line is changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
+sedi 's/Add find/Add search/' specs/001-demo/tasks.md
 echo '# Plan: data model changed' > specs/001-demo/plan.md
 check "when plan.md changed, then the plan needs a new review" 'fails_with "changed since" "$r" check --plan'
 plan_review >/dev/null
@@ -194,11 +215,11 @@ check "then the fixture's README names one planted defect for each pass review.s
 refused() { fx "${3:-ready}" "${2:-}"; local rec; rec="$(cat "$(git rev-parse --git-common-dir)/landspec-review/plan-002-plan-review")"
   fails_with "$1" "$r" record --plan "$TMP/fx.md" && [[ "$(cat "$(git rev-parse --git-common-dir)/landspec-review/plan-002-plan-review")" == "$rec" ]]; }
 check "when one requirements row says MISSING, then a ready is refused naming the pass and the row" \
-  'refused "the requirements pass has a failing row, so the plan is not ready: | FR-002 | MISSING |" "s/^\| FR-002 \| proven \|$/| FR-002 | MISSING |/"'
+  'fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the requirements pass has a failing row, so the plan is not ready: | FR-002 | MISSING |" "s/^\| FR-002 \| proven \|$/| FR-002 | MISSING |/"'
 check "when one claims row says FALSE, then a ready is refused naming the pass and the row" \
-  'refused "the claims pass has a failing row, so the plan is not ready: | a claim | FALSE |" "s/\| TRUE \|$/| FALSE |/"'
+  'fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the claims pass has a failing row, so the plan is not ready: | a claim | FALSE |" "s/\| TRUE \|$/| FALSE |/"'
 check "when one rules row says DIFFERENT: 200 vs 100, then a ready is refused naming the pass and the row" \
-  'refused "the rules pass has a failing row, so the plan is not ready: | a rule | DIFFERENT: 200 vs 100 |" "s/\| SAME \|$/| DIFFERENT: 200 vs 100 |/"'
+  'fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the rules pass has a failing row, so the plan is not ready: | a rule | DIFFERENT: 200 vs 100 |" "s/\| SAME \|$/| DIFFERENT: 200 vs 100 |/"'
 check "when the rules pass has a header and no row, then it is refused: the rules pass has no row" \
   'refused "the rules pass has no row" "/^\| a rule /d"'
 check "when the guards pass is left out, then it is refused: the report has no ### Pass: guards table" \
@@ -210,7 +231,7 @@ check "when a size row says BREAKS: with no reason, then it is refused as a stat
 check "when the requirements table has no row for SC-002, then a ready is refused naming SC-002" \
   'refused "the requirements pass has no row for SC-002" "/^\| SC-002 /d"'
 check "when a size row says BREAKS: about 600 lines, then a ready is refused naming the row" \
-  'refused "the size pass has a failing row, so the plan is not ready: | T003 | BREAKS: about 600 lines |" "s/^\| T003 \| holds \|$/| T003 | BREAKS: about 600 lines |/"'
+  'fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the size pass has a failing row, so the plan is not ready: | T003 | BREAKS: about 600 lines |" "s/^\| T003 \| holds \|$/| T003 | BREAKS: about 600 lines |/"'
 check "when the size table has no row for T002, then a ready is refused naming T002" \
   'refused "the size pass has no row for T002" "/^\| T002 /d"'
 check "when a pass's none: row sits beside other rows, then it is refused" \
@@ -220,9 +241,9 @@ check "when a pass's only row is none: no task writes data, then the ready is re
 check "when a row has no closing pipe and its cells are in backticks or bold, then it is read as the same row" \
   'fx ready "s/^\| a guard \| handled \|$/| \`a guard\` | **handled**/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "when a rules row compares two documents as DIFFERENT: data-model vs api in a middle cell and ends SAME, then a ready is refused naming the row" \
-  'refused "the rules pass has a failing row, so the plan is not ready: | title limit | DIFFERENT: data-model vs api | SAME |" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/"'
+  'fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the rules pass has a failing row, so the plan is not ready: | title limit | DIFFERENT: data-model vs api | SAME |" "s/^\| a rule \| SAME \|$/| title limit | DIFFERENT: data-model vs api | SAME |/"'
 check "when a middle cell starts with MISSING, FALSE or BREAKS: (or a bold DIFFERENT:), then a ready is refused" \
-  'for s in MISSING FALSE "BREAKS: x" "**DIFFERENT: x**"; do refused "the claims pass has a failing row" "s/^\| a claim \| TRUE \|$/| a claim | $s | TRUE |/" || exit 1; done'
+  'for s in MISSING FALSE "BREAKS: x" "**DIFFERENT: x**"; do fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the claims pass has a failing row" "s/^\| a claim \| TRUE \|$/| a claim | $s | TRUE |/" || exit 1; done'
 check "when a rules row names its documents in a middle cell and ends SAME, or its item cell starts with FALSE, then the ready is recorded" \
   'fx ready "s/^\| a rule \| SAME \|$/| a rule | spec vs data-model | SAME |/; s/^\| a claim \| TRUE \|$/| FALSE start of an item | TRUE |/" && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "when a changes needed report holds a middle DIFFERENT: cell, then it is recorded" \
@@ -237,6 +258,13 @@ earlier() { printf '\n### Earlier findings\n\n| Finding | Resolved by | Status |
 check "when a changes needed report holds a MISSING row, listed and tagged among its findings, then it is recorded" \
   'fx_extra="$one_f" fx_findings="Findings: 0 high, 1 medium, 0 low" fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" \
    && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]]'
+# R13: only a high finding blocks the plan; a failing row that is a medium finding does not block a ready.
+check "when a ready report has one MISSING row counted as a medium finding, then record --plan records it and check --plan passes" \
+  'fx_extra="$(earlier F1 resolved)${one_f/requirements/gate-medium}" fx_findings="Findings: 0 high, 1 medium, 0 low" fx ready "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]] && "$r" check --plan'
+check "when the recorded plan review counts Findings: 1 high, 0 medium, 0 low, then check --plan refuses naming the high finding" \
+  'fx_extra="$(earlier F1 resolved)$(sed "s/Medium/High/; s/requirements/gate-high/" <<<"$one_f")" fx_findings="Findings: 1 high, 0 medium, 0 low" fx "changes needed" "s/^\| FR-003 \| proven \|$/| FR-003 | MISSING |/" \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == "REVIEW=changes needed" ]] && fails_with "the last plan review has 1 high finding" "$r" check --plan'
 check "when a changes needed report has no rollout pass, then it is refused" \
   'refused "the report has no ### Pass: rollout table" "/^### Pass: rollout$/,/^\| a write /d" "changes needed"'
 check "when the pass tables come after another heading, then a row under that heading belongs to no pass" \
@@ -244,16 +272,20 @@ check "when the pass tables come after another heading, then a row under that he
 
 # FR-004 (#221): a round after one with findings checks each in its own table; every finding is counted and tagged.
 check "after a recorded changes needed, when a ready report has an Earlier findings row open, then it is refused naming the row" \
-  'fx_extra="$(earlier "F1 FR-003 has no task" open)" refused "the Earlier findings table has a failing row, so the plan is not ready: | F1 FR-003 has no task | tasks.md:1 | open |"'
+  'fx_extra="$(earlier "F1 FR-003 has no task" open)" fx_findings="Findings: 1 high, 0 medium, 0 low" refused "the Earlier findings table has a failing row, so the plan is not ready: | F1 FR-003 has no task | tasks.md:1 | open |"'
 check "after a recorded changes needed, when a ready report has no Earlier findings table, then it is refused" \
   'refused "the last recorded round had findings, so the report needs an ### Earlier findings table"'
 check "after a recorded changes needed, when an open earlier finding is not counted among the findings, then a changes needed is refused" \
   'fx_extra="$(earlier "F1" open)" refused "the report has 1 failing rows but counts 0 findings" "" "changes needed"'
+check "when a ready report's only failing row is an open Earlier findings row counted as a medium, with 0 high, then it is recorded" \
+  'fx_extra="$(earlier "F1 FR-003 has no task" open)"$'"'"'\n- Medium: tasks.md:3 [area: gate-open] F1 is still open\n'"'"' fx_findings="Findings: 0 high, 1 medium, 0 low" fx ready \
+   && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "when every Earlier findings row is resolved, then the ready is recorded" \
   'fx_extra="$(earlier "F1 FR-003 has no task" resolved)" fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 check "after a round with Findings: 0 high, 0 medium, 0 low, when the next report has no Earlier findings table, then it is recorded" \
   'fx ready && [[ "$("$r" record --plan "$TMP/fx.md")" == REVIEW=ready ]]'
 fx_extra="$five_f" fx_findings="Findings: 0 high, 2 medium, 3 low" fx "changes needed"; "$r" record --plan "$TMP/fx.md" >/dev/null
+check "when the recorded plan review counts Findings: 0 high, 2 medium, 3 low, then check --plan passes" '"$r" check --plan >/dev/null'
 ev="$(git rev-parse --git-common-dir)/landspec-events"
 check "when a plan round is recorded, then its event names the feature and the high, medium and low counts of its Findings: line" \
   '[[ "$(grep " review round=plan " "$ev" | tail -1 | cut -d" " -f4-)" == "review round=plan verdict=changes-needed feature=002-plan-review h=0 m=2 l=3" ]]'
@@ -295,68 +327,25 @@ check "when the feature folder has no spec.md, then a ready is refused the same 
   'refused "spec.md has no functional requirement: the requirements pass cannot pass"'
 cp "$TMP/spec0" $fd/spec.md; rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
-# FR-005 (#222): each finding's area is logged; 3 in one area ask for a Simplify section, then the developer's answer.
+# FR-019 (R6): no Simplify sections or answers: an area found round after round asks nothing more.
 fd=specs/003-areas; cp -R "$ROOT/tests/fixtures/plan-review" $fd; echo '{ "feature_directory": "specs/003-areas" }' > .specify/feature.json
 L="$(git rev-parse --git-common-dir)/landspec-review/plan-003-areas.areas"
-# af <assessment> <area...>: a report on $fd with one Low finding per area and a resolved Earlier findings row;
-# $af_head (Simplify sections) goes before them, $af_sed edits its tables.
+# af <assessment> <area...>: a report on $fd with one Low finding per area and a resolved Earlier findings row.
 af() { local v="$1" a f=""; shift; for a in "$@"; do f+=$'\n'"- Low: plan.md:1 [area: $a] a finding"; done
-  fx_extra="${af_head:-}$(earlier x resolved)$f"$'\n' fx_findings="Findings: 0 high, 0 medium, $# low" fx "$v" "${af_sed:-}"; }
-simp() { local a s=""; for a in "$@"; do s+=$'\n'"## Simplify: $a"$'\n\nMerge the rules into one.\n'; done; printf '%s' "$s"; }
+  fx_extra="$(earlier x resolved)$f"$'\n' fx_findings="Findings: 0 high, 0 medium, $# low" fx "$v"; }
 rec() { "$r" record --plan "$TMP/fx.md" 2>/dev/null; }
-af "changes needed" discards discards
-check "when a round has two findings in [area: discards], then record prints no SIMPLIFY= and logs them" \
-  '[[ "$(rec)" == "REVIEW=changes needed" && "$(grep -c "^1 discards$" "$L")" -eq 2 ]]'
-af ready discards
-check "when the next round is a ready with a third, Low, [area: discards] finding, then record prints SIMPLIFY=discards and writes due discards" \
-  '[[ "$(rec)" == $'"'"'REVIEW=ready\nSIMPLIFY=discards'"'"' && "$(tail -1 "$L")" == "due discards" ]]'
-check "then check --plan and report --plan refuse naming discards, so no issue or spec PR goes out" \
-  'fails_with "a Simplify question is open for discards: run the next plan review with simplify: discards" "$r" check --plan && fails_with "a Simplify question is open for discards" "$r" report --plan'
-check "when answer --plan discards runs while discards is only due, then it is refused and check --plan still refuses" \
-  'cp "$L" "$TMP/L0" && fails_with "nothing is asked for discards" "$r" answer --plan discards x && cmp -s "$L" "$TMP/L0" && fails_with "a Simplify question is open for discards" "$r" check --plan'
-check "when answer --plan other x runs, then it is refused: nothing is asked for other" \
-  'fails_with "nothing is asked for other" "$r" answer --plan other x'
-check "when answer runs without --plan, or with no text, then it fails with its usage" \
-  'fails_with "usage: review.sh answer --plan <area> <text>" "$r" answer discards x && fails_with "usage: review.sh answer --plan <area> <text>" "$r" answer --plan discards " "'
-af "changes needed"
-check "when the next report has no ## Simplify: discards section, then it is refused whatever its verdict and the log is unchanged" \
-  'fails_with "the report has no ## Simplify: discards section" "$r" record --plan "$TMP/fx.md" && af ready && fails_with "the report has no ## Simplify: discards section" "$r" record --plan "$TMP/fx.md" && cmp -s "$L" "$TMP/L0"'
-af_head="$(simp discards)" af "changes needed" discards discards
-check "when it opens with ## Simplify: discards and has two more discards findings, then it is recorded with asked discards and no second due line" \
-  '[[ "$(rec)" == "REVIEW=changes needed" ]] && grep -qx "asked discards" "$L" && [[ "$(grep -c "^due discards$" "$L")" -eq 1 ]]'
-af ready
-check "then the round after is refused until the answer is recorded" \
-  'fails_with "a Simplify question is open for discards: record the developer'"'"'s answer first: review.sh answer --plan discards" "$r" record --plan "$TMP/fx.md"'
-check "when answer --plan discards kept: … runs (the answer unquoted), then it prints ANSWERED=discards and writes reset discards with the whole answer" \
-  '[[ "$("$r" answer --plan discards kept: the discard rule stays)" == ANSWERED=discards && "$(tail -1 "$L")" == "reset discards kept: the discard rule stays" ]]'
-check "then answering discards again is refused: nothing is asked for discards" 'fails_with "nothing is asked for discards" "$r" answer --plan discards x'
-af ready discards
-check "after the answer, when one more discards finding is recorded in a ready, then it prints nothing more and check --plan passes" \
-  '[[ "$(rec)" == REVIEW=ready ]] && "$r" check --plan'
-af "changes needed" p p q q
-check "when a round has two findings in each of two areas, then record prints no SIMPLIFY=" '[[ "$(rec)" == "REVIEW=changes needed" ]]'
-cp "$L" "$TMP/L1"; af_sed='s/^\| a claim \| TRUE \|$/| a claim | FALSE |/' af ready p
-check "when a report with a third [area: p] finding is refused by a later check, then the log is unchanged" \
-  'fails_with "the claims pass has a failing row" "$r" record --plan "$TMP/fx.md" && cmp -s "$L" "$TMP/L1"'
-af ready p
-check "then the corrected report is the one that prints SIMPLIFY=p" '[[ "$(rec)" == $'"'"'REVIEW=ready\nSIMPLIFY=p'"'"' ]]'
-rm -f "$L"; af "changes needed" a a a b b b
-check "when a round has three findings in each of a and b, then record prints SIMPLIFY=a and SIMPLIFY=b" \
-  '[[ "$(rec)" == $'"'"'REVIEW=changes needed\nSIMPLIFY=a\nSIMPLIFY=b'"'"' ]]'
-af_head="$(simp a)" af ready
-check "when the next report has only ## Simplify: a, then it is refused naming b" \
-  'fails_with "the report has no ## Simplify: b section: the round is given simplify: a, b" "$r" record --plan "$TMP/fx.md"'
-af_head="$(simp a b)" af ready
-check "when it has both sections, then it is recorded and check --plan refuses until both are answered" \
-  '[[ "$(rec)" == REVIEW=ready ]] && fails_with "a Simplify question is open for a" "$r" check --plan && "$r" answer --plan a x >/dev/null \
-   && fails_with "a Simplify question is open for b: record the developer'"'"'s answer" "$r" check --plan && "$r" answer --plan b y >/dev/null && "$r" check --plan'
+check "when [area: discards] is found in three rounds, then record --plan prints no SIMPLIFY=, writes no area log and check --plan passes on the record without a high" \
+  'af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] && af "changes needed" discards && [[ "$(rec)" == "REVIEW=changes needed" ]] \
+   && af ready discards && [[ "$(rec)" == REVIEW=ready && ! -e "$L" ]] && "$r" check --plan'
+check "when review.sh answer --plan x y runs, then it exits non-zero with the usage error, which names no answer action" \
+  'fails_with "usage: review.sh record [--plan|--delta|--feature]" "$r" answer --plan x y && ! "$r" answer --plan x y 2>&1 | grep -qF "review.sh answer"'
 rm -rf $fd; echo '{ "feature_directory": "specs/001-demo" }' > .specify/feature.json
 
 # ── FR-030/FR-031: the risk map sets the minimum depth ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'export const search = 1' > search.ts; git add search.ts; git commit --quiet -m "feat: search"
 # rep <assessment> <line...>: a full-round report for HEAD with the given lines (risk map, findings).
 rep() { local v="$1"; shift; { echo 'What changed: x'; echo; printf '%s\n' "$@"; echo; range; echo 'Model: claude-sonnet-4-7'; echo; echo "Assessment: $v"; } > "$TMP/report.md"; }
@@ -428,29 +417,28 @@ check "when a report with a Delta from: line is recorded without --delta, then r
 # The model the review ran on: a warning, stored in the record, never a silent downgrade.
 warn() { echo "landspec: warning: $1; the review did not run on the configured model"; }
 rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-haiku-4-5/' "$TMP/report.md"
-check "when review_model is unset or opus and Model: is claude-haiku-4-5, then record prints exactly one warning, the review ran on <id>" \
-  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]] \
-   && echo "review_model: opus" >> .specify/extensions/landspec/landspec-config.yml && err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)" \
-   && [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
+check "when Model: is claude-haiku-4-5, then record prints exactly one warning, the review ran on <id>" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
 check "when CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set, then its reason wins over an outside-family model (one line)" \
   'err="$(CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 "$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "CLAUDE_CODE_SUBAGENT_MODEL_FORCE is set")" ]]'
-sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml; echo "review_model: sonnet" >> .specify/extensions/landspec/landspec-config.yml
+# The review_model key is no longer read: the review runs on Opus whatever it says.
+echo "review_model: sonnet" >> .specify/extensions/landspec/landspec-config.yml
+rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-sonnet-4-7/' "$TMP/report.md"
+check "when Model: is sonnet, even with review_model: sonnet, then record warns the review ran on <id>, not opus" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-sonnet-4-7, not opus")" ]]'
 rep ready "${all[@]}"; sed -i.bak 's/^Model: .*/Model: claude-opus-4-7/' "$TMP/report.md"
-check "when Model: is opus and review_model is sonnet, then record warns the review ran on <id>, not sonnet" \
-  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$err" == "$(warn "the review ran on claude-opus-4-7, not sonnet")" ]]'
+check "when Model: is opus, even with review_model: sonnet, then record prints no warning" \
+  'err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ -z "$err" ]]'
 sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml; echo "review_model: haiku" >> .specify/extensions/landspec/landspec-config.yml
-check "when review_model is haiku, then record refuses (the config cannot lower the bar)" \
-  'fails_with "landspec: review_model must be sonnet, opus or fable" "$r" record "$TMP/report.md"'
+check "when review_model is haiku, then record ignores it (no refusal)" '"$r" record "$TMP/report.md" >/dev/null 2>&1'
 sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml
 
 # Model: reaches the PR body, so only something shaped like a model id is stored.
 rec() { echo "$(git rev-parse --git-common-dir)/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')"; }
 model_is() { rep ready "${all[@]}"; sed -i.bak "s/^Model: .*/Model: $1/" "$TMP/report.md"; err="$("$r" record "$TMP/report.md" 2>&1 >/dev/null)"; [[ "$(sed -n 's/^model: //p' "$(rec)" | head -1)" == "$2" ]]; }
-echo "review_model: opus" >> .specify/extensions/landspec/landspec-config.yml
 check "when Model: is claude-opus-4-8[1m], then it is kept with no warning" 'model_is "claude-opus-4-8[1m]" "claude-opus-4-8[1m]" && [[ -z "$err" ]]'
 check "when Model: is us.anthropic.claude-opus-4-1-20250805-v1:0, then it is kept with no warning" \
   'model_is us.anthropic.claude-opus-4-1-20250805-v1:0 us.anthropic.claude-opus-4-1-20250805-v1:0 && [[ -z "$err" ]]'
-sed -i.bak '/^review_model:/d' .specify/extensions/landspec/landspec-config.yml
 check "when Model: is claude-haiku-4-5, then it is kept, with its warning" 'model_is claude-haiku-4-5 claude-haiku-4-5 && [[ "$err" == "$(warn "the review ran on claude-haiku-4-5")" ]]'
 for bad in Token=abc ghp_abc123; do
   check "when Model: is $bad, then unknown is stored in the record and the warning, and the value in neither" \
@@ -498,15 +486,12 @@ rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong"
 rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong" "Findings: 1 high, 2 medium, 0 low"; "$r" record "$TMP/report.md" >/dev/null || true
 check "when the report has the Findings count line, then the review event carries hm, its high and medium sum" \
   'grep -q " review round=full verdict=changes-needed hm=3 branch=" "$ev" && ! grep -q "verdict=ready hm=" "$ev"'
-seq 1 21 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; git commit --quiet -m "fix: other"
+seq 1 40 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; git commit --quiet -m "fix: other"
 drep ready "$h2"
-check "when the fix adds 21 lines to a file outside the previous findings, then record --delta refuses and check still refuses" \
-  'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md" && fails_with "changed since" "$r" check'
-o="$(git rev-parse HEAD)"; git reset --quiet --hard "$h2"
-rep "changes needed" "${all[@]}" "**Claims** (before the findings):" "- held: a claim — a case: stopped at other.ts:1" "Findings:" "- High: search.ts:1 still wrong"
-"$r" record "$TMP/report.md" >/dev/null || true; git cherry-pick --quiet "$o"; drep ready "$h2"
-check "when the 21 lines are in a file only a held claim names, then record --delta still refuses" \
-  'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md"'
+check "when the fix changes 40 lines outside the earlier findings' files, then record --delta records it" \
+  'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
+git reset --quiet --hard "$h2"
+rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 still wrong"; "$r" record "$TMP/report.md" >/dev/null || true
 git reset --quiet --hard "$h2"
 echo 'DROP TABLE orders;' >> db/migrations/002_drop.sql; git commit --quiet -am "fix: drop orders"
 drep ready "$h2"
@@ -543,8 +528,8 @@ git switch --quiet -
 # ── FR-022: the rules that decide a review, one case each, on a branch of their own ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 mkdir -p src tests; echo 'export const search = 1' > search.ts; echo 'export const login = 1' > src/login.ts
 printf 'assert 1\nassert 2\nassert 3\n' > tests/p.test.sh
 git add search.ts src tests; git commit --quiet -m "feat: search"
@@ -571,18 +556,6 @@ check "when a '- proven:' line names line 0 of an existing test file, then recor
 rr "$login" "$sonnet" "- proven: src/login.ts by tests/p.test.sh:1" 'Assessment: ready'
 check "when it names line 1 of the same file, then record accepts it" '[[ "$(verdict_of)" == ready ]]'
 
-# A fix round may change 20 lines outside the findings' files, and a binary file counts as more.
-rr "$login" "$sonnet" 'Findings:' '- High: search.ts:1 the search is wrong' 'Assessment: changes needed'
-"$r" record "$TMP/report.md" >/dev/null; h1="$(git rev-parse HEAD)"
-seq 1 20 | sed 's/^/export const o/; s/$/ = 1/' > other.ts; git add other.ts; git commit --quiet -m "fix: other"
-drep ready "$h1"
-check "when the fix adds exactly 20 lines to a file outside the findings, then the delta is recorded" \
-  'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
-h2="$(git rev-parse HEAD)"; printf '\0\1' > bin.dat; git add bin.dat; git commit --quiet -m "fix: binary"
-drep ready "$h2"
-check "when the fix adds a binary file outside the findings, then it counts as 21 lines and record --delta refuses" \
-  'fails_with "the delta changes 21 lines outside the previous findings (limit 20): run a new full review" "$r" record --delta "$TMP/report.md"'
-
 # One path per risk category, each in its own commit: risk prints exactly that category and path.
 echo old > old.txt; git add old.txt; git commit --quiet -m "chore: old"
 rows=('delete|old.txt|__rm__' 'delete|clean.sh|rm -rf build' 'migration|db/migrate/001_add.rb|x' 'ci|.github/workflows/ci.yml|x'
@@ -598,8 +571,8 @@ done
 rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/shallow"; cd "$TMP"
 new_repo standard
 git commit --quiet --allow-empty -m one; git commit --quiet --allow-empty -m two # so depth 3 leaves the clone shallow
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo a > a.txt; git add a.txt; git commit --quiet -m "feat: a"
 task_record() { echo ".git/landspec-review/task-$(git branch --show-current | sed 's|/|__|g')"; }
 shallow_repo
@@ -612,7 +585,7 @@ cd "$TMP/repo"; git switch --quiet --orphan feat/001-t001-unrelated
 echo b > b.txt; git add b.txt; git commit --quiet -m "feat: unrelated"
 check "when a full clone's branch shares no history with the base, then check refuses without naming git fetch --unshallow" \
   'one_refusal "no history" "$r" check && out="$("$r" check 2>&1 || true)" && [[ "$out" != *unshallow* ]]'
-git switch --quiet feat/001-t001-add-search
+git switch --quiet feat/001-demo
 git revert --no-edit HEAD >/dev/null
 shallow_repo 3
 check "on a shallow clone that has the merge base, then a commit and its revert are an empty diff, not a refusal" \
@@ -621,8 +594,8 @@ check "on a shallow clone that has the merge base, then a commit and its revert 
 # ── Spec 003: record removes the reviewer's copy when it is surely the one made for this review ──
 rm -rf "$TMP/origin.git" "$TMP/repo" "$TMP/out" "$TMP/linked"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add search in `src/search.ts`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo a > a.txt; git add a.txt; git commit --quiet -m "feat: a"
 author() { git status --porcelain -- . ':(exclude).claude/worktrees'; }
 # copy <name> [<commit>] [detach]: a worktree like Claude Code's, with an uncommitted change in it.
@@ -683,14 +656,14 @@ cd "$main"
 # ── Spec 004 T002: a stacked branch is diffed against its parent; any branch is read by name ──
 rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
 new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5
-- [ ] T002 Add filters in `src/filters.ts` — #6'
-P=feat/001-t001-add-search; C=feat/001-t002-add-filters
-"$SCRIPTS/branch.sh" T001 >/dev/null 2>&1
+commit_tasks '- [ ] T001 Add search in `src/search.ts`
+- [ ] T002 Add filters in `src/filters.ts`'
+P=feat/001-demo; C=landspec/001-t002-task
+"$SCRIPTS/branch.sh" 001 >/dev/null 2>&1
 mkdir -p .github/workflows; echo 'on: push' > .github/workflows/x.yml; git add .github; git commit --quiet -m "ci: parent change"
 printf -- '- deep: .github/workflows/x.yml — ci: read\n\n%s\nModel: claude-sonnet-4-7\n\nAssessment: ready\n' "$(range)" > "$TMP/report.md"
 "$r" record "$TMP/report.md" >/dev/null
-"$SCRIPTS/branch.sh" T002 --from "$P" >/dev/null 2>&1
+git switch --quiet -c "$C" "$P"; git config "branch.$C.landspec-parent" "$P" # a task ref, as the implementer makes it
 echo 'export const f = 1' > filters.ts; git add filters.ts; git commit --quiet -m "feat: filters"
 check "on a stacked branch, then review.sh risk covers only its own commit (not the parent's workflow)" \
   '[[ "$("$r" risk)" == "RISK=none" ]]'
@@ -713,53 +686,43 @@ printf 'Delta from: %s\nReviewed: %s..%s\nModel: claude-sonnet-4-7\n\nAssessment
 check "from another branch, then record --delta --branch <b> records the fix round of <b>, and check --branch <b> passes" \
   'out="$("$r" record --delta --branch "$C" "$TMP/report.md")" && [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$hf")" ]] && "$r" check --branch "$C" >/dev/null'
 git switch --quiet -c spec/001-demo origin/develop
-check "on a spec branch (pr.sh spec mode), then base_ref is the base: it never has a parent" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
+check "on a branch with no parent, then base_ref is the base: it never has a parent" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 git switch --quiet "$P"
 check "on the parent (no parent of its own), then base_ref is still the base" '[[ "$(bash -c "source \"$SCRIPTS/lib.sh\"; base_ref")" == origin/develop ]]'
 
-# ── FR-014 (#216): a delta counts the fix round's own lines, not a merge of the base ──
-rm -rf "$TMP/origin.git" "$TMP/repo"; cd "$TMP"
-new_repo standard
-commit_tasks '- [ ] T001 Add search in `src/search.ts` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
-echo 'export const search = 1' > search.ts; echo task > c.txt; git add search.ts c.txt; git commit --quiet -m "feat: search"
-rep "changes needed" "${all[@]}" "Findings:" "- High: search.ts:1 the search is wrong"
-"$r" record "$TMP/report.md" >/dev/null || true; h1="$(git rev-parse HEAD)"; cp "$TMP/report.md" "$TMP/full.md"
-# to_base <file> <n>: a commit of <n> lines in <file> on the base (develop), as another task's merged PR.
-to_base() { git switch --quiet main; seq 1 "$2" > "$1"; git add "$1"; git commit --quiet -m "feat: $1"; git push --quiet origin main:develop; git switch --quiet -; git fetch --quiet origin; }
-# fix <n>: a commit of <n> lines in fix.ts, outside the findings' files.
-fix() { seq 1 "$1" | sed 's/^/export const f/; s/$/ = 1/' > fix.ts; git add fix.ts; git commit --quiet -m "fix: $1 lines"; }
-to_base big.txt 300; git merge --quiet --no-edit origin/develop >/dev/null; hm="$(git rev-parse HEAD)"
-# A git that has no merge-tree --write-tree (before 2.38), for the fallback.
-mkdir -p "$TMP/oldgit"; real_git="$(command -v git)"
-printf '#!/usr/bin/env bash\n[[ "$1 $2" == "merge-tree --write-tree" ]] && { echo "error: unknown option" >&2; exit 129; }\nexec "%s" "$@"\n' "$real_git" > "$TMP/oldgit/git"; chmod +x "$TMP/oldgit/git"
-fix 5; drep ready "$h1"
-check "on a git without merge-tree --write-tree, when the base (300 lines) was merged in and a 5-line fix follows, then the delta counts from the last review, as before" \
-  'PATH="$TMP/oldgit:$PATH" fails_with "the delta changes 305 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
-if git merge-tree --write-tree HEAD HEAD >/dev/null 2>&1; then
-  # Refusals first: an accepted delta moves the record on, so each one ends a setup.
-  git reset --quiet --hard "$hm"; fix 30; drep ready "$h1"
-  check "when the base (300 lines) was merged in and a 30-line fix follows, then record --delta refuses, counting the 30 lines only" \
-    'fails_with "the delta changes 30 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
-  git reset --quiet --hard "$hm"; git switch --quiet -c side main; seq 1 25 > side.txt; git add side.txt; git commit --quiet -m side
-  git switch --quiet -; git merge --quiet --no-edit side >/dev/null; drep ready "$h1"
-  check "when a branch other than the base (25 lines) is merged in after the base, then record --delta refuses, counting its 25 lines" \
-    'fails_with "the delta changes 25 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
-  git reset --quiet --hard "$hm"; fix 5; drep ready "$h1"
-  check "when the base (300 lines) was merged in since the full review and a 5-line fix follows, then record --delta gives REVIEW=ready" \
-    'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
-  # The base adds c.txt too: the merge conflicts, and its resolution is 3 lines of neither side.
-  git reset --quiet --hard "$h1"; "$r" record "$TMP/full.md" >/dev/null || true
-  to_base c.txt 1; git merge --quiet --no-edit origin/develop >/dev/null 2>&1 || true
-  printf 'r1\nr2\nr3\n' > c.txt; git add c.txt; git commit --quiet --no-edit; hc="$(git rev-parse HEAD)"; fix 13; drep ready "$h1"
-  # The resolution replaces merge-tree's conflicted c.txt (5 lines: both sides and 3 markers): 5 + 3 lines, plus the fix.
-  check "when a base merge's conflict is resolved by 3 lines of its own and a 13-line fix follows, then record --delta refuses, counting the resolution's lines with the fix's" \
-    'fails_with "the delta changes 21 lines outside the previous findings (limit 20)" "$r" record --delta "$TMP/report.md"'
-  git reset --quiet --hard "$hc"; fix 12; drep ready "$h1"
-  check "when the same resolution is followed by a 12-line fix, then record --delta gives REVIEW=ready (20 lines, the limit)" \
-    'out="$("$r" record --delta "$TMP/report.md")"; [[ "$out" == "$(printf "REVIEWED=%s\nREVIEW=ready" "$(git rev-parse HEAD)")" ]]'
-else
-  echo "skip - base-merge delta counts (this git has no merge-tree --write-tree); the count from the last review is checked above"
-fi
+# Spec 008 T008: the feature review of the end check reads the check ref (no check copy) and adds to the end-check record.
+fh="$(git rev-parse HEAD)"; fr="$(git rev-parse --git-common-dir)/landspec-review/feature-001-demo"
+printf -- '- met: FR-001 — search.ts searches\nCopy: none (the main session)\nReviewed: %s..%s\nModel: claude-opus-5-5\n\nAssessment: ready\n' "$(git rev-parse origin/develop)" "$fh" > "$TMP/feature.md"
+check "when there is no check ref, then record --feature refuses and says to run implement.sh check" \
+  'fails_with "no check ref for 001-demo: run implement.sh check first" "$r" record --feature "$TMP/feature.md"'
+git update-ref refs/landspec/check/001-demo "$fh"; rm -f "$fr"
+check "when the check ref is there but no end check was recorded, then record --feature refuses, says to run implement.sh check and writes no record" \
+  'fails_with "no end check recorded for 001-demo: run implement.sh check" "$r" record --feature "$TMP/feature.md" && [[ ! -e "$fr" ]]'
+printf 'head: %s\nheads: %s\ntests: green\n' "$fh" "$fh" > "$fr"
+check "when the check ref points at the head and no check copy exists, then record --feature adds verdict:, reviewed: and the lines to the end-check record" \
+  '"$r" record --feature "$TMP/feature.md" 2>/dev/null | grep -qx "REVIEW=ready" && [[ "$(head -5 "$fr")" == "$(printf "head: %s\nheads: %s\ntests: green\nverdict: ready\nreviewed: %s" "$fh" "$fh" "$fh")" ]] \
+   && grep -qx -- "- met: FR-001 — search.ts searches" "$fr" && ! git worktree list | grep -q -- "-check "'
+
+# Spec 008 T009: check --feature passes only on a ready review and green tests of the feature branch's head.
+git switch --quiet -C feat/001-demo "$fh"
+# endcheck <head> <tests> <verdict> <reviewed>: the end-check record implement.sh check and record --feature write.
+endcheck() { printf 'head: %s\nheads: %s\ntests: %s\nverdict: %s\nreviewed: %s\nmodel: claude-opus-5-5\n' "$1" "$1" "$2" "$3" "$4" > "$fr"; }
+rm -f "$fr"
+check "when no end check was recorded, then check --feature fails and says to run implement.sh check" \
+  'fails_with "no end check recorded for 001-demo: run implement.sh check" "$r" check --feature'
+endcheck "$fh" green "changes needed" "$fh"
+check "when the feature review said changes needed, then check --feature fails" 'fails_with "the feature review said changes needed" "$r" check --feature'
+endcheck "$fh" red ready "$fh"
+check "when the end check's tests are red, then check --feature fails" 'fails_with "the tests of the end check are red" "$r" check --feature'
+endcheck "$fh" green ready "$fh"
+check "when the review is ready and the tests green for the feature branch's head, then check --feature passes and report --feature prints its facts" \
+  '[[ "$("$r" check --feature)" == REVIEW=ready && "$("$r" report --feature)" == "$(printf "Feature review: ready for %s, tests green\nModel: claude-opus-5-5" "$fh")" ]]'
+check "when check --feature is given with --branch, then it is refused" 'fails_with "a feature review" "$r" check --feature --branch "$P"'
+echo more > more.txt; git add more.txt; git commit --quiet -m "feat: more"; nh="$(git rev-parse HEAD)"
+check "when a commit lands on the feature branch after the end check, then check --feature fails" \
+  'fails_with "the end check ran on $fh, and the feature branch is now at $nh: run implement.sh check again" "$r" check --feature'
+endcheck "$nh" green ready "$fh"
+check "when the ready review is of an older head, with green tests on the new head, then check --feature fails" \
+  'fails_with "the feature review is of $fh, not of $nh: run the feature review again" "$r" check --feature'
 
 exit "$FAIL"

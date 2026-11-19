@@ -6,11 +6,24 @@ scan="$SCRIPTS/security-scan.sh"
 
 # Fake scanners: each logs its arguments; FAKE_FIND=<tool> makes that tool report findings.
 mkdir -p "$TMP/tools"
-for t in gitleaks osv-scanner semgrep zizmor; do
+# With findings, the tool writes \$FAKE_OUT as its report (to --output/--report-path, and stdout for zizmor).
+for t in gitleaks osv-scanner semgrep zizmor trivy; do
   cat > "$TMP/tools/$t" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$TMP/$t.log"
-[[ " \${FAKE_FIND:-} " == *" $t "* ]] && exit 1
+if [[ " \${FAKE_FIND:-} " == *" $t "* ]]; then
+  printf '%s' "\${FAKE_OUT:-}"
+  while (( \$# )); do [[ \$1 == --output || \$1 == --report-path ]] && printf '%s' "\${FAKE_OUT:-}" > "\$2"; shift; done
+  exit 1
+fi
+# Like the real semgrep: a symbolic link among its targets is an error in its JSON, exit 2.
+if [[ $t == semgrep ]]; then
+  for a in "\$@"; do [[ -L \$a ]] && link=\$a; done
+  if [[ -n "\${link:-}" ]]; then
+    while (( \$# )); do [[ \$1 == --output ]] && printf '{"results":[],"errors":[{"code":2,"level":"error","message":"Invalid scanning root: %s is a symbolic link."}]}' "\$link" > "\$2"; shift; done
+    exit 2
+  fi
+fi
 [[ " \${FAKE_CRASH:-} " == *" $t "* ]] && { echo "$t-core exited with -11!" >&2; exit 2; }
 # FAKE_SILENT=<tool>: exits 2 with nothing on stderr, writing \$FAKE_JSON (may be empty) to --output.
 if [[ " \${FAKE_SILENT:-} " == *" $t "* ]]; then
@@ -42,6 +55,35 @@ check "then trivy is skipped when there is no infrastructure code" 'grep -q "^tr
 out="$(FAKE_FIND="semgrep gitleaks" PATH="$TMP/tools:$PATH" bash "$scan")"
 check "when a scanner finds something, then it reports findings with the report path" \
   'grep -q "^semgrep *findings .*semgrep.json" <<<"$out" && grep -q "^gitleaks *findings" <<<"$out"'
+
+# Spec 008 T021: a high or critical finding, read from the tool's own severity field, is marked high.
+line() { FAKE_FIND="$1" FAKE_OUT="$2" PATH="$TMP/tools:$PATH" bash "$scan" | grep "^$1 "; }
+out="$(line gitleaks '[]')"
+check "when gitleaks finds anything, then its line is findings high" 'grep -qE "^gitleaks +findings +high .*gitleaks.json$" <<<"$out"'
+out="$(line semgrep '{"results":[{"check_id":"r","extra":{"severity":"ERROR","message":"m"}}],"errors":[]}')"
+check "when semgrep reports an ERROR-severity result, then its line is findings high" 'grep -qE "^semgrep +findings +high .*semgrep.json$" <<<"$out"'
+out="$(line semgrep '{"results":[{"check_id":"r","extra":{"severity":"INFO","message":"m"}}],"errors":[]}')"
+check "when semgrep reports only INFO results, then its line is findings without high" 'grep -qE "^semgrep +findings +[^h ].*semgrep.json$" <<<"$out"'
+out="$(line osv-scanner '{"results":[{"packages":[{"groups":[{"ids":["GHSA-a"],"max_severity":"9.8"}]}]}]}')"
+check "when osv-scanner reports a group with max_severity 9.8, then its line is findings high" 'grep -qE "^osv-scanner +findings +high .*osv.json$" <<<"$out"'
+out="$(line osv-scanner '{"results":[{"packages":[{"groups":[{"max_severity":""}],"vulnerabilities":[{"id":"GHSA-a","database_specific":{"severity":"CRITICAL"}}]}]}]}')"
+check "when osv-scanner reports an advisory labelled CRITICAL with no score, then its line is findings high" 'grep -qE "^osv-scanner +findings +high " <<<"$out"'
+out="$(line osv-scanner '{"results":[{"packages":[{"groups":[{"max_severity":"5.3"}],"vulnerabilities":[{"database_specific":{"severity":"MODERATE"}}]}]}]}')"
+check "when osv-scanner reports only a 5.3 MODERATE vulnerability, then its line is findings without high" 'grep -qE "^osv-scanner +findings +[^h ].*osv.json$" <<<"$out"'
+out="$(line zizmor '[{"ident":"template-injection","determinations":{"confidence":"Low","severity":"High","persona":"regular"}}]')"
+check "when zizmor reports a High-severity finding, then its line is findings high" 'grep -qE "^zizmor +findings +high .*zizmor.json$" <<<"$out"'
+out="$(line zizmor '[{"ident":"artipacked","determinations":{"confidence":"High","severity":"Low","persona":"regular"}}]')"
+check "when zizmor reports a Low-severity finding with High confidence, then its line is findings without high" 'grep -qE "^zizmor +findings +[^h ].*zizmor.json$" <<<"$out"'
+echo "FROM scratch" > Dockerfile
+out="$(line trivy '{"Results":[{"Misconfigurations":[{"ID":"DS002","Severity":"HIGH"}]}]}')"
+check "when trivy reports a HIGH misconfiguration, then its line is findings high" 'grep -qE "^trivy +findings +high .*trivy.json$" <<<"$out"'
+out="$(line trivy '{"Results":[{"Misconfigurations":[{"ID":"DS026","Severity":"LOW"}]}]}')"
+check "when trivy reports only a LOW misconfiguration, then its line is findings without high" 'grep -qE "^trivy +findings +[^h ].*trivy.json$" <<<"$out"'
+rm Dockerfile
+mkdir -p "$TMP/only"; cp "$TMP/tools/semgrep" "$TMP/only/"
+out="$(FAKE_FIND=semgrep FAKE_OUT='{"results":[{"extra":{"severity":"ERROR"}}]}' PATH="$TMP/only:$TMP/none" bash "$scan")"
+check "when one scanner has a high finding, then a scanner not installed stays missing" \
+  'grep -q "^semgrep *findings *high" <<<"$out" && grep -q "^gitleaks *missing *install:" <<<"$out" && grep -q "^zizmor *missing" <<<"$out"'
 
 out="$(FAKE_CRASH=semgrep PATH="$TMP/tools:$PATH" bash "$scan")"
 check "when semgrep exits with an error (not findings), then it is reported failed, never findings" \
@@ -108,9 +150,25 @@ check "when --changed on a stacked branch, then semgrep scans only its own files
   'grep -q " other.py$" "$TMP/semgrep.log" && ! grep -q "app.py" "$TMP/semgrep.log"'
 git switch --quiet feat/x
 
+# Spec 008 T023: semgrep refuses a symbolic link as a scanning root.
+git switch --quiet -c feat/link; ln -s app.py linked.py; echo "z = 1" > z.py; git add linked.py z.py; git commit --quiet -m link
+: > "$TMP/semgrep.log"
+out="$(PATH="$TMP/tools:$PATH" bash "$scan" --changed)"
+check "when --changed and the changed files hold a symbolic link, then semgrep is given no link and reports ok" \
+  '! grep -q "linked.py" "$TMP/semgrep.log" && grep -q " z.py$" "$TMP/semgrep.log" && grep -q "^semgrep *ok" <<<"$out"'
+git switch --quiet -c feat/onlylink feat/x; git config branch.feat/onlylink.landspec-parent feat/x; ln -s app.py only.py; git add only.py; git commit --quiet -m only
+: > "$TMP/semgrep.log"; : > "$TMP/gitleaks.log"
+out="$(PATH="$TMP/tools:$PATH" bash "$scan" --changed)"
+check "when --changed and the only changed file is a symbolic link, then semgrep is skipped as no regular changed files and gitleaks still runs" \
+  'grep -qE "^semgrep +skipped +no regular changed files$" <<<"$out" && [[ ! -s "$TMP/semgrep.log" ]] && grep -q "^gitleaks *ok" <<<"$out" && [[ -s "$TMP/gitleaks.log" ]]'
+git switch --quiet feat/x
+
 out="$(PATH="$TMP/none" bash "$scan" --changed)"
-check "when --changed, then its summary lines are recorded for this diff (what pr.sh task requires)" \
+check "when --changed, then its summary lines are recorded for this diff (what pr.sh feature --ready requires)" \
   'rec="$(source "$SCRIPTS/lib.sh" && diff_record landspec-security)"; [[ "$(cat "$rec")" == "$(grep -v "^REPORT_DIR=" <<<"$out")" ]] && grep -q "^gitleaks *missing" "$rec"'
+FAKE_FIND=semgrep FAKE_OUT='{"results":[{"extra":{"severity":"ERROR"}}]}' PATH="$TMP/tools:$PATH" bash "$scan" --changed >/dev/null
+check "when --changed and semgrep has a high finding, then the record keeps the findings high line (what pr.sh feature --ready reads)" \
+  'rec="$(source "$SCRIPTS/lib.sh" && diff_record landspec-security)"; grep -qE "^semgrep +findings +high " "$rec"'
 git switch --quiet -c feat/empty origin/develop
 PATH="$TMP/none" bash "$scan" --changed >/dev/null
 check "when --changed finds no changed file, then that result is recorded for the empty diff too" \

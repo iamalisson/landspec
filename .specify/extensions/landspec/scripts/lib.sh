@@ -65,12 +65,8 @@ cfg_set() {
 
 landspec_level() { cfg level standard; }
 
-# review_model: the model family the independent review must run on (default sonnet). Any other
-# value dies, so the config can never lower the bar: callers read it with `|| exit 1`.
-review_model() {
-  local m; m="$(cfg review_model sonnet)"
-  case "$m" in sonnet|opus|fable) echo "$m" ;; *) die "review_model must be sonnet, opus or fable" ;; esac
-}
+# reviewer_model: the model family every review runs on: Opus only, never read from the config.
+reviewer_model() { echo opus; }
 
 # Paths that hold tests, across the stacks landspec supports (Django's app/tests.py, SwiftPM's
 # Tests/, .NET's X.Tests/, Cypress). Case-sensitive: the PascalCase name is anchored on a lowercase
@@ -94,7 +90,7 @@ default_branch() {
   git config init.defaultBranch || echo main
 }
 
-# The branch task PRs target: configured, or derived from the level.
+# The branch the feature PR targets: configured, or derived from the level.
 base_branch() {
   local b
   b="$(cfg base_branch auto)"
@@ -120,11 +116,20 @@ protected_branches() {
 is_protected() { [[ " $(protected_branches | tr '\n' ' ') " == *" $1 "* ]]; }
 
 # branch_feature: on a task branch (<prefix>/NNN-tNNN-...), the specs/ folder of its feature when
-# exactly one matches; otherwise nothing.
+# exactly one matches; on a feature branch (<branch_prefix>/NNN-<name>) in a copy with no
+# .specify/feature.json of its own (a fresh worktree), specs/NNN-<name> when it exists; otherwise nothing.
+# A local feature.json wins over a feature branch: /speckit-specify writes the new feature there
+# while still on the branch of the one before.
 branch_feature() {
-  local num matches
-  num="$(git branch --show-current 2>/dev/null | sed -nE "s#^[^/]+/($FEATURE_KEY_RE)-t[0-9]{3,}-.*#\\1#p")"
-  [[ -n "$num" ]] || return 0
+  local b num matches
+  b="$(git branch --show-current 2>/dev/null)"
+  num="$(sed -nE "s#^[^/]+/($FEATURE_KEY_RE)-t[0-9]{3,}-.*#\\1#p" <<<"$b")"
+  if [[ -z "$num" ]]; then
+    [[ ! -f .specify/feature.json && "$b" == "$(cfg branch_prefix feat)/"* ]] || return 0
+    b="$(sed -nE "s#^[^/]+/(($FEATURE_KEY_RE)-.+)#\\1#p" <<<"$b")"
+    if [[ -n "$b" && -d "specs/$b" ]]; then echo "specs/$b"; fi
+    return 0
+  fi
   matches="$(find specs -mindepth 1 -maxdepth 1 -type d -name "$num-*" 2>/dev/null)"
   if [[ -n "$matches" && "$(wc -l <<<"$matches")" -eq 1 ]]; then echo "$matches"; fi
 }
@@ -141,6 +146,59 @@ feature_dir() {
   [[ -n "$d" && -d "$d" ]] || die "no active feature (.specify/feature.json); run /speckit-specify first"
   echo "$d"
 }
+
+# feature_branch <feature dir>: the feature's one branch, <branch_prefix>/<folder name>.
+feature_branch() { echo "$(cfg branch_prefix feat)/$(basename "$1")"; }
+
+# legacy_feature <feature dir>: true when the feature was started under the per-task flow (a
+# tasks.md line ends in " — #N").
+legacy_feature() { grep -qE ' — #[0-9]+[[:space:]]*$' "$1/tasks.md" 2>/dev/null; }
+# refuse_legacy <feature dir>: a legacy feature prints LEGACY=<name> and stops with the one way on (research R11).
+refuse_legacy() {
+  legacy_feature "$1" || return 0
+  echo "LEGACY=$(basename "$1")"
+  die "$(basename "$1") was started under the per-task flow: finish its open task PRs as ordinary PRs, then delete the ' — #N' suffix (and close the issue) of each remaining task in $1/tasks.md to continue it"
+}
+
+# feature_ref <feature dir>: the feature branch's ref, the local one when present, else origin's.
+feature_ref() {
+  local b; b="$(feature_branch "$1")"
+  if git show-ref --verify --quiet "refs/heads/$b"; then echo "refs/heads/$b"; else echo "refs/remotes/origin/$b"; fi
+}
+
+# task_done <feature dir> <Tnnn>: true when the feature branch (local, else origin's) holds the task's
+# landing commit: anywhere in its history, a commit whose message has the line "Landspec-Task: <NNN>/<Tnnn>".
+# The feature's number is in it because task ids restart at T001 in every feature: however the branch was
+# joined (a PR merge, a pull merge, a squash), its own landings are found and never another feature's.
+task_done() {
+  [[ -n "$(git log -1 --format=%H --grep="^Landspec-Task: $(feature_key "$1")/$2\$" "$(feature_ref "$1")" -- 2>/dev/null)" ]]
+}
+
+# plain_tasks <tasks.md> [issue]: its text with every task tick read as "- [ ]" and the "**Issue**: #N"
+# line, with the blank line after it, left out (kept when "issue" is given): what landing a task and
+# writing the feature's issue never change.
+plain_tasks() {
+  awk -v keep="${2:-}" 'drop && /^[[:space:]]*$/ { drop = 0; next } { drop = 0 }
+    keep == "" && /^\*\*Issue\*\*: #[0-9]+[[:space:]]*$/ { drop = 1; next }
+    /^- \[[xX]\] T[0-9][0-9][0-9]/ { sub(/^- \[[xX]\]/, "- [ ]") } { print }' "$1"
+}
+
+# carry_switch <dir> <target> <git switch args...>: switch branches with <dir>'s current content
+# (uncommitted files too) carried over; nothing else is touched.
+carry_switch() {
+  CARRY_DIR="$1"; local target="$2" err; shift 2
+  CARRY_SAVED="$(mktemp -d)"; cp -R "$CARRY_DIR" "$CARRY_SAVED/"
+  # If anything fails before the restore below (a switch refused because of other local
+  # changes), the folder comes back as it was, instead of surviving only in a temp dir.
+  trap 'carry_restore; echo "landspec: the spec folder was put back as it was" >&2' EXIT
+  git checkout --quiet -- "$CARRY_DIR" 2>/dev/null || true; git clean -fdq -- "$CARRY_DIR"
+  if ! err="$(git switch --quiet "$@" 2>&1)"; then
+    echo "$err" >&2
+    die "cannot switch to $target: local changes outside $CARRY_DIR conflict with it. Commit or stash them (git stash push -- <file>), then run again"
+  fi
+  carry_restore; trap - EXIT
+}
+carry_restore() { rm -rf "$CARRY_DIR"; mkdir -p "$(dirname "$CARRY_DIR")"; cp -R "$CARRY_SAVED/$(basename "$CARRY_DIR")" "$CARRY_DIR"; rm -rf "$CARRY_SAVED"; }
 
 # base_ref [<branch>]: what <branch> (default: the current one) is diffed against: its parent task
 # branch while it is stacked on one (branch.<b>.landspec-parent), else the base branch. The base is
@@ -196,14 +254,25 @@ diff_record() {
   mkdir -p "$d"; echo "$d/${id:-empty}"
 }
 
+# test_key <tree> <cmd>: the name of a green run's record under .git/landspec-test. The tree and the
+# command only, not the copy's path: a tree tested in one worktree counts in every copy of the repo.
+test_key() { printf '%s %s' "$1" "$2" | sha256; }
+
+# tests_green <tree>: run_tests recorded a green run of the test command on <tree>, or there is no test command.
+tests_green() {
+  local cmd; cmd="$(constitution_cmd test)"; [[ -n "$cmd" ]] || return 0
+  [[ -f "$(git rev-parse --git-common-dir)/landspec-test/$(test_key "$1" "$cmd")" ]]
+}
+
 # run_tests: run the constitution's test command (none: return 0, the caller says so), logged under
-# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by copy, tree and
-# command, and that triple is not run again; any edit, commit or other command runs it again. Red
-# records nothing. Ignored files (deps, .env) and the environment are not part of the key.
+# .git/landspec-test, one log per branch. A green run on a clean tree is recorded by tree and command
+# (test_key), and that pair is not run again in any copy of the repo; any edit, commit or other
+# command runs it again. Red records nothing. Ignored files (deps, .env) and the environment are not
+# part of the key.
 run_tests() {
   local cmd d key log clean=false; cmd="$(constitution_cmd test)"; [[ -n "$cmd" ]] || return 0
   d="$(git rev-parse --git-common-dir)/landspec-test"; mkdir -p "$d"
-  key="$(printf '%s %s %s' "$(git rev-parse --show-toplevel)" "$(git rev-parse 'HEAD^{tree}')" "$cmd" | sha256)"
+  key="$(test_key "$(git rev-parse 'HEAD^{tree}')" "$cmd")"
   [[ -z "$(git status --porcelain -- . ':(exclude).claude/worktrees')" ]] && clean=true
   if $clean && [[ -f "$d/$key" ]]; then echo "landspec: tests already green for this tree ($cmd)"; return 0; fi
   log="$(git branch --show-current)"; log="${log:-$key}" # a detached copy logs by key
@@ -332,21 +401,14 @@ repo_slug() {
   echo "$s"
 }
 
-# add_meta <issue|pr> <url>: assign the user, and set the configured milestone and project.
-# Runs after creation, one edit per item, and only warns: optional metadata never stops a run
-# halfway (a bot token that can't be assigned, a closed milestone, a token without project scope).
+# add_meta pr <url>: assign the user (no milestone, no project: those keys are gone).
+# Runs after creation and only warns: optional metadata never stops a run halfway (a bot token
+# that can't be assigned).
 add_meta() {
-  local kind="$1" url="$2" m p err i
-  m="$(cfg milestone "")"; p="$(cfg project "")"
-  local a=(--add-assignee @me)
-  [[ -n "$m" ]] && a+=(--milestone "$m")
-  [[ -n "$p" ]] && a+=(--add-project "$p")
-  for ((i = 0; i < ${#a[@]}; i += 2)); do
-    if ! err="$(gh "$kind" edit "$url" "${a[i]}" "${a[i+1]}" 2>&1 >/dev/null)"; then
-      echo "landspec: warning: could not set ${a[i]#--} '${a[i+1]}' on $url: ${err:-unknown error}" >&2
-      if [[ "${a[i]}" == --add-project ]]; then echo "landspec: (project access needs: gh auth refresh -s project)" >&2; fi
-    fi
-  done
+  local kind="$1" url="$2" err
+  if ! err="$(gh "$kind" edit "$url" --add-assignee @me 2>&1 >/dev/null)"; then
+    echo "landspec: warning: could not set add-assignee '@me' on $url: ${err:-unknown error}" >&2
+  fi
 }
 
 # pr_branches <workflow>: the patterns of on.pull_request.branches, one per line; none = every branch.
@@ -369,6 +431,16 @@ pr_skips_base() { # pr_skips_base <workflow> [<branch>]: its pull_request filter
     # shellcheck disable=SC2053  # the pattern is a glob on purpose
     if [[ "$b" == $p ]]; then return 1; fi
   done <<<"$list"
+}
+
+# merged_pr <branch>: the number of this repository's merged PR from <branch>, or nothing (fails with gh's error).
+merged_pr() {
+  gh pr list --head "$1" --state merged --json number,isCrossRepository --jq '[.[] | select(.isCrossRepository | not)][0].number // empty'
+}
+# refuse_merged <feature dir>: dies when the feature's PR is merged: after the merge only the release runs.
+refuse_merged() {
+  local n; n="$(merged_pr "$(feature_branch "$1")")" || die "cannot look up the feature's pull request; fix gh's error above"
+  [[ -z "$n" ]] || die "the feature PR #$n is merged: run implement.sh $(basename "$1") release-plan"
 }
 
 # closed_issues <feature dir>: " n1 n2 " the closed issues among its tasks' (fails with gh's error).

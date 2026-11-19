@@ -1,19 +1,30 @@
 ---
 name: speckit-landspec-pr
-description: Review, commit, push and open the task's pull request
+description: Open the feature's draft pull request, or review, commit, push and open any other PR
 compatibility: Requires spec-kit project structure with .specify/ directory
 metadata:
   author: iamalisson
   source: landspec:commands/pr.md
 ---
 
-# Task pull request (after `/speckit-implement`)
+# Feature pull request (after `/speckit-implement`)
 
-**Not a task** (a small fix, a dependency bump, landspec's own setup or level change): the same
-steps 2 to 6 at every level, on its own branch, with no issue. The reviewer gets one line on what
-the change does and why in place of the task's line, the commit has no `Refs #`, and step 6 is
-`pr.sh fix "<commit title>" <body-file>`. A raw `gh pr create` is blocked by the guard, except a
-promotion between long-lived branches (`develop` into `main`), whose PRs were each reviewed.
+**The feature PR** (a feature built on its own branch, `<branch_prefix>/<NNN>-<name>`, its tasks
+landed there by `/landspec:implement`): on that branch, once a task has landed, steps 1 and 2, a
+body as step 5 says but with no `## Review`, then step 7 with
+`pr.sh feature "<title>" <body-file>` (`bash .specify/extensions/landspec/scripts/pr.sh`) in place
+of step 6. There is no review, scan or mutation testing here: each landed task's commit carries its
+own `ready` review, and the scan and mutation testing run once, on the whole feature diff, before
+`pr.sh feature --ready`. It runs the other gates of `pr.sh fix` on the whole diff from the base,
+refuses a task ticked `[X]` with no landing commit, adds a `## Tasks` table and `## End check` from
+the feature's end-check record when there is one, closes no issue, and opens a draft PR, or
+replaces the open one's body (`PR=<url> READY=no`). When it refuses with `the feature PR #<n> is
+merged`, run `/landspec:implement <feature>`, which audits it and makes the release, and stop.
+
+**Any other PR** (a small fix, a dependency bump, landspec's own setup or level change): steps 1 to
+7 at every level, on its own branch. The reviewer gets one line on what the change does and why. A
+raw `gh pr create` is blocked by the guard, except a promotion between long-lived branches
+(`develop` into `main`), whose PRs were each reviewed.
 
 1. Read the level: `level:` in `.specify/extensions/landspec/landspec-config.yml` (default `standard`).
    - **lite**: ask "Review and open the PR now?" and continue only on yes.
@@ -36,9 +47,8 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
      body needs a `## Test changes` section saying why. The script refuses the PR without it.
 
    The scan and mutation testing run in step 4, before and during the review.
-3. **Commit.** Commit the task's changes, and only those. Stage files by name, never
-   `git add -A`. Use a Conventional Commit message, `<type>(<scope>): <summary>`, with a body line
-   `Refs #<ISSUE>`. Attribution lines (`Co-Authored-By` for Claude, "Generated with") follow the
+3. **Commit.** Commit the change, and only that. Stage files by name, never
+   `git add -A`. Use a Conventional Commit message, `<type>(<scope>): <summary>`. Attribution lines (`Co-Authored-By` for Claude, "Generated with") follow the
    project's `.claude/settings.json`: with landspec's default `"attribution"` block there are
    none; if the team removed that block to disclose AI use, keep them. The git pre-commit hook checks for secrets. If it refuses, remove the secret;
    never use `--no-verify`.
@@ -119,10 +129,9 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
      goes in a collapsible block, one per topic:
      `<details>` / `<summary>Test output</summary>` / blank line / the content / `</details>`;
    - attribution lines only if the project's settings ask for them (see step 3).
-6. Run `bash .specify/extensions/landspec/scripts/pr.sh task <TASK_ID> "<commit title>" <body-file>`.
+6. Run `bash .specify/extensions/landspec/scripts/pr.sh fix "<commit title>" <body-file>`.
    On an open PR it replaces the body from `<body-file>`, so edits made on GitHub are gone.
-   It pushes (the pre-push hook re-checks every commit for secrets), adds `Closes #<ISSUE>` and
-   prints `PR=<url>`. The `Security` and `CI` workflows then run on the PR; they are the gate.
+   It pushes (the pre-push hook re-checks every commit for secrets) and prints `PR=<url>`. The `Security` and `CI` workflows then run on the PR; they are the gate.
 7. End with the PR URL, then the hand-over: `bash .specify/extensions/landspec/scripts/pr.sh state <pr>`;
    a PR is ready to merge only on `CONFLICT=no` and `COPILOT=` `none`, `clean` or `unavailable` (with
    Copilot's reason: it could not review); otherwise say why not: "conflict with <base>"
@@ -130,5 +139,5 @@ promotion between long-lived branches (`develop` into `main`), whose PRs were ea
    for Copilot's review" (`COPILOT=pending`) or "Copilot comments being answered"
    (`COPILOT=comments`). CI never holds it back: show "CI passed" (`CI=pass`), "CI still running"
    (`CI=pending`), "CI failed: <jobs>" (`CI=fail`) or "no CI" (`CI=none`) beside it, never wait for it.
-   On `COPILOT=pending` or `COPILOT=comments`, say to run `/speckit-implement <TASK_ID>` again before
-   merging: it answers Copilot's comments.
+   On `COPILOT=pending` or `COPILOT=comments`, say that Copilot's comments are answered before
+   merging.

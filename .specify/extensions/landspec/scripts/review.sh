@@ -4,17 +4,18 @@
 #   review.sh record --delta <report-file>  fix round: reviews <last reviewed>..HEAD, after any recorded round
 #   review.sh record --plan <report-file>   plan review: tied to every file of the feature folder (issue numbers aside);
 #                                           keeps the folder it recorded as plan-<feature>.reviewed
-#   review.sh record --feature <report-file>  feature review: the whole feature's check copy against its spec,
+#   review.sh record --feature <report-file>  feature review: the check ref (the feature head) against its spec,
 #                                           one "- met|not met|not verifiable: <item> — <evidence>" line per item
+#   review.sh check|report --feature        exit 0 when the end-check record's head and reviewed: are the feature
+#                                           branch's head, its tests green and its verdict ready (report prints them)
 #   review.sh state --plan [<dir>]          print the plan state (of the folder <dir>, or the feature's),
 #                                           writing nothing: the reviewer puts it in its report as "Plan state: <hash>"
 #   review.sh diff --plan                   print git diff --no-index of the last recorded plan against the folder
-#   review.sh answer --plan <area> <text>   record the developer's answer to a Simplify section, resetting the
-#                                           area's count (plan-<feature>.areas)
-#   review.sh outside --plan <n>            log the real findings the spec PR's outside reviewers found (OUTSIDE=<n>)
-#   review.sh check [--plan]                exit 0 when a review that said "ready" matches the current state
+#   review.sh outside --plan <n>            log the real findings the feature PR's outside reviewers found (OUTSIDE=<n>)
+#   review.sh check [--plan]                exit 0 when the recorded review matches the current state and counts
+#                                           no high finding (a plan) or no high or medium one (a task)
 #   check, report and record take --branch <b>: that branch, read by name from any HEAD (default: the current one)
-#   review.sh report [--plan]               check, then print the recorded facts: the patch id, "Assessment: ready",
+#   review.sh report [--plan]               check, then print the recorded facts: the patch id, the Assessment line,
 #                                           the model, any warning and the risk maps as paths
 #                                           (never the report's text: pr.sh puts this in the public PR body)
 #   review.sh risk [<from>]                 the diff's risky paths, one "RISK=<category> <path>" line each (RISK=none)
@@ -36,19 +37,15 @@ while [[ "${1:-}" == --plan || "${1:-}" == --delta || "${1:-}" == --branch || "$
     --branch) bopt="${2:-}"; [[ -n "$bopt" ]] || die "usage: review.sh <action> --branch <branch> ..."; shift ;;
   esac; shift
 done
-if $feat && { $plan || $delta || [[ -n "$bopt" || "$action" != record ]]; }; then
-  die "a feature review is recorded alone: review.sh record --feature <report-file> (no --plan, --delta or --branch)"
+if $feat && { $plan || $delta || [[ -n "$bopt" ]] || ! [[ "$action" =~ ^(record|check|report)$ ]]; }; then
+  die "a feature review is recorded alone: review.sh record|check|report --feature (no --plan, --delta or --branch)"
 fi
 if $plan && [[ -n "$bopt" ]]; then die "a plan review belongs to the feature, not a branch: drop --branch"; fi
 if $plan && $delta; then die "a plan review is always full: review.sh record --plan <report-file>"; fi
 if $plan && [[ "$action" == risk ]]; then die "risk maps a diff; a plan review has none"; fi
 if [[ "$action" == state ]] && ! $plan; then die "usage: review.sh state --plan [<dir>]"; fi
 if [[ "$action" == diff ]] && ! $plan; then die "usage: review.sh diff --plan"; fi
-if [[ "$action" == answer ]] && ! $plan; then die "usage: review.sh answer --plan <area> <text>"; fi
 if [[ "$action" == outside ]] && ! $plan; then die "usage: review.sh outside --plan <n>"; fi
-# A fix round may change this many lines outside the previous findings' files (tests aside);
-# more means the fix is new work, which gets a full review.
-DELTA_LINES=20
 dir="$(git rev-parse --git-common-dir)/landspec-review"
 
 if $plan; then
@@ -58,11 +55,11 @@ if $plan; then
     for f in plan.md tasks.md; do [[ -f "$fdir/$f" ]] || die "no $f in $1"; done
   else fdir="$(feature_dir)"; fi
   name="plan-$(basename "$fdir")"; what="the plan ($fdir)"
-  # plan_files: the folder's files, relative and sorted; editor and temp files (issues.sh writes tasks.md.tmp) left out.
+  # plan_files: the folder's files, relative and sorted; editor and temp files (*~, *.swp, *.tmp) left out.
   # shortcut: a name list stands in for `git ls-files`, since the reviewer hashes a copy outside any repository.
   plan_files() { (cd "$fdir" && find . -type f ! -name '.*' ! -name '*~' ! -name '*.swp' ! -name '*.tmp') | sed 's|^\./||' | LC_ALL=C sort; }
-  # plan_text <file>: its content, tasks.md without the issue numbers issues.sh appends.
-  plan_text() { if [[ "$1" == tasks.md ]]; then sed -E 's/ — #[0-9]+[[:space:]]*$//' "$fdir/$1"; else cat "$fdir/$1"; fi; }
+  # plan_text <file>: its content; tasks.md without a legacy feature's " — #N" issue numbers, task ticks read as "- [ ]".
+  plan_text() { if [[ "$1" == tasks.md ]]; then plain_tasks "$fdir/$1" | sed -E 's/ — #[0-9]+[[:space:]]*$//'; else cat "$fdir/$1"; fi; }
   # Each file as path, NUL, byte length, newline, content: no two folders hash alike by moving bytes between files.
   state() {
     local f; plan_files | while IFS= read -r f; do
@@ -95,17 +92,6 @@ tip="$(branch_tip ${bopt:+"$bopt"})"
 # db: diff_base of the branch this call is about.
 db() { diff_base ${bopt:+"$bopt"}; }
 record="$dir/${name:-}"
-# The plan's area log: "<round> <area>" per finding, and "due|asked|reset <area>" (data-model "Area log").
-areas="$record.areas"
-
-# areas_state: one "<area> <findings since its last reset> <due|asked|->" line per area of the log.
-areas_state() {
-  [[ -f "$areas" ]] || return 0
-  awk '$1 ~ /^[0-9]+$/ { if (!($2 in n)) o[++k] = $2; n[$2]++; next }
-    $1 == "due" || $1 == "asked" || $1 == "reset" { if (!($2 in n)) { o[++k] = $2; n[$2] = 0 }
-      s[$2] = $1; if ($1 == "reset") { n[$2] = 0; s[$2] = "-" } }
-    END { for (i = 1; i <= k; i++) print o[i], n[o[i]], (o[i] in s ? s[o[i]] : "-") }' "$areas"
-}
 
 # hdr <key> [file]: the record's header values for <key>. The header ends at the first blank line,
 # so nothing in the report below it can add or override a field.
@@ -194,20 +180,24 @@ pass_rows() {
     END { flush() }' "$report"
 }
 
-# findings_total <file>: high + medium + low of its last "Findings: <n> high, <n> medium, <n> low" line, or nothing.
-findings_total() {
-  grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$1" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + $2 + $3 }' || true
+# findings_hml <file>: "<high> <medium> <low>" of its last "Findings: <n> high, <n> medium, <n> low" line, or nothing.
+findings_hml() {
+  grep -iE '^\**findings\**:\** *[0-9]+ high, *[0-9]+ medium, *[0-9]+ low\**\.?$' "$1" | tail -1 | awk '{ gsub(/[^0-9]+/, " "); print $1 + 0, $2 + 0, $3 + 0 }' || true
 }
+# findings_total <file>: high + medium + low of that line, or nothing.
+findings_total() { findings_hml "$1" | awk '{ print $1 + $2 + $3 }'; }
 
 # pass_tables: dies, naming the pass and the row, unless every pass has a table of rows whose statuses are its
 # own, the Earlier findings table is there when the last round had findings, and the findings are counted and
-# tagged; for a "ready", unless every row passes and every defined FR/SC id of spec.md and task id of tasks.md has its row.
+# tagged; for a "ready", unless every row passes (only when the report counts a high finding: a failing row of a
+# report with none is a medium or low one, R13) and every defined FR/SC id of spec.md and task id of tasks.md has its row.
 pass_tables() {
-  local rows err id total last=0 tags bad nt nf
+  local rows err id total last=0 tags bad nt nf high
   rows="$(pass_rows)"
   # A record with no Findings: line (2.7.0) counts as 0.
   if [[ -f "$record" ]]; then last="$(findings_total "$record")"; fi
-  err="$(P="$PASSES" V="$verdict" E="$((${last:-0} > 0))" awk -F'\t' '
+  high="$(findings_hml "$report" | cut -d' ' -f1)"
+  err="$(P="$PASSES" V="$verdict" H="${high:-0}" E="$((${last:-0} > 0))" awk -F'\t' '
     BEGIN { np = split(ENVIRON["P"], pass, " ")
       split("holds proven SAME TRUE provided handled safe holds", good, " ")
       split("BREAKS: MISSING DIFFERENT: FALSE MISSING MISSING BREAKS: BREAKS:", bad, " ")
@@ -223,10 +213,10 @@ pass_tables() {
     { n[$1]++; s = $3; bd = b[$1]; list = g[$1] ", " bd (bd ~ /:$/ ? " <why>" : "") ($1 == "earlier" ? "" : " or none: <why>") }
     s ~ /^none: *[^ ]/ && $1 == "earlier" { say("the Earlier findings table has the row " $4 ": it holds one row per earlier finding, resolved or open, never none: <why>"); next }
     s ~ /^none: *[^ ]/ { none[$1] = $4; next }
-    ENVIRON["V"] == "ready" && failcell($4) { say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
+    ENVIRON["V"] == "ready" && ENVIRON["H"] > 0 && failcell($4) { say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
     s == g[$1] { next }
     bd ~ /:$/ ? index(s, bd " ") == 1 && length(s) > length(bd) + 1 : s == bd {
-      nf++; if (ENVIRON["V"] == "ready") say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
+      nf++; if (ENVIRON["V"] == "ready" && ENVIRON["H"] > 0) say(t[$1] " has a failing row, so the plan is not ready: " $4); next }
     { say(t[$1] " has the row " $4 " whose status \"" s "\" is not one of " list) }
     END { for (i = 1; i <= np; i++) { p = pass[i]
         if (!seen[p]) say("the report has no ### Pass: " p " table: run every pass of the plan review")
@@ -253,29 +243,6 @@ pass_tables() {
   for id in $(sed -nE 's/^- \[[ xX]\] (T[0-9]+).*/\1/p' "$fdir/tasks.md"); do
     grep -qF "size"$'\t'"$id"$'\t' <<<"$rows" || die "the size pass has no row for $id (tasks.md lists it): add its row"
   done
-}
-
-# outside <last>: the lines the fix changed since <last> outside the previous findings' files
-# (the first file:line of each line from "findings" on, claims lines aside) and outside test paths; a binary file
-# counts as more than the limit. When the base was merged in since <last>, the count starts from <last> with
-# that base merged (merge-tree's first line is the tree even on a conflict, so a resolution's lines count);
-# a git without merge-tree --write-tree (before 2.38) counts from <last>, which only refuses more.
-outside() {
-  local found re a d f n=0 from="$1" mb t
-  mb="$(git merge-base "$tip" "$(base_ref ${bopt:+"$bopt"})" 2>/dev/null || true)"
-  if [[ -n "$mb" && "$mb" != "$(git rev-parse "$tip")" ]] && ! git merge-base --is-ancestor "$mb" "$1"; then
-    t="$(git merge-tree --write-tree "$1" "$mb" 2>/dev/null | head -1 || true)"
-    if git rev-parse --quiet --verify "$t^{tree}" >/dev/null 2>&1; then from="$t"; fi
-  fi
-  # Claims lines and their heading are skipped: a claim's stopped-at file is not a finding's file.
-  found="$(awk 'NR == 1, /^$/ { next } /^(- (held|broke):|\*\*Claims)/ { next } tolower($0) ~ /findings/ { on = 1 }
-    on && match($0, /[A-Za-z0-9_.\/-]+:[0-9]+/) { s = substr($0, RSTART, RLENGTH); sub(/:[0-9]+$/, "", s); print s }' "$record")"
-  re="$(test_path_re)" || exit 1
-  while IFS=$'\t' read -r a d f; do
-    if grep -qxF -- "$f" <<<"$found" || grep -qE -- "$re" <<<"$f"; then continue; fi
-    if [[ "$a" == - ]]; then n=$((n + DELTA_LINES + 1)); else n=$((n + a + d)); fi
-  done < <(landspec_numstat "$from" "$tip")
-  echo "$n"
 }
 
 # remove_copy <report> <reviewed commit>: after a record, remove the reviewer's copy its last "Copy:"
@@ -312,15 +279,31 @@ remove_copy() {
   fi
 }
 
-# The feature review: one record per feature, for the check copy's merge result (refs/landspec/check/<feature>).
-# Its verdict comes from its lines: any "not met" is "changes needed". Only a "ready" after a green run
-# resets the whole-feature check's round counter (implement.sh check-copy).
+# The feature review: one record per feature, for the commit at refs/landspec/check/<feature> (the feature
+# branch's head after implement.sh check). Its verdict comes from its lines: any "not met" is "changes needed".
+# It adds verdict:, reviewed: and the lines to the end-check record implement.sh check wrote, and deletes nothing.
+if $feat && [[ "$action" != record ]]; then
+  # check|report --feature: the end-check record counts only for the feature branch's head, and only
+  # when that head's tests ran green and its review said ready (data-model "End check").
+  fdir="$(feature_dir)"; fname="$(basename "$fdir")"; fr="$dir/feature-$fname"
+  [[ -f "$fr" && -n "$(hdr head "$fr")" ]] || die "no end check recorded for $fname: run implement.sh check, then the feature review"
+  h="$(commit "$(feature_ref "$fdir")")"; [[ -n "$h" ]] || die "no feature branch $(feature_branch "$fdir") here or on origin"
+  ck="$(hdr head "$fr")"; t="$(hdr tests "$fr")"; rv="$(hdr reviewed "$fr")"; v="$(hdr verdict "$fr")"
+  [[ "$ck" == "$h" ]] || die "the end check ran on $ck, and the feature branch is now at $h: run implement.sh check again"
+  [[ "$t" == green ]] || die "the tests of the end check are ${t:-not recorded} on $h: fix them, then run implement.sh check again"
+  [[ "$rv" == "$h" ]] || die "the feature review is of ${rv:-no commit}, not of $h: run the feature review again"
+  [[ "$v" == ready ]] || die "the feature review said ${v:-nothing}: build the not met items, then run the end check again"
+  if [[ "$action" == check ]]; then echo "REVIEW=ready"; exit 0; fi
+  echo "Feature review: ready for $h, tests green"
+  m="$(hdr model "$fr")"; [[ -z "$m" ]] || echo "Model: $m"
+  exit 0
+fi
 if $feat; then
   report="${1:-}"; [[ -f "$report" ]] || die "usage: review.sh record --feature <report-file>"
   [[ -s "$report" ]] || die "the report file $report is empty: the reviewer named it but did not write it; ask it to write the report there, then record again"
   fdir="$(feature_dir)"; fname="$(basename "$fdir")"
   c="$(git rev-parse --verify --quiet "refs/landspec/check/$fname^{commit}" || true)"
-  [[ -n "$c" ]] || die "no check copy for $fname: run implement.sh check-copy first"
+  [[ -n "$c" ]] || die "no check ref for $fname: run implement.sh check first"
   lre='^- (met|not met|not verifiable): '
   grep -qE "$lre" "$report" || die "the report has no '- met: …', '- not met: …' or '- not verifiable: …' line"
   verdict="$(grep -iE '^\**assessment\**: *(ready|changes needed)\**\.?$' "$report" | tail -1 | grep -oiE 'changes needed|ready' | tr '[:upper:]' '[:lower:]' || true)"
@@ -328,12 +311,13 @@ if $feat; then
   if grep -qE '^- not met: ' "$report"; then verdict="changes needed"; fi
   rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
   [[ "$(field reviewed)" =~ $rre && "$(commit "${BASH_REMATCH[2]}")" == "$c" ]] \
-    || die "the report must state Reviewed: <base>..$c (the check copy's merge result): run the feature review again"
+    || die "the report must state Reviewed: <base>..$c (the commit at refs/landspec/check/$fname): run the feature review again"
   model="$(field model)"; [[ -n "$model" ]] || die "the report must state Model: <id>: run the feature review again"
-  { echo "state: $c"; echo "assessment: $verdict"; echo "model: $model"; echo; cat "$report"; } > "$dir/feature-$fname.tmp"
-  mv "$dir/feature-$fname.tmp" "$dir/feature-$fname"
-  rf="$dir/feature-$fname-round"
-  if [[ "$verdict" == ready && -f "$rf" ]] && grep -qx 'outcome=green' "$rf"; then rm -f "$rf"; fi
+  fr="$dir/feature-$fname"
+  [[ -f "$fr" ]] && grep -q '^head: ' "$fr" || die "no end check recorded for $fname: run implement.sh check, then the feature review"
+  # the end-check record's fields stay
+  { grep -E '^(head|heads|tests): ' "$fr"; echo "verdict: $verdict"; echo "reviewed: $c"; echo "model: $model"; echo; cat "$report"; } > "$fr.tmp"
+  mv "$fr.tmp" "$fr"
   remove_copy "$report" "$c"
   event review round=feature verdict="${verdict// /-}"
   echo "REVIEW=$verdict"; exit 0
@@ -348,7 +332,7 @@ case "$action" in
     # Untracked files (the report itself, kept outside the repo anyway) cannot be part of the diff.
     if ! $plan && [[ -z "$bopt" && -n "$(git status --porcelain --untracked-files=no)" ]]; then die "commit the work first: the review is recorded for the committed diff"; fi
     st="$(state)"
-    want="$(review_model)" || exit 1
+    want="$(reviewer_model)" || exit 1
     model="$(field model)"; from=""; head=""; carried=""
     if $plan; then
       [[ -n "$model" ]] || die "the report must state Model: <id> for the plan: run the review again"
@@ -356,15 +340,6 @@ case "$action" in
       [[ "$(field 'plan state')" =~ ^[0-9a-f]{64}$ ]] || die "the report has no Plan state line: run the review again (this landspec version records it)"
       [[ "${BASH_REMATCH[0]}" == "$st" ]] || die "the plan changed since this review: run the review again"
       pass_tables
-      # An open Simplify question: a due area needs its section in this report, an asked one the answer first.
-      opn="$(areas_state)"; due="$(awk '$3 == "due" { print $1 }' <<<"$opn")"
-      for a in $(awk '$3 == "asked" { print $1 }' <<<"$opn"); do
-        die "a Simplify question is open for $a: record the developer's answer first: review.sh answer --plan $a '<text>'"
-      done
-      for a in $due; do
-        grep -qE "^## Simplify: ${a}[[:space:]]*\$" "$report" \
-          || die "the report has no ## Simplify: $a section: the round is given simplify: $(paste -sd, - <<<"$due" | sed 's/,/, /g') and opens with one section per area; run the plan review again"
-      done
     else
       head="$(git rev-parse "$tip")"; df="$(field 'delta from')"
       rf=""; rh=""; rre='^([0-9a-f]{7,40})[.][.]([0-9a-f]{7,40})$'
@@ -384,8 +359,6 @@ case "$action" in
         fi
         [[ -n "$rf" && -n "$model" ]] \
           || die "the report must state Reviewed: <from>..<head> and Model: <id> for $from..$head: run the review again"
-        n="$(outside "$from")" || exit 1
-        ((n <= DELTA_LINES)) || die "the delta changes $n lines outside the previous findings (limit $DELTA_LINES): run a new full review"
         carried="$(hdr map-full)"
       else
         [[ -z "$df" ]] || die "this is a delta report: record it with --delta, or run a new full review"
@@ -419,15 +392,7 @@ case "$action" in
       echo; cat "$report"
     } > "$record.tmp" || die "cannot write the review record"
     # The text this round read (its state matched): the next round is given its diff (review.sh diff --plan).
-    if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"
-      # Every finding is logged (table rows aside: a failing row is listed again among the findings).
-      # shortcut: the round number is the log's last one plus 1, so a round with no finding takes none; nothing reads it yet.
-      n="$(awk '$1 ~ /^[0-9]+$/ && $1 + 0 > m { m = $1 + 0 } END { print m + 1 }' "$areas" 2>/dev/null || echo 1)"
-      { for a in $due; do echo "asked $a"; done
-        grep -v '^|' "$report" | grep -oE '\[area: *[a-z0-9-]+\]' | sed -E "s/^\[area: *([a-z0-9-]+)\]$/$n \1/" || true; } >> "$areas"
-      simplify="$(areas_state | awk '$2 >= 3 && $3 == "-" { print $1 }')"
-      for a in $simplify; do echo "due $a" >> "$areas"; done
-    fi
+    if $plan; then rm -rf "$record.reviewed.tmp"; snapshot "$record.reviewed.tmp"; rm -rf "$record.reviewed"; mv "$record.reviewed.tmp" "$record.reviewed"; fi
     # The record goes last: a run stopped before it leaves the old record, so the same report is recorded again.
     mv "$record.tmp" "$record"
     remove_copy "$report" "${head:-$(git rev-parse "$tip")}"
@@ -441,15 +406,7 @@ case "$action" in
       hm="$(grep -iE '^findings: *[0-9]+ high, *[0-9]+ medium' "$report" | tail -1 | awk '{ gsub(/[^0-9 ]/, ""); print $1 + $2 }' || true)"
       event review round="$($delta && echo delta || echo full)" verdict="${verdict// /-}" ${hm:+hm=$hm} branch="$branch"; echo "REVIEWED=$head"
     fi
-    echo "REVIEW=$verdict"
-    for a in ${simplify:-}; do echo "SIMPLIFY=$a"; done ;;
-  answer)
-    a="${1:-}"; text="${*:2}" # an unquoted answer is still the whole answer
-    [[ "$a" =~ ^[a-z0-9-]+$ && -n "${text//[[:space:]]/}" ]] || die "usage: review.sh answer --plan <area> <text>"
-    [[ "$(areas_state | awk -v a="$a" '$1 == a { print $3 }')" == asked ]] \
-      || die "nothing is asked for $a: an area is answered once the report with its ## Simplify: $a section is recorded"
-    echo "reset $a $(tr '\n' ' ' <<<"$text" | sed 's/ *$//')" >> "$areas"
-    echo "ANSWERED=$a" ;;
+    echo "REVIEW=$verdict" ;;
   outside)
     n="${1:-}"; [[ "$n" =~ ^[0-9]+$ && $# -eq 1 ]] || die "usage: review.sh outside --plan <n>, <n> the whole number of real findings the outside reviewers found"
     event outside feature="$(basename "$fdir")" n="$n"; echo "OUTSIDE=$n" ;;
@@ -458,19 +415,23 @@ case "$action" in
     [[ -f "$record" ]] || die "no independent review recorded for $what; run /speckit-landspec-review and record its report: review.sh record$($plan && echo ' --plan') <report-file>"
     [[ "$(hdr state)" == "$st" ]] \
       || die "$what changed since the last review; run /speckit-landspec-review again and record it"
-    [[ "$(hdr assessment)" == ready ]] \
-      || die "the last review said 'changes needed'; fix the findings, then review again and record it"
-    # No issue or spec PR while a Simplify question is open (data-model "Invariant").
-    if $plan; then
-      while read -r a _ s; do
-        if [[ "$s" == due ]]; then die "a Simplify question is open for $a: run the next plan review with simplify: $a"; fi
-        if [[ "$s" == asked ]]; then die "a Simplify question is open for $a: record the developer's answer: review.sh answer --plan $a '<text>'"; fi
-      done < <(areas_state)
+    # The gate is the recorded Findings: count (R13); a record without one (before 2.9) keeps its Assessment line.
+    hml="$(findings_hml "$record")"
+    # A reviewer that could not verify (review.md step 0) says so on its Copy: line; its counts prove nothing.
+    if [[ "$(sed -nE 's/^\**Copy\**: *//p' "$record" | tail -1)" == none* ]]; then
+      die "the last review could not verify the diff (Copy: none): run /speckit-landspec-review again in its own copy and record it"
+    fi
+    if [[ -z "$hml" ]]; then
+      [[ "$(hdr assessment)" == ready ]] || die "the last review said 'changes needed'; fix the findings, then review again and record it"
+    else
+      read -r h m _ <<<"$hml"
+      if $plan; then ((h == 0)) || die "the last plan review has $h high finding(s); fix them, then review the plan again and record it"
+      else ((h + m == 0)) || die "the last review has $h high and $m medium findings; fix them, then review again and record it"; fi
     fi
     if [[ "$action" == check ]]; then echo "REVIEW=ready"; exit 0; fi
     # Only facts checked or stored by record: no reviewer prose can be filtered for findings reliably (F3.1/F4.3).
     echo "Independent review recorded for this diff (patch id $(hdr state | cut -c1-12))"
-    echo "Assessment: ready"
+    echo "Assessment: $(hdr assessment)"
     m="$(hdr model)"; [[ -z "$m" ]] || echo "Model: $m"
     hdr warning | sed 's/^/warning: /'
     m="$(hdr map-full)"; [[ -z "$m" ]] || printf 'Risk map (round 1)\n%s\n' "$m"
@@ -478,5 +439,5 @@ case "$action" in
   risk)
     from="${1:-$(db)}"; c="$(commit "$from")"; [[ -n "$c" ]] || die "usage: review.sh risk [<from>] (no commit '$from')"
     risk "$c" ;;
-  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh answer --plan <area> <text> | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
+  *) die "usage: review.sh record [--plan|--delta|--feature] <report-file> | review.sh check|report [--plan|--feature] | review.sh state --plan [<dir>] | review.sh diff --plan | review.sh outside --plan <n> | review.sh risk [<from>]" ;;
 esac

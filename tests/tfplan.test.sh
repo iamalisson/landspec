@@ -66,8 +66,8 @@ printf 'module "db" {\n  source = "../../modules/db"\n}\n' > infra/envs/dev/main
 printf 'module "db" {\n  source  = "../../modules/db/"\n  version = "x"\n}\nmodule "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n' > infra/envs/prod/main.tf
 printf 'module "net" {\n  source = "../net"\n}\n' > infra/modules/db/main.tf
 echo 'resource "aws_vpc" "main" {}' > infra/modules/net/main.tf
-commit_tasks '- [ ] T001 Add infra in `infra/main.tf` — #5'
-"$SCRIPTS/branch.sh" T001 >/dev/null
+commit_tasks '- [ ] T001 Add infra in `infra/main.tf`'
+"$SCRIPTS/branch.sh" 001 >/dev/null
 echo 'resource "aws_db_instance" "main" {}' >> infra/modules/db/main.tf; git commit --quiet -am "feat: db"
 
 out="$(record infra/envs/dev)"

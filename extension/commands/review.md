@@ -1,5 +1,5 @@
 ---
-description: "Independent review of the branch (or of the plan, before issues) by a fresh reader grounded in the whole repository"
+description: "Independent review of the branch (or of the plan, before any task is built) by a fresh reader grounded in the whole repository"
 ---
 
 # Independent review
@@ -8,24 +8,23 @@ A fresh reader, not the author, in one fast pass, the way GitHub's Copilot code 
 reads the diff and the code around it, and reports few findings, each tied to a changed line. It
 catches what the author's own session misses, because that session shares the author's assumptions.
 
-**Two roles.** If you are the author's session (`/speckit-landspec-pr`, `/speckit-landspec-issues`, or the
+**Two roles.** If you are the author's session (`/speckit-landspec-pr`, `/speckit-landspec-plan-review`, `/landspec:implement`, or the
 user ran `/speckit-landspec-review`): launch one subagent of type `landspec:reviewer` whose prompt
 starts with the line `landspec review: independent reviewer`, then this whole file plus the
 facts below, and nothing else: no summary of what you built, no "I already checked X". Pass the
-call's `model`: `review_model:` from `.specify/extensions/landspec/landspec-config.yml` when it is `sonnet`,
-`opus` or `fable`, `sonnet` when the key is absent or empty. If `review_model:` holds any other
-value, print `landspec: review_model must be sonnet, opus or fable` and stop.
-Never run the review on `haiku`, and never in a fork of this session. Pass `isolation: "worktree"` on the
+call's `model`: `opus`. Reviews run on Opus only: if Opus is not available, stop and name this
+review; never run it on another model, and never in a fork of this session. Pass `isolation: "worktree"` on the
 call too: the reviewer then runs in its own copy of the repository and never writes to yours. If
 the call refuses the type `landspec:reviewer` (the plugin is not installed), launch a
 `general-purpose` subagent with the same prompt, the same `model` and `isolation: "worktree"`. The
-plugin's hook blocks a review launch without one of those models, without that isolation, or in a
+plugin's hook blocks a review launch on any model but `opus`, without that isolation, or in a
 fork.
 Wait for its report. The reviewer writes it to a file itself and names it on its first line,
 `Report file: <path>`: record that file as it is, never a copy you typed or edited:
 `bash .specify/extensions/landspec/scripts/review.sh record <file>` (`record --plan <file>` for a plan
-review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `issues.sh` refuse to
-open anything without a recorded review that said `ready` for the current state, at every level,
+review, `record --delta <file>` for a fix round, `record --feature <file>` for a feature review). The record is tied to the exact diff (or `tasks.md`): `pr.sh` and `implement.sh` refuse to
+go on without a recorded review of the current state that passes its gate (no High
+finding in a plan review, no High or Medium in a task review), at every level,
 so a commit after the review means another review. Recording removes the reviewer's copy (its
 `Copy:` line) once it is safe to.
 
@@ -57,9 +56,9 @@ Facts the author passes:
 - the base branch and the branch under review, and `base:` the ref the branch is diffed against
   (`base_ref` in landspec's `lib.sh`: `origin/<base>`, or the parent task branch of a stacked
   branch), or, for a plan review, the feature folder `specs/NNN-*/`;
-- for a feature review: "feature review", the feature folder, `commit:` the check copy's merge result
-  (`refs/landspec/check/<feature>`, a local ref your copy can reach), `base:` `origin/<base>`, and the
-  test command's output on that combination;
+- for a feature review: "feature review", the feature folder, `commit:` the check ref
+  (`refs/landspec/check/<feature>`, the feature branch's head, a local ref your copy can reach), `base:` `origin/<base>`, and the
+  test command's output on that commit;
 - the task's line from `tasks.md` with its sub-bullets, "plan review", or, for a PR that is not a
   task (`pr.sh fix`), one line on what it changes and why;
 - the path of the PR body draft, if there is one;
@@ -70,18 +69,17 @@ Facts the author passes:
   and the output of `bash .specify/extensions/landspec/scripts/review.sh diff --plan`, and nothing
   the author wrote about the findings. When the last record predates the kept copies (a 2.7.0
   record: `diff --plan` dies "no plan review recorded yet"), the folder and that round's report,
-  with no diff: the round reads the whole folder. When the last `record --plan` printed
-  `SIMPLIFY=<area>` lines, `simplify: <a>, <b>` naming every one of them.
+  with no diff: the round reads the whole folder.
 
 **A delta** reads `git diff <sha>..HEAD` only: it checks that each previous finding is fixed and
 applies step 2 to the fix commits alone, and it never widens, with one exception: a fix commit that
 changes how a function fails makes every caller of that function part of the fix (step 2's caller
 account applies to them, in the diff or not). A bug it notices outside those
-commits is reported at its true severity and does not change the assessment. `record --delta` refuses it unless a round was
-recorded on this branch, `<sha>` is still on the branch, something was committed since, and the fix
-changes at most 20 lines outside the previous findings' files (test files aside); otherwise run a
-new full review. Lines a merge of the base brought in are not counted (a conflict resolution's
-lines and a merge of any other branch are).
+commits is reported at its true severity, is not counted on the `Findings:` line and does not change the assessment. `record --delta` refuses it unless a round was
+recorded on this branch, `<sha>` is still on the branch, and something was committed since;
+otherwise run a new full review. A fix of any size is a delta. The delta of a conflict round (the
+feature branch merged into the task's branch) reads the merge's resolution (`git show
+--remerge-diff <merge>`) and the commits after it, not the other tasks' code the merge brought in.
 
 **A feature review** checks the whole feature, all its task branches merged together, against its
 spec: read `spec.md` (every FR, every acceptance scenario, every SC), `plan.md`, `tasks.md` and `git diff
@@ -158,7 +156,7 @@ step 2 allows.
    findings: follow each one's own scenario through the fix. A plan review or a feature review
    skips this step.
 
-**Plan review** (before the issues are created): review the copy of the feature folder
+**Plan review** (before any task is built): review the copy of the feature folder
 hashed with `review.sh state --plan <folder>` (subagent step 2), so the recorded state is the text
 you read; apply step 1 and read every task in `tasks.md`,
 asking what happens where state already exists. Then run the eight passes below, in this order,
@@ -168,7 +166,9 @@ whose last cell is the row's status, one of that pass's statuses. A pass with no
 writes one row, its only row, `none: <why>` (`| none: no task writes data |`). Each failing row is
 also a finding. `review.sh record --plan` reads the tables: it refuses any report with a pass
 missing, a pass with no row, or a status outside its pass's list, and refuses a `ready` with a
-failing row (`MISSING`, `DIFFERENT: <what>`, `FALSE`, `BREAKS: <how>`), with a defined `FR-NNN` or
+failing row only when the report counts a High finding (a failing row is `MISSING`, `DIFFERENT:
+<what>`, `FALSE` or `BREAKS: <how>`; only a High one blocks `ready`, a Medium or Low one is listed
+among the findings and shown to the developer), with a defined `FR-NNN` or
 `SC-NNN` of `spec.md` (a line starting `- **FR-NNN**` or `- **SC-NNN**`) that has no requirements
 row, with a task of `tasks.md` that has no size row, or with a `spec.md` that defines no `FR-NNN`.
 
@@ -239,7 +239,8 @@ the diff changed first. Fill a table under a heading exactly `### Earlier findin
 finding of that report, its last cell `resolved` (with the line that resolves it, an invariant or
 a changed text, in a cell before it) or `open`, never `none:`. An `open` row is also a finding.
 `review.sh record --plan` refuses a report without that table when the last recorded round had
-findings (its `Findings:` total above 0), and a `ready` with an `open` row. When that report
+findings (its `Findings:` total above 0), and a `ready` with an `open` row only when it counts a
+High finding. When that report
 counted no findings (`Findings: 0 high, 0 medium, 0 low`), leave the table out.
 
 ## Report
@@ -257,8 +258,6 @@ Written for the author, who fixes it, and for the human who merges:
 - **Claims**, after the risk map and before the findings, one line per claim of step 3:
   `- held: <claim> — <counterexample>: stopped at <file:line>`
   `- broke: <claim> — <counterexample>: finding <n>`
-  Before the findings, because `review.sh record` counts every `file:line` after them as a
-  finding's file, which a delta may then change freely.
 - **Findings**, ranked: **High** (wrong result, data loss, a broken upgrade on existing state,
   security), **Medium** (a real bug: a guard the siblings have, an unhandled real-path
   case, a silent failure path), **Low** (worth a line, not a block: a test gap where the code
@@ -283,16 +282,9 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   round given an earlier report; then the findings, each failing row and each open earlier
   finding among them. Each finding's scenario starts `[area: <name>]`, the part of the plan it is
   about (a data-model section or a group of tasks) as one word of `[a-z0-9-]`, such as
-  `[area: area-log]`; reuse the earlier report's names for the same part. `record --plan` refuses
+  `[area: end-check]`; reuse the earlier report's names for the same part. `record --plan` refuses
   a report whose tagged findings do not number its `Findings:` total, a tag that is not one word,
   a report with no `Findings:` line, and a total below its failing rows.
-- **A Simplify section** opens a plan report given `simplify: <area>`: one section headed exactly
-  `## Simplify: <area>` for each area the facts name, before the pass tables. An area that drew
-  3 findings across rounds keeps breaking under patches: write the simplest design that removes
-  what keeps breaking (fewer rules, one state instead of several), or moving that part to a later
-  spec, with the lines of the plan it replaces. It is a recommendation the developer answers,
-  never a finding: the rounds go on, the passes run as usual. `record --plan` refuses the report
-  without a section for each named area, whatever its verdict.
 - Before the last line, each on its own line: `Copy: <git rev-parse --show-toplevel>` (your copy,
   or `Copy: none (<reason>)`), then `Reviewed: <from>..<head>`, the full shas you
   reviewed (`git merge-base HEAD <base>`, with the facts' `base:`, and `git rev-parse HEAD`; for a delta, `<sha>` and
@@ -304,8 +296,12 @@ sibling is not a defense: a defect copied from an existing file is still a defec
   branch's (or the delta's), a commit made after the review started, and a plan state that is not
   a hash or not the plan's current one. Then one count line, exactly
   `Findings: <n> high, <n> medium, <n> low` (security ones included; `record --plan` checks it against the tagged findings).
-- The last line, exactly: `Assessment: ready`, or `Assessment: changes needed` when there is a
-  High or Medium in the lines this review covers (the branch's diff, or a delta's commits). `review.sh record` reads that line; without it the report cannot be recorded.
+- The last line, exactly: `Assessment: ready`, or `Assessment: changes needed`: a plan review ends
+  `changes needed` only with a High finding, a task review (full or delta) only with a High or
+  Medium in the lines it covers (the branch's diff, or a delta's commits). `review.sh record`
+  reads that line; without it the report cannot be recorded. `review.sh check` gates on the
+  `Findings:` count the same way: a plan review passes with no High, a task review with no High
+  or Medium.
 
 The PR never shows this report: its "Independent review" block holds only the recorded facts (a
 review of this diff, by patch id, the `Assessment:` line, the model and any warning about it, and

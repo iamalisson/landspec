@@ -21,20 +21,20 @@
     <text x="210" y="116" fill="#9198a1" font-size="12">T001 … T00n</text>
 
     <rect x="302" y="66" width="120" height="64" rx="10" fill="#161b22" stroke="#4493f8"/>
-    <text x="362" y="96" fill="#e6edf3" font-weight="600">issue</text>
-    <text x="362" y="116" fill="#9198a1" font-size="12">#12</text>
+    <text x="362" y="96" fill="#e6edf3" font-weight="600">task copy</text>
+    <text x="362" y="116" fill="#9198a1" font-size="12">one per task</text>
 
     <rect x="446" y="66" width="128" height="64" rx="10" fill="#161b22" stroke="#4493f8"/>
-    <text x="510" y="96" fill="#e6edf3" font-weight="600">branch</text>
-    <text x="510" y="116" fill="#9198a1" font-size="12">feat/001-t003-…</text>
+    <text x="510" y="96" fill="#e6edf3" font-weight="600">checks</text>
+    <text x="510" y="116" fill="#9198a1" font-size="12">tests · review</text>
 
     <rect x="598" y="66" width="120" height="64" rx="10" fill="#161b22" stroke="#4493f8"/>
-    <text x="658" y="96" fill="#e6edf3" font-weight="600">pull request</text>
-    <text x="658" y="116" fill="#9198a1" font-size="12">Closes #12</text>
+    <text x="658" y="96" fill="#e6edf3" font-weight="600">landed</text>
+    <text x="658" y="116" fill="#9198a1" font-size="12">on feat/001-…</text>
 
     <rect x="742" y="66" width="108" height="64" rx="10" fill="#4493f8"/>
     <text x="796" y="96" fill="#0d1117" font-weight="700">merged</text>
-    <text x="796" y="116" fill="#0d1117" font-size="12">issue closed</text>
+    <text x="796" y="116" fill="#0d1117" font-size="12">one feature PR</text>
   </g>
   <!-- arrows -->
   <g stroke="#9198a1" stroke-width="1.5" marker-end="url(#a)">
@@ -49,7 +49,7 @@
     <text x="146" y="160" text-anchor="middle">/speckit-specify</text>
     <text x="146" y="178" text-anchor="middle">/speckit-plan · /speckit-tasks</text>
     <text x="576" y="160" text-anchor="middle">/landspec:implement</text>
-    <text x="576" y="178" text-anchor="middle">or /landspec:next, one task at a time</text>
+    <text x="576" y="178" text-anchor="middle">/landspec:next shows the progress</text>
   </g>
   <text x="440" y="212" text-anchor="middle" font-size="13" fill="#9198a1">Defaults sized to the project: lite · standard · full</text>
 </svg>

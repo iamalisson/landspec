@@ -26,9 +26,6 @@ previous="$(cfg level none)"
 cfg_set level "$level"
 grep -qE '^base_branch:' "$LANDSPEC_CONFIG" || cfg_set base_branch auto
 grep -qE '^branch_prefix:' "$LANDSPEC_CONFIG" || cfg_set branch_prefix feat
-grep -qE '^issue_labels:' "$LANDSPEC_CONFIG" || cfg_set issue_labels '"type:task"'
-grep -qE '^milestone:' "$LANDSPEC_CONFIG" || cfg_set milestone '""'
-grep -qE '^project:' "$LANDSPEC_CONFIG" || cfg_set project '""'
 echo "level: $previous → $level"
 
 case "$level" in
@@ -407,7 +404,7 @@ for l in "${levels[@]}"; do
               if [[ -n "$gate" ]]; then
                 echo "kept:    $(tr '\n' ' ' <<<"$gate")(already checks pull requests; no ci.yml generated)"
                 while IFS= read -r w; do
-                  if pr_skips_base "$w"; then echo "warning: $w never runs on a task PR into $(base_branch): add $(base_branch) to its pull_request branches"; fi
+                  if pr_skips_base "$w"; then echo "warning: $w never runs on the feature PR into $(base_branch): add $(base_branch) to its pull_request branches"; fi
                 done <<<"$gate"
               else ci_yaml | put .github/workflows/ci.yml generated; fi
               security_yaml | put .github/workflows/security.yml generated
