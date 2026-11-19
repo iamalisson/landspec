@@ -290,7 +290,7 @@ medium, one fix round checked by a delta.
     with checks that `agents/reviewer.md` has `model: opus` and that `review.md` names `opus` and
     not `review_model`, each seen failing on the old text; `tests/run.sh` passes.
 
-- [ ] T018 [P] [US3] Gate the plan review on high findings and the task review on high and medium, with deltas of any size, in extension/scripts/review.sh and extension/commands/review.md (depends on T002)
+- [X] T018 [P] [US3] Gate the plan review on high findings and the task review on high and medium, with deltas of any size, in extension/scripts/review.sh and extension/commands/review.md (depends on T002)
   - Comes from: FR-006, FR-019, FR-020, US3 scenarios 1, 3 and 4, SC-003; research R6, R13; contracts/scripts.md "review.sh"
   - What: `review.sh check --plan` passes when the plan record is current and its findings count
     has no high (was: `Assessment: ready`); `check --branch` passes when the branch record is
