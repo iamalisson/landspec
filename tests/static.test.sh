@@ -312,16 +312,20 @@ check "when docs/reference.md is read, then adding tests to an existing file nee
 flat() { tr "\n" " " | tr -s " "; }
 sk_sec="$(sed -n "/^## Installed skills and MCP servers/,/^## Method/p" extension/commands/review.md | flat)"
 sk_rep="$(sed -n "/^## Report/,\$p" extension/commands/review.md | flat)"
-check "when review.md is read, then its Installed skills section has YES/NO - <reason>, invoke every YES, the landspec:*/speckit-* exclusion, NO - needs the user, NO - failed and the reviewer's limits" \
+check "when review.md is read, then its Installed skills section has YES/NO - <reason>, invoke every YES, the landspec:*/speckit-* exclusion, NO - needs the user, NO - failed and the scope limit" \
   '[[ "$sk_sec" == *"\`<name> - YES/NO - <reason>\`"* && "$sk_sec" == *"invoke every YES"* && "$sk_sec" == *"(\`landspec:*\`, \`speckit-*\`)"* \
-   && "$sk_sec" == *"NO - needs the user"* && "$sk_sec" == *"NO - failed: <error>"* && "$sk_sec" == *"a plan review and a feature review do not evaluate skills"* \
-   && "$sk_sec" == *"never makes a reviewer write a file, run more than its Method says or change the report'"'"'s shape"* && "$sk_sec" == *"it never widens the task'"'"'s scope"* ]]'
-check "when review.md's Report and agents/implementer.md's return are read, then each has the Skills: line with none matched" \
-  '[[ "$sk_rep" == *"has \`Skills: <name> (<what it was used for>), …\` or \`Skills: none matched\`"* ]] \
+   && "$sk_sec" == *"NO - needs the user"* && "$sk_sec" == *"NO - failed: <error>"* && "$sk_sec" == *"for an implementer only, before writing code"* \
+   && "$sk_sec" == *"it never widens the task'"'"'s scope"* ]]'
+check "when review.md is read, then no review evaluates skills or writes a Skills: line, and neither its Report nor the reviewer asks for one" \
+  '[[ "$sk_sec" == *"No review (a task review, full or delta, a plan review or a feature review) evaluates skills or writes a \`Skills:\` line"* \
+   && "$sk_rep" == *"No report has a \`Skills:\` line"* && "$sk_rep" != *"Skills: none matched"* ]] \
+   && grep -qF "3. No review evaluates the installed skills or writes a \`Skills:\` line" agents/reviewer.md \
+   && ! grep -qF "weighs the installed skills the same way" docs/reference.md'
+check "when review.md's Installed skills section and agents/implementer.md's return are read, then each has the Skills: line with none matched" \
+  '[[ "$sk_sec" == *"\`Skills: <name> (<what it was used for>), …\`, or \`Skills: none matched\`"* ]] \
    && grep -qF "the \`Skills: <name> (<what it was used for>), …\` or \`Skills: none matched\` line" agents/implementer.md'
-check "when the implementer, the reviewer and the single-task path are read, then each points to the Installed skills and MCP servers section first" \
+check "when the implementer and the single-task path are read, then each points to the Installed skills and MCP servers section first" \
   'grep -qF "3. Follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\` first, before writing code." agents/implementer.md \
-   && grep -qF "3. In a task review (full or delta), follow the \"Installed skills and MCP servers\" section of commands/review.md before reading the diff" agents/reviewer.md \
    && [[ "$(flat < extension/commands/branch.md)" == *"Before writing code, follow the \"Installed skills and MCP servers\" section of \`.specify/extensions/landspec/commands/review.md\`"* ]]'
 check "when the draft PR and pr.md step 5 are read, then each implementer's Skills: line goes in Evidence, with not reported when it gave none" \
   '[[ "$(flat < skills/implement/SKILL.md)" == *"each implementer'"'"'s \`Skills:\` line, as it returned it, under its task id; an implementer that returned none, or a run resumed after the line was lost, gives \`Skills: not reported\`, never \`none matched\`"* \
