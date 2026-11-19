@@ -456,7 +456,7 @@ diff.
     include a symbolic link and the fake semgrep is given no link among its targets (and fails the
     way the real one does when it is); `tests/run.sh` passes.
 
-- [ ] T024 [US5] Refuse a merged feature in pr.sh feature, and make the release's worktree, in extension/scripts/pr.sh and skills/implement/SKILL.md
+- [X] T024 [US5] Refuse a merged feature in pr.sh feature, and make the release's worktree, in extension/scripts/pr.sh and skills/implement/SKILL.md
   - Comes from: the end check's feature review, round 2: US5 scenario 4 and SC-001 not met (after a
     squash merge, the `after_implement` hook's `pr.sh feature` pushes the deleted feature branch back
     and opens a second PR: `merged_pr`/`refuse_merged` are called only from branch.sh and
