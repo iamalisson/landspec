@@ -22,7 +22,7 @@
 #       The end check, on the feature's branch once every task is done, refused once the feature PR is merged: merges origin/<base> in first (a
 #       conflict aborts and dies naming the files), points refs/landspec/check/<feature> at the head and
 #       writes the end-check record (head:, heads:, tests: pending). Prints CHECK=<head> ROUND=<n> (n: the
-#       heads checked), UNCHANGED=<n> (this head's tests or its own review failed), or ROUNDS_EXHAUSTED=<max>
+#       heads checked), UNCHANGED=<n> (this head's tests, its own feature review or its own security review failed), or ROUNDS_EXHAUSTED=<max>
 #       (feature_rounds:, default 3), before anything is merged or pushed.
 #   implement.sh [feature] check-result red|green   the test command's outcome: tests: in the end-check record
 #   implement.sh [feature] release-plan
@@ -33,9 +33,12 @@
 #       RELEASE=bump X.Y.Z FILES=<a,b> NOTES=<path|-> PRS=<n,m>, or RELEASE=none (no version_files:).
 #   implement.sh [feature] release-bump X.Y.Z   rewrites the version line of each of version_files:
 #   implement.sh [feature] audit-plan
-#       The security audit before the bump, once per origin/<base> commit: AUDIT=needed COMMIT=<sha>, or, for
-#       an audit recorded for that commit, AUDIT=done|hold COMMIT=<sha> REPORT=<path> HOLD=<n> (hold: n > 0).
-#       With release_audit: off (default on), only AUDIT=skipped (release_audit: off): nothing is fetched or read.
+#       The security audit before the bump. AUDIT=reviewed (security review of <head short sha>) when the feature's
+#       security review (review.sh record --security) passed, and is of the feature branch's head while this clone
+#       or origin still has the branch: the whole-repository audit does not run. Otherwise, once per origin/<base>
+#       commit: AUDIT=needed COMMIT=<sha>, or, for an audit recorded for that commit, AUDIT=done|hold COMMIT=<sha>
+#       REPORT=<path> HOLD=<n> (hold: n > 0); with release_audit: off (default on), AUDIT=skipped (release_audit: off),
+#       nothing fetched and no audit record read.
 #   implement.sh [feature] audit-record <commit> <report> <hold>
 #       Keeps a copy of the report and records it: <git common dir>/landspec-security/audit (commit=,
 #       report=, hold=, the number of confirmed critical or high findings).
@@ -293,7 +296,10 @@ case "$action" in
     h="$(git rev-parse HEAD)"
     if [[ "$(efield head)" == "$h" ]]; then
       # only this head's own failure counts: a verdict is for the head it reviewed
-      if [[ "$(efield tests)" == red || ( "$(efield reviewed)" == "$h" && "$(efield verdict)" == "changes needed" ) ]]; then echo "UNCHANGED=$n"; exit 0; fi
+      sr="${er%/*}/security-$(basename "$fdir")"; sec="" # its header starts head:, assessment:
+      [[ "$(cfg security_review on)" == off ]] || sec="$(head -2 "$sr" 2>/dev/null || true)"
+      if [[ "$(efield tests)" == red || ( "$(efield reviewed)" == "$h" && "$(efield verdict)" == "changes needed" ) \
+            || "$sec" == "head: $h"$'\n'"assessment: changes needed" ]]; then echo "UNCHANGED=$n"; exit 0; fi
     else
       n=$((n + 1)); mkdir -p "${er%/*}"
       # the last review's verdict and lines stay (pr.sh shows the head they were for); the record is never deleted
@@ -386,6 +392,16 @@ case "$action" in
     echo "BUMPED=$nv" ;;
   audit-plan)
     ra="$(cfg release_audit on)"; [[ "$ra" == on || "$ra" == off ]] || die "release_audit must be on or off"
+    # The feature's security review stands in for the audit: it read this feature's whole diff before the PR was ready.
+    sr="$(git rev-parse --git-common-dir)/landspec-review/security-$(basename "$fdir")"
+    if [[ -f "$sr" ]]; then
+      sfield() { awk -v k="$1: " '/^$/ { exit } index($0, k) == 1 { print substr($0, length(k) + 1); exit }' "$sr"; }
+      sh="$(sfield head)"; read -r sc shi _ <<<"$(sfield counts)"
+      fh="$(git rev-parse --verify --quiet "$(feature_ref "$fdir")^{commit}" || true)" # gone once merged and deleted: the record stands
+      if [[ "$sh" =~ ^[0-9a-f]{40}$ && "$(sfield assessment)" == ready && "${sc:-1}" == 0 && "${shi:-1}" == 0 && ( -z "$fh" || "$fh" == "$sh" ) ]]; then
+        echo "AUDIT=reviewed (security review of ${sh:0:7})"; exit 0
+      fi
+    fi
     [[ "$ra" == on ]] || { echo "AUDIT=skipped (release_audit: off)"; exit 0; } # no fetch, no record read
     base="$(base_branch)"
     git fetch --quiet origin "+refs/heads/$base:refs/remotes/origin/$base" || die "cannot fetch origin; fix the error above"

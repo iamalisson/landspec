@@ -97,6 +97,20 @@ the head it starts from, and refuses a rebase or a range that is not the delta's
 size is a delta, and a task gets one. Each report states the range and model it reviewed,
 so a commit made while the review ran is never recorded as reviewed.
 
+## One security review, of the diff, before the PR is ready
+
+The audit used to run after the merge, before the release bump: the whole repository, `/code-review
+high`, `/security-review` and an eleven-group sweep, 10 to 30 minutes, on code already reviewed
+task by task, and too late: a finding there was already on the base. Now one security review reads
+the feature's diff and the code it touches, in the end check, beside the feature review and on the
+same commit, while the PR is still a draft. It is staged the way Anthropic's security review action
+and the published work on pairing an LLM with static analysis are: map what the change exposes,
+hunt only where the map points with the scanners' findings as leads, then try to disprove each
+finding, with a fixed list of noise never reported. A diff that exposes nothing costs one line; a
+confirmed critical or high costs one more reviewer, who sees the claim and not the reasoning. A
+passed review stands in for the audit at the release (`AUDIT=reviewed`); `/landspec:security` stays
+the whole-repository audit, on demand.
+
 ## The main session starts every agent
 
 Implementers and reviewers are the main session's background agents, and none starts another. Only

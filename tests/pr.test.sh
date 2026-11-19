@@ -644,6 +644,20 @@ H="$(git rev-parse HEAD)"; fr="$(git rev-parse --git-common-dir)/landspec-review
 check "when the feature review is not ready for the head, then pr.sh feature --ready refuses it" \
   'one_refusal "the end check ran on $old, and the feature branch is now at $H" "$p" feature "feat: demo" "$TMP/fbody.md" --ready'
 printf 'head: %s\nheads: %s %s\ntests: green\nverdict: ready\nreviewed: %s\nmodel: claude-opus-5-5\n\n- met: FR-001 the demo searches\n' "$H" "$old" "$H" "$H" > "$fr"
+check "when no security review is recorded for the feature, then pr.sh feature --ready refuses it" \
+  'one_refusal "no security review recorded for 001-demo" "$p" feature "feat: demo" "$TMP/fbody.md" --ready && ! grep -q "^pr ready" "$GH_LOG"'
+cm='- confirmed: medium injection — src/log.ts:4 the query reaches the log line unescaped'; ph='- plausible: high access-control — src/api.ts:12 the owner check depends on a proxy header'
+security_reviewed '- confirmed: high injection — src/db.ts:9 the query reaches the SQL string' "$cm"
+check "when the security review confirmed a high finding, then pr.sh feature --ready refuses it" \
+  'one_refusal "the security review confirmed 0 critical and 1 high finding(s)" "$p" feature "feat: demo" "$TMP/fbody.md" --ready && ! grep -q "^pr ready" "$GH_LOG"'
+: > "$GH_LOG"; "$p" feature "feat: demo" "$TMP/fbody.md" >/dev/null 2>&1 || true
+check "when a confirmed high holds the PR and gh cannot tell the visibility (read as public), then the draft's body has no Security review section" \
+  'grep -q "^pr edit" "$GH_LOG" && ! grep -q "Security review" "$GH_LOG" && ! grep -q "src/db.ts" "$GH_LOG"'
+: > "$GH_LOG"; GH_VISIBILITY=PRIVATE "$p" feature "feat: demo" "$TMP/fbody.md" >/dev/null 2>&1 || true
+check "when a confirmed high holds the PR on a private repository, then the draft's body lists each finding's line" \
+  'grep -qxF "## Security review" "$GH_LOG" && grep -qxF "Security: 0 critical, 1 high, 1 medium, 0 low (confirmed), reviewed at ${H:0:12}" "$GH_LOG" \
+   && grep -qxF -- "- confirmed: high injection — src/db.ts:9 the query reaches the SQL string" "$GH_LOG"'
+security_reviewed "$cm" "$ph"
 check "when the mutate command has no mutants record for the feature diff, then pr.sh feature --ready refuses it" \
   'one_refusal "no mutants.sh result for this diff" "$p" feature "feat: demo" "$TMP/fbody.md" --ready'
 bash "$SCRIPTS/mutants.sh" >/dev/null
@@ -660,6 +674,21 @@ check "when every task is done, the end check passed and the scan has only missi
 check "then the body lists the missing scanners, the other findings, mutants unavailable and the End check" \
   'grep -q "^Scanners not run: .*semgrep (missing)" "$GH_LOG" && grep -qxF "Scanner findings (not high): osv-scanner" "$GH_LOG" \
    && grep -q "^Mutation testing: unavailable" "$GH_LOG" && grep -qxF "## End check" "$GH_LOG" && grep -qxF "Assessment: ready" "$GH_LOG"'
+check "then, the visibility unknown (read as public), the Security review section has the counts, each finding's category and the coverage, and no file:line or sentence" \
+  'grep -qxF "## Security review" "$GH_LOG" && grep -qxF "Security: 0 critical, 0 high, 1 medium, 0 low (confirmed), reviewed at ${H:0:12}" "$GH_LOG" \
+   && grep -qxF -- "- confirmed: medium injection" "$GH_LOG" && grep -qxF -- "- plausible: high access-control" "$GH_LOG" \
+   && grep -qxF "Coverage: scanners run: none; missing: gitleaks, semgrep; groups: injection" "$GH_LOG" && ! grep -qE "src/(log|api)\.ts|unescaped|proxy header" "$GH_LOG"'
+: > "$GH_LOG"; GH_VISIBILITY=PUBLIC "$p" feature "feat: demo" "$TMP/fbody.md" --ready >/dev/null 2>&1 || true
+check "when the repository is PUBLIC, then the section is the same: categories only" \
+  'grep -qxF -- "- confirmed: medium injection" "$GH_LOG" && ! grep -qE "src/(log|api)\.ts|unescaped|proxy header" "$GH_LOG" && grep -q "^repo view .*--json visibility" "$GH_LOG"'
+: > "$GH_LOG"; GH_VISIBILITY=PRIVATE "$p" feature "feat: demo" "$TMP/fbody.md" --ready >/dev/null 2>&1 || true
+check "when the repository is PRIVATE, then the section also has each finding's file:line and sentence" \
+  'grep -qxF -- "$cm" "$GH_LOG" && grep -qxF -- "$ph" "$GH_LOG" && grep -qxF "Coverage: scanners run: none; missing: gitleaks, semgrep; groups: injection" "$GH_LOG"'
+rm -f "$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; echo "security_review: off" >> .specify/extensions/landspec/landspec-config.yml
+: > "$GH_LOG"; out="$("$p" feature "feat: demo" "$TMP/fbody.md" --ready 2>/dev/null)" || true
+check "when security_review is off, then --ready needs no security record and the body says the security review is turned off" \
+  '[[ "$out" == *"READY=yes" ]] && grep -qxF "## Security review" "$GH_LOG" && grep -qxF "Turned off for this project (security_review: off)." "$GH_LOG"'
+sed -i.bak '/^security_review:/d' .specify/extensions/landspec/landspec-config.yml
 rm .specify/memory/constitution.md
 
 # ── Spec 008 T024: after the squash merge, pr.sh feature refuses: no push of the deleted branch, no second PR ──

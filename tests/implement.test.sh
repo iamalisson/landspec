@@ -186,6 +186,20 @@ check "when release_audit is off, then audit-plan prints exactly the skipped lin
 ra maybe
 check "when release_audit is neither on nor off, then audit-plan refuses naming the key and the two values" 'fails_with "release_audit must be on or off" "$I" audit-plan'
 ra ""
+# The feature's own security review (review.sh record --security) stands in for the audit.
+srec() { mkdir -p "$(git rev-parse --git-common-dir)/landspec-review"; printf 'head: %s\nassessment: %s\ncounts: %s\nmodel: claude-opus-5-5\ncoverage: x\n\nthe report\n' "$@" > "$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; }
+git branch --quiet -f feat/001-demo "$c1"; srec "$c1" ready "0 0 1 0"; ap
+check "when a ready security review of the feature branch's head is recorded, then audit-plan prints AUDIT=reviewed with its short sha" '[[ "$out" == "AUDIT=reviewed (security review of ${c1:0:7})" ]]'
+ra off; ap; ra ""
+check "when release_audit is off and that record is there, then audit-plan still prints AUDIT=reviewed" '[[ "$out" == "AUDIT=reviewed (security review of ${c1:0:7})" ]]'
+srec "$c1" "changes needed" "0 1 0 0"; ap
+check "when the security review did not pass, then audit-plan says needed" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
+srec "$c0" ready "0 0 0 0"; ap
+check "when the ready security review is of another commit than the feature branch's head, then audit-plan says needed" '[[ "$out" == "AUDIT=needed COMMIT=$c1" ]]'
+git branch --quiet -D feat/001-demo; git update-ref -d refs/remotes/origin/feat/001-demo 2>/dev/null || true; ap
+check "when the feature branch is gone from this clone (merged and deleted), then the ready record alone gives AUDIT=reviewed" '[[ "$out" == "AUDIT=reviewed (security review of ${c0:0:7})" ]]'
+rm -f "$(git rev-parse --git-common-dir)/landspec-review/security-001-demo"; ra off; ap; ra ""
+check "when no security review is recorded and release_audit is off, then audit-plan prints the skipped line" '[[ "$out" == "AUDIT=skipped (release_audit: off)" ]]'
 check "when audit-record gets a short sha, a missing report or a hold that is not a number, then it refuses" \
   'fails_with "usage: implement.sh audit-record" "$I" audit-record "${c1:0:7}" "$TMP/audit.md" 0 \
    && fails_with "usage: implement.sh audit-record" "$I" audit-record "$c1" "$TMP/none.md" 0 \
@@ -527,6 +541,14 @@ check "when a feature review has only met and not verifiable lines, then it reco
 eo="$(erep $'- met: FR-001 — a\n- not met: FR-002 — nothing does it')"
 check "when a feature review has a not met line, then it records changes needed, whatever its last line says" 'grep -qx "REVIEW=changes needed" <<<"$eo"'
 check "when record --feature is given with --plan, then it is refused" 'fails_with "a feature review is recorded alone" "$SCRIPTS/review.sh" record --feature --plan "$TMP/e.md"'
+srec() { printf 'head: %s\nassessment: %s\ncounts: 0 1 0 0\n\nthe report\n' "$h3" "$1" > "$(dirname "$(ER)")/security-001-demo"; }
+erep '- met: FR-001 — search.ts searches' >/dev/null; srec "changes needed"; ck
+check "when this head's feature review is ready but its security review said changes needed, then check prints UNCHANGED=3" '[[ "$out" == UNCHANGED=3 ]]'
+echo "security_review: off" >> .specify/extensions/landspec/landspec-config.yml; ck; sed -i.bak '/^security_review:/d' .specify/extensions/landspec/landspec-config.yml
+check "when security_review is off, then that record does not stop the check" '[[ "$out" == "CHECK=$h3 ROUND=3" ]]'
+srec ready; ck
+check "when this head's security review is ready, then check goes on" '[[ "$out" == "CHECK=$h3 ROUND=3" ]]'
+erep $'- met: FR-001 — a\n- not met: FR-002 — nothing does it' >/dev/null; rm -f "$(dirname "$(ER)")/security-001-demo"
 fcommit gap.txt; ck
 check "when a fourth head comes past feature_rounds (3), then check prints ROUNDS_EXHAUSTED=3 and leaves the ref" \
   '[[ "$out" == ROUNDS_EXHAUSTED=3 && "$(git rev-parse refs/landspec/check/001-demo)" == "$h3" ]]'

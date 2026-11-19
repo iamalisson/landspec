@@ -4,4 +4,3 @@ branch_prefix: feat
 version_files: ".claude-plugin/plugin.json, extension/extension.yml, preset/preset.yml, .specify/extensions/landspec/extension.yml"
 release_notes: docs/releases
 feature_rounds: 4
-release_audit: off
